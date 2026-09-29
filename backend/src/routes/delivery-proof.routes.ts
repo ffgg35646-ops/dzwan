@@ -17,7 +17,7 @@ import {
 const router = Router();
 
 const uploadDirectory = path.join(
-  process.cwd(),
+  "/tmp",
   "uploads",
   "delivery-proof",
 );
