@@ -7,7 +7,7 @@
     },
     "backend": {
       "root": "backend/",
-      "entrypoint": "src/server.mts",
+      "entrypoint": "src/server.ts",
       "installCommand": "npm install"
     }
   },
