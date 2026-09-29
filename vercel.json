@@ -2,12 +2,13 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "services": {
     "admin": {
-      "root": "admin",
+      "root": "admin/",
       "framework": "vite"
     },
     "backend": {
-      "root": "backend",
-      "entrypoint": "src/server.mts"
+      "root": "backend/",
+      "framework": "express",
+      "installCommand": "npm install --include=dev"
     }
   },
   "rewrites": [
