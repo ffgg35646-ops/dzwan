@@ -1,0 +1,3565 @@
+import SupportQuickAccess from "../../components/shared/SupportQuickAccess";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  Linking,
+  Modal,
+
+} from "react-native";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+import Svg, {
+  Circle,
+  Defs,
+  G,
+  Path,
+  Rect,
+  Stop,
+  LinearGradient as SvgGradient,
+} from "react-native-svg";
+import * as Location from "expo-location";
+import MapView, { Marker, Polyline } from "../../components/maps/MapView";
+
+import Screen from "../../components/Screen";
+import { useAuthStore } from "../../store/authStore";
+import {
+  attendanceIn,
+  attendanceOut,
+  checkShift,
+  getCaptainCapacity,
+  getMyWorkAreas,
+
+  getAvailableShifts,
+  selectWeeklyShift,
+  changeWeeklyShift,
+} from "../../api/captain";
+import { getAttendanceHistory } from "../../api/shiftAttendanceRuntime";
+import CaptainOrderBoard from "../../components/captain/CaptainOrderBoard";
+
+type Coordinate = {
+  latitude: number;
+  longitude: number;
+};
+
+type Order = {
+  id?: string;
+  _id?: string;
+  orderNumber?: string | number;
+  customerName?: string;
+  customerPhone?: string;
+  status?: string;
+  deliveryAddress?: string;
+
+  customerLatitude?: number | string;
+  customerLongitude?: number | string;
+
+  customerLocation?: {
+    latitude?: number | string;
+    longitude?: number | string;
+  };
+
+  deliveryLocation?: {
+    latitude?: number | string;
+    longitude?: number | string;
+  };
+
+  customerLocationUrl?: string;
+  locationUrl?: string;
+  locationLink?: string;
+  customerMapUrl?: string;
+  googleMapsLink?: string;
+
+  restaurantName?: string;
+  shopName?: string;
+  establishmentName?: string;
+  totalAmount?: number | string;
+  total?: number | string;
+  amount?: number | string;
+  price?: number | string;
+  deliveryFee?: number | string;
+  deliveredAt?: string;
+  completedAt?: string;
+  rejectedAt?: string;
+  cancelledAt?: string;
+  createdAt?: string;
+};
+
+const ORANGE = "#F97316";
+const ORANGE_DARK = "#E85D04";
+const YELLOW = "#FFB52E";
+const CREAM = "#FFF9F0";
+const WHITE = "#FFFFFF";
+const TEXT = "#21170F";
+const MUTED = "#8D8175";
+const GREEN = "#16A34A";
+const RED = "#EF4444";
+
+function numberValue(value: any, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function getOrders(source: any): Order[] {
+  const candidates = [
+    source?.orders,
+    source?.activeOrders,
+    source?.activeOrdersList,
+    source?.completedOrders,
+    source?.rejectedOrders,
+    source?.cancelledOrders,
+    source?.history,
+    source?.orderHistory,
+    source?.data?.orders,
+    source?.data?.activeOrders,
+    source?.data?.completedOrders,
+    source?.data?.rejectedOrders,
+    source?.data?.cancelledOrders,
+    source?.data?.history,
+    source?.items,
+  ];
+
+  const all: Order[] = [];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      all.push(...candidate);
+    }
+  }
+
+  const seen = new Set<string>();
+
+  return all
+    .filter((order) => {
+      const key = String(
+        order?.id ||
+          order?._id ||
+          order?.orderNumber ||
+          `${order?.customerName || ""}-${order?.createdAt || ""}`,
+      );
+
+      if (seen.has(key)) {
+        return false;
+      }
+
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => {
+      const aTime = new Date(a?.createdAt || 0).getTime();
+      const bTime = new Date(b?.createdAt || 0).getTime();
+
+      return bTime - aTime;
+    });
+}
+
+function parseCoordinateText(value?: string | null): Coordinate | null {
+  if (!value) return null;
+
+  const text = String(value).trim();
+
+  const patterns = [
+    /@(-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)/,
+    /(?:q|query|ll)=(-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)/i,
+    /geo:(-?\\d+(?:\\.\\d+)?),\\s*(-?\\d+(?:\\.\\d+)?)/i,
+    /(-?\\d+(?:\\.\\d+)?)\\s*,\\s*(-?\\d+(?:\\.\\d+)?)/,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+
+    if (!match) continue;
+
+    const latitude = Number(match[1]);
+    const longitude = Number(match[2]);
+
+    if (
+      Number.isFinite(latitude) &&
+      Number.isFinite(longitude) &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      longitude >= -180 &&
+      longitude <= 180
+    ) {
+      return {
+        latitude,
+        longitude,
+      };
+    }
+  }
+
+  return null;
+}
+
+function getCustomerCoordinate(order?: Order | null): Coordinate | null {
+  if (!order) return null;
+
+  const latitude = numberValue(
+    order.customerLatitude ??
+      order.customerLocation?.latitude ??
+      order.deliveryLocation?.latitude,
+    NaN,
+  );
+
+  const longitude = numberValue(
+    order.customerLongitude ??
+      order.customerLocation?.longitude ??
+      order.deliveryLocation?.longitude,
+    NaN,
+  );
+
+  if (
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude)
+  ) {
+    return { latitude, longitude };
+  }
+
+  const possibleLinks = [
+    order.customerLocationUrl,
+    order.locationUrl,
+    order.locationLink,
+    order.customerMapUrl,
+    order.googleMapsLink,
+  ];
+
+  for (const link of possibleLinks) {
+    const parsed = parseCoordinateText(link);
+
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function getStatusTone(status?: string) {
+  switch (status) {
+    case "delivered":
+      return {
+        backgroundColor: "#EAF8EF",
+        color: GREEN,
+      };
+
+    case "rejected":
+    case "declined":
+      return {
+        backgroundColor: "#FFF0ED",
+        color: RED,
+      };
+
+    case "cancelled":
+      return {
+        backgroundColor: "#F4F1ED",
+        color: "#766B60",
+      };
+
+    default:
+      return {
+        backgroundColor: "#FFF1E4",
+        color: ORANGE_DARK,
+      };
+  }
+}
+
+function distanceKm(a: Coordinate | null, b: Coordinate | null) {
+  if (!a || !b) return null;
+
+  const toRad = (value: number) =>
+    (value * Math.PI) / 180;
+
+  const earthRadius = 6371;
+
+  const dLat = toRad(b.latitude - a.latitude);
+  const dLon = toRad(b.longitude - a.longitude);
+
+  const lat1 = toRad(a.latitude);
+  const lat2 = toRad(b.latitude);
+
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) *
+      Math.cos(lat2) *
+      Math.sin(dLon / 2) ** 2;
+
+  return earthRadius * 2 * Math.atan2(
+    Math.sqrt(h),
+    Math.sqrt(1 - h),
+  );
+}
+
+function formatTime(value: any) {
+  if (!value) return "--:--";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+
+  return date.toLocaleTimeString("ar-IQ", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatDate(value: any) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleDateString("ar-IQ", {
+    day: "numeric",
+    month: "long",
+  });
+}
+
+function statusLabel(status?: string) {
+  switch (status) {
+    case "assigned":
+      return "تم التعيين";
+
+    case "heading_to_shop":
+      return "في الطريق للمطعم";
+
+    case "arrived_at_shop":
+      return "وصل للمطعم";
+
+    case "picked_up":
+      return "تم الاستلام";
+
+    case "on_the_way":
+      return "جاري التوصيل";
+
+    case "delivered":
+      return "مكتمل";
+
+    case "rejected":
+    case "declined":
+      return "مرفوض";
+
+    case "cancelled":
+      return "ملغي";
+
+    default:
+      return status || "قيد التنفيذ";
+  }
+}
+
+
+function DeliveryRiderVector() {
+  return (
+    <Svg
+      width="190"
+      height="165"
+      viewBox="0 0 220 185"
+    >
+      <Defs>
+        <SvgGradient
+          id="jacketGradient"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="1"
+        >
+          <Stop offset="0" stopColor="#FFF7ED" />
+          <Stop offset="0.55" stopColor="#FFE1BF" />
+          <Stop offset="1" stopColor="#F97316" />
+        </SvgGradient>
+
+        <SvgGradient
+          id="bikeGradient"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="1"
+        >
+          <Stop offset="0" stopColor="#FFB52E" />
+          <Stop offset="0.5" stopColor="#F97316" />
+          <Stop offset="1" stopColor="#D94801" />
+        </SvgGradient>
+
+        <SvgGradient
+          id="helmetGradient"
+          x1="0"
+          y1="0"
+          x2="1"
+          y2="1"
+        >
+          <Stop offset="0" stopColor="#FFFFFF" />
+          <Stop offset="1" stopColor="#FFE0B2" />
+        </SvgGradient>
+      </Defs>
+
+      <G>
+
+        {/* shadow */}
+        <Path
+          d="M28 160 C70 145 160 144 196 158 C168 174 62 176 28 160 Z"
+          fill="#7C2D12"
+          opacity={0.2}
+        />
+
+        {/* back wheel */}
+        <Circle
+          cx="55"
+          cy="133"
+          r="25"
+          fill="#21170F"
+        />
+        <Circle
+          cx="55"
+          cy="133"
+          r="15"
+          fill="#FFF7ED"
+        />
+        <Circle
+          cx="55"
+          cy="133"
+          r="6"
+          fill="#C7B9AA"
+        />
+
+        {/* front wheel */}
+        <Circle
+          cx="169"
+          cy="133"
+          r="25"
+          fill="#21170F"
+        />
+        <Circle
+          cx="169"
+          cy="133"
+          r="15"
+          fill="#FFF7ED"
+        />
+        <Circle
+          cx="169"
+          cy="133"
+          r="6"
+          fill="#C7B9AA"
+        />
+
+        {/* frame */}
+        <Path
+          d="M55 119 L87 113 L112 126 L158 126 L170 108"
+          fill="none"
+          stroke="#563824"
+          strokeWidth="7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* delivery box */}
+        <Rect
+          x="33"
+          y="78"
+          width="47"
+          height="39"
+          rx="9"
+          fill="#E85D04"
+        />
+
+        <Rect
+          x="39"
+          y="84"
+          width="35"
+          height="26"
+          rx="5"
+          fill="#FFF7ED"
+          opacity={0.72}
+        />
+
+        <Path
+          d="M48 91 H66"
+          stroke="#F97316"
+          strokeWidth="4"
+          strokeLinecap="round"
+        />
+
+        {/* bike body */}
+        <Path
+          d="M68 114 C83 89 108 83 133 94 C147 100 153 111 157 123 L105 123 C96 112 86 108 68 114 Z"
+          fill="url(#bikeGradient)"
+        />
+
+        <Path
+          d="M92 103 C104 98 116 99 127 104"
+          fill="none"
+          stroke="#FFFFFF"
+          strokeWidth="4"
+          opacity={0.72}
+          strokeLinecap="round"
+        />
+
+        {/* handle */}
+        <Path
+          d="M151 96 L169 83 L182 84"
+          fill="none"
+          stroke="#493022"
+          strokeWidth="6"
+          strokeLinecap="round"
+        />
+
+        {/* rider leg */}
+        <Path
+          d="M108 103 L126 124 L142 128"
+          fill="none"
+          stroke="#2D241E"
+          strokeWidth="13"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* body */}
+        <Path
+          d="M87 55 C100 45 120 47 129 62 L139 91 L118 105 L93 91 L77 73 Z"
+          fill="url(#jacketGradient)"
+        />
+
+        {/* orange jacket side */}
+        <Path
+          d="M118 59 L138 91 L126 100 L111 69 Z"
+          fill="#F97316"
+          opacity={0.84}
+        />
+
+        {/* left arm */}
+        <Path
+          d="M91 61 L73 80 L84 87 L103 72"
+          fill="none"
+          stroke="#FFD0A1"
+          strokeWidth="10"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+
+        {/* right arm */}
+        <Path
+          d="M123 64 L145 82 L166 84"
+          fill="none"
+          stroke="#FFD0A1"
+          strokeWidth="10"
+          strokeLinecap="round"
+        />
+
+        {/* neck */}
+        <Rect
+          x="100"
+          y="40"
+          width="18"
+          height="17"
+          rx="7"
+          fill="#FFD0A1"
+        />
+
+        {/* head */}
+        <Circle
+          cx="109"
+          cy="35"
+          r="24"
+          fill="#FFD0A1"
+        />
+
+        {/* cap */}
+        <Path
+          d="M84 32 C84 16 96 7 109 7 C123 7 134 15 137 29 C127 24 115 21 102 23 C95 24 89 28 84 32 Z"
+          fill="url(#helmetGradient)"
+        />
+
+        <Path
+          d="M88 28 C103 22 121 22 138 28 C141 30 140 34 136 35 C119 31 103 30 88 34 C84 34 84 30 88 28 Z"
+          fill="#F97316"
+        />
+
+        <Path
+          d="M103 12 C96 15 92 20 90 27"
+          fill="none"
+          stroke="#FFFFFF"
+          strokeWidth="3"
+          opacity={0.8}
+          strokeLinecap="round"
+        />
+
+        {/* helmet visor */}
+        <Path
+          d="M93 29 C104 23 121 23 134 29 L132 38 C117 34 105 34 94 38 Z"
+          fill="#5A3824"
+          opacity={0.84}
+        />
+
+        {/* face */}
+        <Circle
+          cx="116"
+          cy="37"
+          r="2.2"
+          fill="#3A251A"
+        />
+
+        <Path
+          d="M120 45 C114 49 109 48 105 45"
+          fill="none"
+          stroke="#A85E35"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+        />
+
+        {/* jacket stripe */}
+        <Path
+          d="M91 72 L119 92"
+          stroke="#FFFFFF"
+          strokeWidth="5"
+          opacity={0.82}
+        />
+
+        {/* delivery strap */}
+        <Path
+          d="M88 56 L119 91"
+          fill="none"
+          stroke="#E85D04"
+          strokeWidth="5"
+          opacity={0.8}
+        />
+
+        {/* light highlights */}
+        <Circle
+          cx="77"
+          cy="107"
+          r="4"
+          fill="#FFFFFF"
+          opacity={0.9}
+        />
+
+        <Circle
+          cx="154"
+          cy="110"
+          r="4"
+          fill="#FFFFFF"
+          opacity={0.9}
+        />
+      </G>
+    </Svg>
+  );
+}
+
+
+function formatShiftClock(value: any) {
+  if (!value) return "";
+
+  const parts = String(value).split(":");
+  const hour24 = Number(parts[0]);
+  const minute = Number(parts[1] || 0);
+
+  if (!Number.isFinite(hour24)) return "";
+
+  const suffix = hour24 >= 12 ? "م" : "ص";
+  const hour12 = hour24 % 12 || 12;
+
+  return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+export default function CaptainHomeScreen() {
+  const user = useAuthStore((state) => state.user);
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+
+  const [capacity, setCapacity] = useState<any>(null);
+  const [shift, setShift] = useState<any>(null);
+  /* HOME_SHIFT_PICKER_V1 */
+  const [shiftPickerOpen, setShiftPickerOpen] =
+    useState(false);
+
+  const [availableShifts, setAvailableShifts] =
+    useState<any[]>([]);
+
+  const [shiftPickerLoading, setShiftPickerLoading] =
+    useState(false);
+
+  const [shiftSaving, setShiftSaving] =
+    useState(false);
+
+  const [workArea, setWorkArea] = useState<any>(null);
+  const [attendance, setAttendance] = useState<any>(null);
+
+  const [location, setLocation] = useState<Coordinate | null>(null);
+  const [customerLocation, setCustomerLocation] =
+    useState<Coordinate | null>(null);
+
+  const [route, setRoute] = useState<Coordinate[]>([]);
+  const [etaMinutes, setEtaMinutes] = useState<number | null>(null);
+  const [routeDistanceKm, setRouteDistanceKm] = useState<number | null>(null);
+
+  const [currentPlaceName, setCurrentPlaceName] =
+    useState<string>("");
+
+  const [mapSearch, setMapSearch] =
+    useState<string>("");
+
+  const [customerLocationLink, setCustomerLocationLink] =
+    useState<string>("");
+
+  const [searchResults, setSearchResults] =
+    useState<any[]>([]);
+
+  const [mapSearchLoading, setMapSearchLoading] =
+    useState(false);
+  const [expandedOrderId, setExpandedOrderId] =
+    useState<string | null>(null);
+
+
+  const orders = useMemo(
+    () => getOrders(capacity),
+    [capacity],
+  );
+
+  const activeOrders = numberValue(
+    capacity?.activeOrders ??
+      capacity?.activeOrdersCount ??
+      capacity?.currentOrders,
+  );
+
+  const maxOrders = numberValue(
+    capacity?.maxActiveOrders ??
+      capacity?.maxOrders ??
+      capacity?.maxActiveOrdersPerCaptain,
+  );
+
+  const remainingOrders = Math.max(
+    maxOrders - activeOrders,
+    0,
+  );
+
+  const capacityPercentage =
+    maxOrders > 0
+      ? Math.min(activeOrders / maxOrders, 1)
+      : 0;
+
+  const insideShift = Boolean(
+    shift?.insideShift ??
+      shift?.withinShift ??
+      shift?.allowed,
+  );
+
+  const currentShift = shift?.shift || shift;
+
+  const shiftStart =
+    currentShift?.startTime ||
+    currentShift?.start ||
+    "--:--";
+
+  const shiftEnd =
+    currentShift?.endTime ||
+    currentShift?.end ||
+    "--:--";
+
+  const shiftSelected = Boolean(
+    shift?.shift ||
+      shift?.shiftId ||
+      shift?.selectedShiftId ||
+      currentShift?.id ||
+      currentShift?.shiftId,
+  );
+
+  const captainName =
+    user?.name?.trim() || "الكابتن";
+
+  const areaName =
+    workArea?.areaName ||
+    workArea?.area?.name ||
+    workArea?.name ||
+    "منطقتك الحالية";
+
+  async function loadGps() {
+    try {
+      const permission =
+        await Location.requestForegroundPermissionsAsync();
+
+      if (!permission.granted) {
+        return;
+      }
+
+      const current =
+        await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+
+      const nextLocation = {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+      };
+
+      setLocation(nextLocation);
+
+      try {
+        const reverseResponse = await fetch(
+          "https://nominatim.openstreetmap.org/reverse" +
+            `?lat=${nextLocation.latitude}` +
+            `&lon=${nextLocation.longitude}` +
+            "&format=jsonv2" +
+            "&accept-language=ar",
+        );
+
+        if (reverseResponse.ok) {
+          const reverseData =
+            await reverseResponse.json();
+
+          const address =
+            reverseData?.address || {};
+
+          const place =
+            address?.suburb ||
+            address?.neighbourhood ||
+            address?.city_district ||
+            address?.city ||
+            address?.town ||
+            address?.village;
+
+          if (place) {
+            setCurrentPlaceName(place);
+          }
+        }
+      } catch {
+        // نخلي اسم منطقة العمل كبديل
+      }
+
+      return nextLocation;
+    } catch {
+      return null;
+    }
+  }
+
+  async function loadData() {
+    try {
+      const [
+        capacityResult,
+        shiftResult,
+        workAreasResult,
+        attendanceResult,
+      ] = await Promise.all([
+        user?.id
+          ? getCaptainCapacity(user.id)
+          : Promise.resolve(null),
+
+        checkShift(),
+
+        user?.id
+          ? getMyWorkAreas()
+          : Promise.resolve(null),
+
+        getAttendanceHistory().catch(() => null),
+      ]);
+
+      setCapacity(capacityResult);
+      setShift(shiftResult);
+      setAttendance(attendanceResult);
+
+      const areas =
+        workAreasResult?.workAreas ||
+        workAreasResult?.areas ||
+        [];
+
+      setWorkArea(
+        Array.isArray(areas)
+          ? areas[0] || null
+          : null,
+      );
+
+      const availableOrders =
+        getOrders(capacityResult);
+
+      const firstOrder =
+        availableOrders.find((order) =>
+          [
+            "assigned",
+            "heading_to_shop",
+            "arrived_at_shop",
+            "picked_up",
+            "on_the_way",
+          ].includes(order?.status || ""),
+        ) || availableOrders[0];
+
+      setCustomerLocation(
+        getCustomerCoordinate(firstOrder),
+      );
+
+      const gps = await loadGps();
+
+      if (
+        gps &&
+        getCustomerCoordinate(firstOrder)
+      ) {
+        await buildRoute(
+          gps,
+          getCustomerCoordinate(firstOrder)!,
+        );
+      }
+    } catch (error: any) {
+      console.log(
+        "CAPTAIN HOME LOAD ERROR:",
+        error?.message || error,
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  async function buildRoute(
+    from: Coordinate,
+    to: Coordinate,
+  ) {
+    try {
+      const url =
+        "https://router.project-osrm.org/route/v1/driving/" +
+        `${from.longitude},${from.latitude};` +
+        `${to.longitude},${to.latitude}` +
+        "?overview=full&geometries=geojson";
+
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        setRoute([]);
+        setEtaMinutes(null);
+        setRouteDistanceKm(null);
+        return;
+      }
+
+      const data = await response.json();
+      const routeData = data?.routes?.[0];
+
+      if (!routeData) {
+        setRoute([]);
+        setEtaMinutes(null);
+        setRouteDistanceKm(null);
+        return;
+      }
+
+      const coordinates =
+        routeData?.geometry?.coordinates || [];
+
+      setRoute(
+        coordinates.map(
+          ([longitude, latitude]: [
+            number,
+            number,
+          ]) => ({
+            latitude,
+            longitude,
+          }),
+        ),
+      );
+
+      if (Number.isFinite(routeData.duration)) {
+        setEtaMinutes(
+          Math.max(
+            1,
+            Math.round(routeData.duration / 60),
+          ),
+        );
+      }
+
+      if (Number.isFinite(routeData.distance)) {
+        setRouteDistanceKm(
+          Math.max(0, routeData.distance / 1000),
+        );
+      }
+    } catch {
+      setRoute([]);
+      setEtaMinutes(null);
+      setRouteDistanceKm(
+        distanceKm(from, to),
+      );
+    }
+  }
+
+  async function searchMapLocation() {
+    const query = mapSearch.trim();
+
+    if (!query || mapSearchLoading) {
+      return;
+    }
+
+    try {
+      setMapSearchLoading(true);
+
+      const response = await fetch(
+        "https://nominatim.openstreetmap.org/search" +
+          `?q=${encodeURIComponent(
+            query + ", Iraq",
+          )}` +
+          "&format=jsonv2" +
+          "&limit=5" +
+          "&accept-language=ar",
+      );
+
+      if (!response.ok) {
+        setSearchResults([]);
+        return;
+      }
+
+      const data = await response.json();
+
+      setSearchResults(
+        Array.isArray(data)
+          ? data
+          : [],
+      );
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setMapSearchLoading(false);
+    }
+  }
+
+  async function selectSearchResult(result: any) {
+    const next = {
+      latitude: Number(result?.lat),
+      longitude: Number(result?.lon),
+    };
+
+    if (
+      !Number.isFinite(next.latitude) ||
+      !Number.isFinite(next.longitude)
+    ) {
+      return;
+    }
+
+    setCustomerLocation(next);
+    setSearchResults([]);
+
+    if (location) {
+      await buildRoute(
+        location,
+        next,
+      );
+    } else {
+      setRouteDistanceKm(null);
+    }
+  }
+
+  async function applyCustomerLocationLink() {
+    const next =
+      parseCoordinateText(
+        customerLocationLink,
+      );
+
+    if (!next) {
+      Alert.alert(
+        "الرابط غير مدعوم",
+        "ضع رابط Google Maps يحتوي على الإحداثيات أو اكتب الإحداثيات بهذا الشكل: 30.123, 47.456",
+      );
+      return;
+    }
+
+    setCustomerLocation(next);
+
+    if (location) {
+      await buildRoute(
+        location,
+        next,
+      );
+    } else {
+      setRouteDistanceKm(null);
+    }
+  }
+
+  function openNavigation() {
+    if (!customerLocation) {
+      return;
+    }
+
+    const destination =
+      `${customerLocation.latitude},${customerLocation.longitude}`;
+
+    const url = location
+      ? "https://www.google.com/maps/dir/?api=1" +
+        `&origin=${location.latitude},${location.longitude}` +
+        `&destination=${destination}` +
+        "&travelmode=driving"
+      : "https://www.google.com/maps/search/?api=1" +
+        `&query=${destination}`;
+
+    void Linking.openURL(url);
+  }
+
+  useEffect(() => {
+    void loadData();
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!location || !customerLocation) {
+      return;
+    }
+
+    void buildRoute(
+      location,
+      customerLocation,
+    );
+  }, [
+    location?.latitude,
+    location?.longitude,
+    customerLocation?.latitude,
+    customerLocation?.longitude,
+  ]);
+
+
+  const weeklyAssignment =
+    shift?.assignment || null;
+
+  const selectedWeeklyShiftId = String(
+    weeklyAssignment?.shiftId?._id ??
+      weeklyAssignment?.shiftId ??
+      "",
+  );
+
+  const selectedWeeklyShift =
+    weeklyAssignment?.shiftId &&
+    typeof weeklyAssignment.shiftId === "object"
+      ? weeklyAssignment.shiftId
+      : shift?.shift && typeof shift.shift === "object"
+        ? shift.shift
+        : null;
+
+  const selectedShiftTimeLabel =
+    selectedWeeklyShift?.startTime &&
+    selectedWeeklyShift?.endTime
+      ? `${formatShiftClock(
+          selectedWeeklyShift.startTime
+        )} – ${formatShiftClock(
+          selectedWeeklyShift.endTime
+        )}`
+      : "";
+
+  const todayLabel =
+    new Intl.DateTimeFormat("ar-IQ", {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(new Date());
+
+
+  /*
+   * assignment.changeCount:
+   * 0 = تم الاختيار ولم يحصل تغيير
+   * 1 = حسب بعض النسخ القديمة قد يكون هناك عداد أولي
+   * 2 = تم استخدام التغيير الأسبوعي
+   *
+   * الـBackend هو صاحب القرار النهائي دائمًا.
+   */
+  const shiftChangeUsed =
+    Number(
+      weeklyAssignment?.changeCount || 0,
+    ) >= 2;
+
+  const homeShiftActionTitle =
+    insideShift
+      ? "إنهاء الشفت"
+      : selectedWeeklyShiftId
+        ? "تعديل ميعاد الشفت"
+        : "ابدأ الشفت";
+
+  const homeShiftActionIcon =
+    insideShift
+      ? "stop-circle"
+      : selectedWeeklyShiftId
+        ? "create-outline"
+        : "play-circle";
+
+  const HOME_SHIFT_DAYS = [
+    "الأحد",
+    "الاثنين",
+    "الثلاثاء",
+    "الأربعاء",
+    "الخميس",
+    "الجمعة",
+    "السبت",
+  ];
+
+  async function openHomeShiftPicker() {
+    if (shiftSaving) return;
+
+    setShiftPickerOpen(true);
+    setShiftPickerLoading(true);
+
+    try {
+      const [
+        shiftsResponse,
+        currentResponse,
+      ] = await Promise.all([
+        getAvailableShifts(),
+        checkShift(),
+      ]);
+
+      setAvailableShifts(
+        Array.isArray(shiftsResponse?.data)
+          ? shiftsResponse.data
+          : [],
+      );
+
+      setShift(currentResponse);
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر تحميل الشفتات",
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "تعذر تحميل الشفتات المتاحة حاليًا.",
+      );
+    } finally {
+      setShiftPickerLoading(false);
+    }
+  }
+
+  async function saveHomeShift(
+    newShiftId: string,
+  ) {
+    if (!newShiftId || shiftSaving) return;
+
+    if (
+      selectedWeeklyShiftId &&
+      newShiftId === selectedWeeklyShiftId
+    ) {
+      setShiftPickerOpen(false);
+      return;
+    }
+
+    /*
+     * الواجهة تمنع المحاولة الثانية،
+     * والـBackend يمنعها أيضًا كحماية نهائية.
+     */
+    if (
+      selectedWeeklyShiftId &&
+      shiftChangeUsed
+    ) {
+      Alert.alert(
+        "تغيير الشفت",
+        "متاح تغيير الشفت مرة واحدة فقط أسبوعيًا، وقد تم استخدام التغيير لهذا الأسبوع.",
+      );
+      return;
+    }
+
+    setShiftSaving(true);
+
+    try {
+      if (selectedWeeklyShiftId) {
+        await changeWeeklyShift(newShiftId);
+      } else {
+        await selectWeeklyShift(newShiftId);
+      }
+
+      /*
+       * نقرأ الحالة من الخادم بعد الحفظ.
+       * لا نعتمد على حالة محلية ثابتة.
+       */
+      await loadData();
+
+      setShiftPickerOpen(false);
+
+      Alert.alert(
+        selectedWeeklyShiftId
+          ? "تم تغيير الشفت"
+          : "تم اختيار الشفت",
+        selectedWeeklyShiftId
+          ? "تم تغيير شفت هذا الأسبوع بنجاح."
+          : "تم حفظ شفت هذا الأسبوع بنجاح.",
+      );
+    } catch (error: any) {
+      Alert.alert(
+        selectedWeeklyShiftId
+          ? "تعذر تغيير الشفت"
+          : "تعذر اختيار الشفت",
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "تعذر تنفيذ العملية الآن.",
+      );
+    } finally {
+      setShiftSaving(false);
+    }
+  }
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await loadData();
+  }
+
+  async function handleCheckIn() {
+    if (
+      !user?.id ||
+      !shiftSelected ||
+      insideShift ||
+      attendanceLoading
+    ) {
+      return;
+    }
+
+    try {
+      setAttendanceLoading(true);
+
+      await attendanceIn(user.id);
+
+      Alert.alert(
+        "تم تسجيل الحضور",
+        "تم تسجيل حضورك للشفت بنجاح.",
+      );
+
+      await loadData();
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر تسجيل الحضور",
+        error?.response?.data?.message ||
+          error?.message ||
+          "حدث خطأ أثناء تسجيل الحضور.",
+      );
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }
+
+  async function handleCheckOut() {
+    if (
+      !user?.id ||
+      !shiftSelected ||
+      !insideShift ||
+      attendanceLoading
+    ) {
+      return;
+    }
+
+    try {
+      setAttendanceLoading(true);
+
+      await attendanceOut(user.id);
+
+      Alert.alert(
+        "تم تسجيل الانصراف",
+        "تم حفظ وقت الانصراف بنجاح.",
+      );
+
+      await loadData();
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر تسجيل الانصراف",
+        error?.response?.data?.message ||
+          error?.message ||
+          "حدث خطأ أثناء تسجيل الانصراف.",
+      );
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }
+
+  async function handleAttendance() {
+    if (insideShift) {
+      await handleCheckOut();
+    } else {
+      await handleCheckIn();
+    }
+  }
+
+  const lastCheckIn =
+    attendance?.lastCheckIn ||
+    attendance?.checkIn ||
+    attendance?.latest?.checkIn ||
+    attendance?.data?.lastCheckIn;
+
+  const lastCheckOut =
+    attendance?.lastCheckOut ||
+    attendance?.checkOut ||
+    attendance?.latest?.checkOut ||
+    attendance?.data?.lastCheckOut;
+
+  const mapCenter =
+    customerLocation || location;
+
+  const mapRegion = mapCenter
+    ? {
+        latitude: mapCenter.latitude,
+        longitude: mapCenter.longitude,
+        latitudeDelta: 0.045,
+        longitudeDelta: 0.045,
+      }
+    : {
+        latitude: 33.3152,
+        longitude: 44.3661,
+        latitudeDelta: 4.8,
+        longitudeDelta: 5.2,
+      };
+
+  const recentOrders = orders.slice(0, 8);
+
+  return (
+    <Screen fitContent>
+      <LinearGradient
+        colors={[
+          "#FFF8F0",
+          "#FFF3DE",
+          "#FFF8E8",
+        ]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.homeBackground}
+      >
+        <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing || loading}
+            onRefresh={handleRefresh}
+            tintColor={ORANGE}
+            colors={[ORANGE]}
+          />
+        }
+        style={styles.homeScroll}
+        contentContainerStyle={styles.container}
+      >
+        {/* HEADER */}
+        <View style={styles.header}>
+          {/* LEFT: notifications + settings */}
+          <View style={styles.headerSideLeft}>
+            <Pressable
+              style={styles.roundButton}
+              accessibilityRole="button"
+              accessibilityLabel="الإشعارات"
+            >
+              <Ionicons
+                name="notifications-outline"
+                size={22}
+                color={TEXT}
+              />
+
+              <View style={styles.notificationDot} />
+            </Pressable>
+
+            <Pressable
+              style={styles.roundButton}
+              accessibilityRole="button"
+              accessibilityLabel="الإعدادات"
+            >
+              <Ionicons
+                name="settings-outline"
+                size={21}
+                color={TEXT}
+              />
+            </Pressable>
+          </View>
+
+          {/* CENTER: logo + captain name */}
+          <View style={styles.logoArea}>
+            <View style={styles.logoIcon}>
+              <MaterialCommunityIcons
+                name="motorbike"
+                size={31}
+                color={ORANGE}
+              />
+            </View>
+
+            <Text style={styles.logoText}>
+              زاجل
+            </Text>
+
+            <Text style={styles.captainName}>
+              {captainName}
+            </Text>
+          </View>
+
+          {/* RIGHT: phone + WhatsApp */}
+          <View style={styles.headerSideRight}>
+            <SupportQuickAccess />
+          </View>
+        </View>
+
+        {/* HERO */}
+        <LinearGradient
+          colors={[
+            "#FF7A00",
+            "#FF9F1A",
+            "#FFC247",
+          ]}
+          start={{
+            x: 0,
+            y: 0,
+          }}
+          end={{
+            x: 1,
+            y: 1,
+          }}
+          style={styles.hero}
+        >
+          <View
+            pointerEvents="none"
+            style={styles.heroWaveLarge}
+          />
+
+          <View
+            pointerEvents="none"
+            style={styles.heroWaveMedium}
+          />
+
+          <View
+            pointerEvents="none"
+            style={styles.heroWaveSmall}
+          />
+
+          <View
+            pointerEvents="none"
+            style={styles.heroGlow}
+          />
+
+          <View style={styles.heroContent}>
+            <View style={styles.heroVectorWrap}>
+              <DeliveryRiderVector />
+            </View>
+
+            {selectedShiftTimeLabel ? (
+              <View style={styles.heroTimeRow}>
+                <Ionicons
+                  name="time-outline"
+                  size={23}
+                  color="#FFFFFF"
+                />
+
+                <Text style={styles.heroTime}>
+                  {selectedShiftTimeLabel}
+                </Text>
+              </View>
+            ) : null}
+
+            {selectedWeeklyShiftId && areaName ? (
+              <View style={styles.heroAreaRow}>
+                <Ionicons
+                  name="location-outline"
+                  size={18}
+                  color="#FFFFFF"
+                />
+
+                <View style={styles.heroAreaTextWrap}>
+                  <Text style={styles.heroAreaLabel}>
+                    منطقة العمل
+                  </Text>
+
+                  <Text style={styles.heroAreaName}>
+                    {areaName}
+                  </Text>
+                </View>
+              </View>
+            ) : null}
+
+            <Pressable
+              onPress={() => {
+                if (insideShift) {
+                  void handleAttendance();
+                  return;
+                }
+
+                navigation.navigate("الشفت");
+              }}
+              disabled={shiftSaving || attendanceLoading}
+              style={({ pressed }) => [
+                styles.heroButton,
+                insideShift && styles.heroButtonActive,
+                pressed && {
+                  opacity: 0.92,
+                  transform: [{ scale: 0.985 }],
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.heroButtonIcon,
+                  insideShift && styles.heroButtonIconActive,
+                ]}
+              >
+                <Ionicons
+                  name={homeShiftActionIcon as any}
+                  size={23}
+                  color={insideShift ? "#DC2626" : ORANGE_DARK}
+                />
+              </View>
+
+              <Text
+                style={[
+                  styles.heroButtonText,
+                  insideShift && styles.heroButtonTextActive,
+                ]}
+              >
+                {attendanceLoading
+                  ? "جاري التحديث..."
+                  : homeShiftActionTitle}
+              </Text>
+            </Pressable>
+          </View>
+        </LinearGradient>
+
+        {/* ATTENDANCE ACTIONS */}
+        <View style={styles.attendanceActions}>
+          <Pressable
+            onPress={handleCheckIn}
+            disabled={
+              !shiftSelected ||
+              insideShift ||
+              attendanceLoading
+            }
+            style={({ pressed }) => [
+              styles.attendanceActionButton,
+              styles.attendanceCheckInButton,
+              (!shiftSelected ||
+                insideShift ||
+                attendanceLoading) &&
+                styles.attendanceDisabledButton,
+              pressed &&
+                shiftSelected &&
+                !insideShift &&
+                !attendanceLoading && {
+                  transform: [{ scale: 0.98 }],
+                },
+            ]}
+          >
+            {attendanceLoading && !insideShift ? (
+              <ActivityIndicator
+                size="small"
+                color="#FFFFFF"
+              />
+            ) : (
+              <>
+                <View
+                  style={styles.attendanceActionIcon}
+                >
+                  <Ionicons
+                    name="log-in-outline"
+                    size={23}
+                    color="#FFFFFF"
+                  />
+                </View>
+
+                <View>
+                  <Text
+                    style={
+                      styles.attendanceActionTitle
+                    }
+                  >
+                    حضور
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.attendanceActionSubtitle
+                    }
+                  >
+                    تسجيل بداية الشفت
+                  </Text>
+                </View>
+              </>
+            )}
+          </Pressable>
+
+          <Pressable
+            onPress={handleCheckOut}
+            disabled={
+              !shiftSelected ||
+              !insideShift ||
+              attendanceLoading
+            }
+            style={({ pressed }) => [
+              styles.attendanceActionButton,
+              styles.attendanceCheckOutButton,
+              (!shiftSelected ||
+                !insideShift ||
+                attendanceLoading) &&
+                styles.attendanceDisabledButton,
+              pressed &&
+                shiftSelected &&
+                insideShift &&
+                !attendanceLoading && {
+                  transform: [{ scale: 0.98 }],
+                },
+            ]}
+          >
+            {attendanceLoading && insideShift ? (
+              <ActivityIndicator
+                size="small"
+                color="#FFFFFF"
+              />
+            ) : (
+              <>
+                <View
+                  style={styles.attendanceActionIcon}
+                >
+                  <Ionicons
+                    name="log-out-outline"
+                    size={23}
+                    color="#FFFFFF"
+                  />
+                </View>
+
+                <View>
+                  <Text
+                    style={
+                      styles.attendanceActionTitle
+                    }
+                  >
+                    انصراف
+                  </Text>
+
+                  <Text
+                    style={
+                      styles.attendanceActionSubtitle
+                    }
+                  >
+                    إنهاء الشفت
+                  </Text>
+                </View>
+              </>
+            )}
+          </Pressable>
+        </View>
+
+        {/* ORDER SUMMARY */}
+        <CaptainOrderBoard />
+
+        {/* MAP */}
+        <View style={styles.mapCard}>
+          <View style={styles.mapTitleRow}>
+            <View style={styles.mapTitleArea}>
+              <Text style={styles.mapTitle}>
+                خريطة الخدمة
+              </Text>
+
+              <Text style={styles.mapSubtitle}>
+                {customerLocation
+                  ? "موقعك والعميل والطريق"
+                  : "موقعك الحالي داخل العراق"}
+              </Text>
+            </View>
+
+            <View style={styles.mapTitleIcon}>
+              <Ionicons
+                name="location-outline"
+                size={22}
+                color={ORANGE}
+              />
+            </View>
+          </View>
+
+          <View style={styles.mapTools}>
+            <View style={styles.mapSearchRow}>
+              <TextInput
+                value={mapSearch}
+                onChangeText={setMapSearch}
+                onSubmitEditing={() => {
+                  void searchMapLocation();
+                }}
+                placeholder="ابحث عن منطقة أو عنوان العميل..."
+                placeholderTextColor="#A79B8F"
+                style={styles.mapSearchInput}
+                textAlign="right"
+              />
+
+              <Pressable
+                onPress={() => {
+                  void searchMapLocation();
+                }}
+                style={styles.mapSearchButton}
+              >
+                {mapSearchLoading ? (
+                  <ActivityIndicator
+                    size="small"
+                    color="#FFFFFF"
+                  />
+                ) : (
+                  <Ionicons
+                    name="search-outline"
+                    size={19}
+                    color="#FFFFFF"
+                  />
+                )}
+              </Pressable>
+            </View>
+
+            <View style={styles.mapLinkRow}>
+              <TextInput
+                value={customerLocationLink}
+                onChangeText={
+                  setCustomerLocationLink
+                }
+                placeholder="أو الصق رابط موقع العميل..."
+                placeholderTextColor="#A79B8F"
+                style={styles.customerLinkInput}
+                textAlign="right"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+
+              <Pressable
+                onPress={() => {
+                  void applyCustomerLocationLink();
+                }}
+                style={styles.mapLinkButton}
+              >
+                <Ionicons
+                  name="location-outline"
+                  size={17}
+                  color="#FFFFFF"
+                />
+
+                <Text style={styles.mapLinkButtonText}>
+                  تحديد
+                </Text>
+              </Pressable>
+            </View>
+
+            {searchResults.length > 0 ? (
+              <View style={styles.searchResults}>
+                {searchResults.map(
+                  (result, index) => (
+                    <Pressable
+                      key={`${result?.place_id || index}`}
+                      onPress={() => {
+                        void selectSearchResult(result);
+                      }}
+                      style={styles.searchResult}
+                    >
+                      <Ionicons
+                        name="location-outline"
+                        size={17}
+                        color={ORANGE}
+                      />
+
+                      <Text
+                        style={styles.searchResultText}
+                        numberOfLines={2}
+                      >
+                        {result?.display_name ||
+                          "موقع"}
+                      </Text>
+                    </Pressable>
+                  ),
+                )}
+              </View>
+            ) : null}
+          </View>
+
+          {Platform.OS === "web" ? (
+            <View style={styles.webMap}>
+              {React.createElement("iframe", {
+                title: "Zajel Captain Map",
+                src: mapCenter
+                  ? `https://www.google.com/maps?q=${mapCenter.latitude},${mapCenter.longitude}&z=14&output=embed`
+                  : "https://www.google.com/maps?q=Iraq&z=6&output=embed",
+                style: {
+                  width: "100%",
+                  height: "100%",
+                  border: 0,
+                },
+              })}
+            </View>
+          ) : (
+            <MapView
+              style={styles.nativeMap}
+              region={mapRegion}
+              showsUserLocation
+              showsMyLocationButton
+              loadingEnabled
+            >
+              {location ? (
+                <Marker
+                  coordinate={location}
+                  title="موقع الكابتن"
+                >
+                  <View
+                    style={styles.captainMarker}
+                  >
+                    <MaterialCommunityIcons
+                      name="motorbike"
+                      size={22}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                </Marker>
+              ) : null}
+
+              {customerLocation ? (
+                <Marker
+                  coordinate={customerLocation}
+                  title="موقع العميل"
+                  pinColor={RED}
+                />
+              ) : null}
+
+              {route.length > 1 ? (
+                <Polyline
+                  coordinates={route}
+                  strokeColor={ORANGE}
+                  strokeWidth={5}
+                />
+              ) : null}
+            </MapView>
+          )}
+
+          <View style={styles.mapFooter}>
+            <View style={styles.mapLocationInfo}>
+              <View style={styles.liveDot} />
+
+              <Text style={styles.mapLocationText}>
+                {location
+                  ? `منطقتك الحالية · ${
+                      currentPlaceName ||
+                      areaName
+                    }`
+                  : "في انتظار تحديد GPS"}
+              </Text>
+            </View>
+
+            {customerLocation ? (
+              <View style={styles.mapMetricGroup}>
+                <View style={styles.etaBadge}>
+                  <Ionicons
+                    name="navigate-outline"
+                    size={15}
+                    color={ORANGE}
+                  />
+
+                  <Text style={styles.etaText}>
+                    {etaMinutes
+                      ? `${etaMinutes} دقيقة`
+                      : "جاري الحساب"}
+                  </Text>
+                </View>
+
+                {routeDistanceKm != null ? (
+                  <View style={styles.distanceBadge}>
+                    <Text style={styles.distanceText}>
+                      {routeDistanceKm.toFixed(1)} كم
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+
+          {customerLocation ? (
+            <Pressable
+              onPress={openNavigation}
+              style={styles.navigationButton}
+            >
+              <Ionicons
+                name="navigate"
+                size={17}
+                color="#FFFFFF"
+              />
+
+              <Text style={styles.navigationButtonText}>
+                بدء الملاحة إلى العميل
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+
+
+      </ScrollView>
+      </LinearGradient>
+
+      {/* HOME SHIFT PICKER MODAL */}
+      <Modal
+        visible={shiftPickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!shiftSaving) {
+            setShiftPickerOpen(false);
+          }
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor:
+              "rgba(15,23,42,0.48)",
+            justifyContent: "flex-end",
+          }}
+        >
+          <Pressable
+            onPress={() => {
+              if (!shiftSaving) {
+                setShiftPickerOpen(false);
+              }
+            }}
+            style={{
+              flex: 1,
+            }}
+          />
+
+          <View
+            style={{
+              backgroundColor: WHITE,
+              borderTopLeftRadius: 30,
+              borderTopRightRadius: 30,
+              paddingHorizontal: 20,
+              paddingTop: 12,
+              paddingBottom: 28,
+              maxHeight: "80%",
+            }}
+          >
+            <View
+              style={{
+                width: 46,
+                height: 5,
+                borderRadius: 999,
+                backgroundColor: "#CBD5E1",
+                alignSelf: "center",
+                marginBottom: 18,
+              }}
+            />
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  flex: 1,
+                }}
+              >
+                <View
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 14,
+                    backgroundColor: "#FFF2E8",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginLeft: 10,
+                  }}
+                >
+                  <Ionicons
+                    name={
+                      shiftSelected
+                        ? "lock-open-outline"
+                        : "lock-closed-outline"
+                    }
+                    size={23}
+                    color={ORANGE_DARK}
+                  />
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      color: TEXT,
+                      fontSize: 20,
+                      fontWeight: "900",
+                    }}
+                  >
+                    {homeShiftActionTitle}
+                  </Text>
+
+                  <Text
+                    style={{
+                      color: MUTED,
+                      fontSize: 12,
+                      marginTop: 4,
+                    }}
+                  >
+                    شفتات الإدارة المتاحة لهذا الأسبوع
+                  </Text>
+                </View>
+              </View>
+
+              <Pressable
+                onPress={() => {
+                  if (!shiftSaving) {
+                    setShiftPickerOpen(false);
+                  }
+                }}
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: 12,
+                  backgroundColor: "#F5F5F5",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons
+                  name="close"
+                  size={21}
+                  color={TEXT}
+                />
+              </Pressable>
+            </View>
+
+            <View
+              style={{
+                marginTop: 15,
+                marginBottom: 12,
+                padding: 13,
+                borderRadius: 15,
+                backgroundColor:
+                  shiftSelected &&
+                  shiftChangeUsed
+                    ? "#FEF2F2"
+                    : CREAM,
+                borderWidth: 1,
+                borderColor:
+                  shiftSelected &&
+                  shiftChangeUsed
+                    ? "#FECACA"
+                    : "#F8D8B6",
+              }}
+            >
+              <Text
+                style={{
+                  color:
+                    shiftSelected &&
+                    shiftChangeUsed
+                      ? "#B91C1C"
+                      : "#7C5A43",
+                  fontSize: 12,
+                  lineHeight: 19,
+                  fontWeight: "800",
+                }}
+              >
+                {shiftSelected
+                  ? shiftChangeUsed
+                    ? "تم استخدام تغيير الشفت لهذا الأسبوع."
+                    : "متاح تغيير الشفت مرة واحدة فقط أسبوعيًا."
+                  : "اختر شفتك لهذا الأسبوع ثم اضغط اختيار."}
+              </Text>
+            </View>
+
+            {shiftPickerLoading ? (
+              <View
+                style={{
+                  minHeight: 230,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <ActivityIndicator
+                  size="large"
+                  color={ORANGE}
+                />
+
+                <Text
+                  style={{
+                    marginTop: 12,
+                    color: MUTED,
+                    fontWeight: "800",
+                  }}
+                >
+                  جاري تحميل الشفتات...
+                </Text>
+              </View>
+            ) : availableShifts.length === 0 ? (
+              <View
+                style={{
+                  minHeight: 230,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  paddingHorizontal: 20,
+                }}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={44}
+                  color="#B8AAA0"
+                />
+
+                <Text
+                  style={{
+                    marginTop: 12,
+                    color: TEXT,
+                    fontSize: 15,
+                    fontWeight: "900",
+                    textAlign: "center",
+                  }}
+                >
+                  لا توجد شفتات متاحة حاليًا
+                </Text>
+
+                <Text
+                  style={{
+                    marginTop: 6,
+                    color: MUTED,
+                    fontSize: 12,
+                    textAlign: "center",
+                    lineHeight: 18,
+                  }}
+                >
+                  الشفتات الظاهرة هنا يتم إنشاؤها
+                  وتفعيلها من الإدارة.
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{
+                  paddingBottom: 12,
+                }}
+              >
+                {availableShifts.map((item) => {
+                  const id = String(
+                    item?._id ||
+                      item?.id ||
+                      "",
+                  );
+
+                  if (!id) {
+                    return null;
+                  }
+
+                  const isSelected =
+                    String(
+                      selectedWeeklyShiftId,
+                    ) === id;
+
+                  const dayIndex =
+                    Number(item?.dayOfWeek);
+
+                  const dayName =
+                    Number.isInteger(dayIndex) &&
+                    dayIndex >= 0 &&
+                    dayIndex <= 6
+                      ? HOME_SHIFT_DAYS[
+                          dayIndex
+                        ]
+                      : "";
+
+                  const disabled =
+                    shiftSaving ||
+                    isSelected ||
+                    (
+                      shiftSelected &&
+                      shiftChangeUsed
+                    );
+
+                  return (
+                    <View
+                      key={id}
+                      style={{
+                        borderRadius: 18,
+                        borderWidth: 1,
+                        borderColor:
+                          isSelected
+                            ? "#FDBA74"
+                            : "#E8DED7",
+                        backgroundColor:
+                          isSelected
+                            ? "#FFF7ED"
+                            : WHITE,
+                        padding: 15,
+                        marginBottom: 10,
+                      }}
+                    >
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                        }}
+                      >
+                        <View
+                          style={{
+                            flex: 1,
+                            paddingLeft: 10,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: TEXT,
+                              fontSize: 16,
+                              fontWeight: "900",
+                            }}
+                          >
+                            {item?.name ||
+                              "شفت الكابتن"}
+                          </Text>
+
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              marginTop: 7,
+                            }}
+                          >
+                            <Ionicons
+                              name="time-outline"
+                              size={16}
+                              color={ORANGE}
+                              style={{
+                                marginLeft: 5,
+                              }}
+                            />
+
+                            <Text
+                              style={{
+                                color: "#5F5147",
+                                fontSize: 13,
+                                fontWeight: "800",
+                              }}
+                            >
+                              {item?.startTime ||
+                                "--:--"}{" "}
+                              -{" "}
+                              {item?.endTime ||
+                                "--:--"}
+                            </Text>
+                          </View>
+
+                          {!!dayName && (
+                            <Text
+                              style={{
+                                color: MUTED,
+                                fontSize: 11,
+                                marginTop: 5,
+                              }}
+                            >
+                              {dayName}
+                            </Text>
+                          )}
+                        </View>
+
+                        <Pressable
+                          disabled={disabled}
+                          onPress={() => {
+                            void saveHomeShift(id);
+                          }}
+                          style={{
+                            minWidth: 78,
+                            paddingHorizontal: 13,
+                            paddingVertical: 10,
+                            borderRadius: 12,
+                            alignItems: "center",
+                            justifyContent: "center",
+                            backgroundColor:
+                              isSelected
+                                ? "#F3E8DD"
+                                : disabled
+                                ? "#D1D5DB"
+                                : ORANGE,
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color:
+                                isSelected
+                                  ? "#8D8175"
+                                  : WHITE,
+                              fontSize: 12,
+                              fontWeight: "900",
+                            }}
+                          >
+                            {isSelected
+                              ? "الحالي"
+                              : shiftSelected
+                              ? "تغيير"
+                              : "اختيار"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+</Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  homeBackground: {
+    width: "100%",
+    backgroundColor: "#FFF8F0",
+  },
+
+  homeScroll: {
+    flex: 1,
+    backgroundColor: "transparent",
+  },
+
+
+  container: {
+    paddingHorizontal: 14,
+    paddingBottom: 0,
+    backgroundColor: "transparent",
+  },
+
+  header: {
+    width: "100%",
+    minHeight: 62,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    marginBottom: 12,
+    direction: "ltr",
+  },
+
+  headerSide: {
+    width: 48,
+    alignItems: "center",
+  },
+
+  roundButton: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: WHITE,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#E9DFD3",
+    shadowColor: "#3B2416",
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 2,
+  },
+
+  notificationDot: {
+    position: "absolute",
+    top: 8,
+    right: 8,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: RED,
+    borderWidth: 1.5,
+    borderColor: WHITE,
+  },
+
+  headerSideLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    minWidth: 92,
+    justifyContent: "flex-start",
+  },
+
+  headerSideRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    minWidth: 92,
+  },
+
+  logoArea: {
+    alignItems: "center",
+    justifyContent: "center",
+    flex: 1,
+  },
+
+  logoIcon: {
+    height: 31,
+    justifyContent: "center",
+  },
+
+  logoText: {
+    color: ORANGE,
+    fontSize: 24,
+    fontWeight: "900",
+    lineHeight: 28,
+    marginTop: -2,
+  },
+
+  captainName: {
+    color: TEXT,
+    fontSize: 16,
+    fontWeight: "900",
+    marginTop: 3,
+  },
+
+  hero: {
+    minHeight: 286,
+    borderRadius: 30,
+    overflow: "hidden",
+    position: "relative",
+    shadowColor: "#5A2D0E",
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: {
+      width: 0,
+      height: 9,
+    },
+    elevation: 6,
+  },
+
+  heroContent: {
+    minHeight: 300,
+    padding: 20,
+    justifyContent: "flex-end",
+    zIndex: 3,
+  },
+
+  heroStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  heroStatusPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.6)",
+  },
+
+  statusDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+  },
+
+  heroStatusText: {
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  heroTextArea: {
+    width: "100%",
+    alignItems: "flex-start",
+    justifyContent: "flex-end",
+    marginBottom: 14,
+    zIndex: 4,
+  },
+
+  heroTitle: {
+    color: WHITE,
+    fontSize: 25,
+    fontWeight: "900",
+    textAlign: "left",
+    lineHeight: 31,
+  },
+
+  heroTimeRow: {
+    alignSelf: "flex-start",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 9,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.16)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.28)",
+    marginBottom: 14,
+  },
+
+  heroTime: {
+    color: WHITE,
+    fontSize: 25,
+    fontWeight: "900",
+    letterSpacing: 0.2,
+  },
+
+  heroDate: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+
+  heroAreaRow: {
+    alignSelf: "flex-start",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.13)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.22)",
+  },
+
+  heroAreaTextWrap: {
+    alignItems: "flex-start",
+  },
+
+  heroAreaLabel: {
+    color: "rgba(255,255,255,0.72)",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  heroAreaName: {
+    marginTop: 1,
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  heroButton: {
+    width: "100%",
+    minHeight: 62,
+    zIndex: 6,
+    borderRadius: 20,
+    backgroundColor: WHITE,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    shadowColor: "#4A2611",
+    shadowOpacity: 0.20,
+    shadowRadius: 15,
+    shadowOffset: {
+      width: 0,
+      height: 7,
+    },
+    elevation: 7,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.92)",
+  },
+
+  heroButtonActive: {
+    backgroundColor: "#FFF7F7",
+    borderColor: "#FECACA",
+  },
+
+  heroButtonText: {
+    color: ORANGE_DARK,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+
+  heroButtonTextActive: {
+    color: "#DC2626",
+  },
+
+  heroButtonIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#FFF1E2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  heroButtonIconActive: {
+    backgroundColor: "#FEE2E2",
+  },
+
+  heroWaveLarge: {
+    position: "absolute",
+    width: 430,
+    height: 210,
+    borderRadius: 230,
+    right: -190,
+    bottom: -105,
+    backgroundColor:
+      "rgba(255,255,255,0.16)",
+    transform: [{ rotate: "-9deg" }],
+  },
+
+  heroWaveMedium: {
+    position: "absolute",
+    width: 390,
+    height: 175,
+    borderRadius: 210,
+    right: -135,
+    bottom: -75,
+    backgroundColor:
+      "rgba(255,217,112,0.34)",
+    transform: [{ rotate: "7deg" }],
+  },
+
+  heroWaveSmall: {
+    position: "absolute",
+    width: 280,
+    height: 130,
+    borderRadius: 160,
+    left: -125,
+    top: -65,
+    backgroundColor:
+      "rgba(255,255,255,0.11)",
+    transform: [{ rotate: "-14deg" }],
+  },
+
+  heroVectorWrap: {
+    width: 205,
+    height: 175,
+    position: "absolute",
+    right: -7,
+    top: 34,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2,
+  },
+
+
+  heroPhotoBorder: {
+    ...StyleSheet.absoluteFill,
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.22)",
+    borderTopLeftRadius: 74,
+    borderTopRightRadius: 28,
+  },
+
+  heroGlow: {
+    position: "absolute",
+    width: 190,
+    height: 190,
+    borderRadius: 100,
+    right: -70,
+    top: -70,
+    backgroundColor:
+      "rgba(255,255,255,0.10)",
+  },
+
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 3,
+    marginTop: 3,
+  },
+
+  sectionTitle: {
+    color: TEXT,
+    fontSize: 19,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  sectionSubtitle: {
+    color: MUTED,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "right",
+    marginTop: 4,
+  },
+
+  sectionIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: "#FFF0E1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  attendanceActions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  attendanceActionButton: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 14,
+    paddingHorizontal: 9,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  attendanceCheckInButton: {
+    backgroundColor: GREEN,
+  },
+
+  attendanceCheckOutButton: {
+    backgroundColor: RED,
+  },
+
+  attendanceDisabledButton: {
+    opacity: 0.38,
+  },
+
+  attendanceActionIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  attendanceActionTitle: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  attendanceActionSubtitle: {
+    color: "rgba(255,255,255,0.78)",
+    fontSize: 9,
+    fontWeight: "700",
+    marginTop: 1,
+  },
+
+  attendanceHint: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+    marginTop: -3,
+    marginBottom: 2,
+  },
+
+
+  mapCard: {
+    marginTop: 0,
+    marginBottom: 0,
+    borderRadius: 18,
+    overflow: "hidden",
+  },
+
+  mapTitleRow: {
+    paddingHorizontal: 13,
+    paddingTop: 8,
+    paddingBottom: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  mapTitleArea: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+
+  mapTitle: {
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+
+  mapSubtitle: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 3,
+  },
+
+  mapTitleIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: "#FFF1E4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  mapTools: {
+    paddingHorizontal: 13,
+    paddingBottom: 11,
+    gap: 9,
+    backgroundColor: WHITE,
+  },
+
+  mapSearchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  mapSearchInput: {
+    flex: 1,
+    minHeight: 48,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: "#E6DACE",
+    backgroundColor: "#FBF8F4",
+    paddingHorizontal: 14,
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  mapSearchButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    backgroundColor: ORANGE,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: ORANGE_DARK,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    elevation: 3,
+  },
+
+  mapLinkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  customerLinkInput: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#E6DACE",
+    backgroundColor: "#FBF8F4",
+    paddingHorizontal: 13,
+    color: TEXT,
+    fontSize: 11,
+  },
+
+  mapLinkButton: {
+    minHeight: 44,
+    paddingHorizontal: 13,
+    borderRadius: 14,
+    backgroundColor: ORANGE_DARK,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+
+  mapLinkButtonText: {
+    color: WHITE,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  searchResults: {
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: "#EDE1D3",
+    backgroundColor: WHITE,
+    overflow: "hidden",
+  },
+
+  searchResult: {
+    minHeight: 48,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1ECE5",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  searchResultText: {
+    flex: 1,
+    color: TEXT,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  nativeMap: {
+    width: "100%",
+    height: 150,
+  },
+
+  webMap: {
+    width: "100%",
+    height: 150,
+    backgroundColor: "#E9E5DE",
+    overflow: "hidden",
+  },
+
+  captainMarker: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: ORANGE,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: WHITE,
+    shadowColor: ORANGE_DARK,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    elevation: 4,
+  },
+
+  mapFooter: {
+    minHeight: 42,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+
+  mapLocationInfo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  liveDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: GREEN,
+  },
+
+  mapLocationText: {
+    color: "#675C52",
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  mapMetricGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  distanceBadge: {
+    backgroundColor: "#FFF8EE",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#F4DFC2",
+  },
+
+  distanceText: {
+    color: ORANGE_DARK,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  etaBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    backgroundColor: "#FFF2E5",
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "#F5D8B8",
+  },
+
+  etaText: {
+    color: ORANGE_DARK,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  navigationButton: {
+    marginHorizontal: 13,
+    marginBottom: 13,
+    minHeight: 48,
+    borderRadius: 15,
+    backgroundColor: ORANGE,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: ORANGE_DARK,
+    shadowOpacity: 0.14,
+    shadowRadius: 8,
+    shadowOffset: {
+      width: 0,
+      height: 3,
+    },
+    elevation: 3,
+  },
+
+  navigationButtonText: {
+    color: WHITE,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  statCard: {
+    flex: 1,
+    minHeight: 108,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: "#E9DED1",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#3D291D",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 2,
+  },
+
+  statIconOrange: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "#FFF0DF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  statIconNeutral: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "#F3EFE9",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  statText: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+
+  statLabel: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  statValue: {
+    color: TEXT,
+    fontSize: 28,
+    fontWeight: "900",
+    lineHeight: 33,
+    marginTop: 2,
+  },
+
+  statHint: {
+    color: "#9B9188",
+    fontSize: 10,
+    fontWeight: "600",
+  },
+
+  capacityCard: {
+    padding: 17,
+    borderRadius: 23,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: "#E9DED1",
+    shadowColor: "#3D291D",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 2,
+  },
+
+  capacityHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  capacityTitle: {
+    color: TEXT,
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  capacitySubtitle: {
+    color: MUTED,
+    fontSize: 11,
+    marginTop: 3,
+    textAlign: "right",
+  },
+
+  capacityNumber: {
+    color: ORANGE,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+
+  progressTrack: {
+    height: 10,
+    marginTop: 15,
+    borderRadius: 999,
+    backgroundColor: "#EEEAE4",
+    overflow: "hidden",
+  },
+
+  progressFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: ORANGE,
+  },
+
+  capacityFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 7,
+  },
+
+  capacityFooterText: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  ordersCard: {
+    borderRadius: 25,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: "#E9DED1",
+    overflow: "hidden",
+    shadowColor: "#3D291D",
+    shadowOpacity: 0.05,
+    shadowRadius: 12,
+    shadowOffset: {
+      width: 0,
+      height: 5,
+    },
+    elevation: 2,
+  },
+
+  ordersHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  ordersTitle: {
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  ordersSubtitle: {
+    color: MUTED,
+    fontSize: 11,
+    marginTop: 3,
+    textAlign: "right",
+  },
+
+  ordersHeaderIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    backgroundColor: "#FFF1E4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  orderLocationButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 13,
+    backgroundColor: "#FFF1E4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  ordersEmpty: {
+    minHeight: 150,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+    paddingVertical: 24,
+    borderTopWidth: 1,
+    borderTopColor: "#F1ECE5",
+  },
+
+  ordersEmptyTitle: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900",
+    marginTop: 9,
+  },
+
+  ordersEmptyText: {
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "600",
+    marginTop: 5,
+    textAlign: "center",
+  },
+
+  orderDateSmall: {
+    color: "#9B9188",
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+
+  orderDetailsCard: {
+    backgroundColor: "#FCF8F3",
+    borderTopWidth: 1,
+    borderTopColor: "#EDE1D3",
+    padding: 14,
+  },
+
+  orderDetailsHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  orderDetailsTitle: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  orderDetailsStatus: {
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: 999,
+  },
+
+  orderDetailsStatusText: {
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  orderDetailGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  orderDetailItem: {
+    width: "48%",
+    minHeight: 58,
+    backgroundColor: WHITE,
+    borderRadius: 15,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#EDE1D5",
+  },
+
+  orderDetailFull: {
+    width: "100%",
+  },
+
+  orderDetailLabel: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  orderDetailValue: {
+    color: TEXT,
+    fontSize: 11,
+    fontWeight: "900",
+    marginTop: 5,
+    textAlign: "right",
+  },
+
+  orderPrice: {
+    color: ORANGE_DARK,
+    fontSize: 13,
+  },
+
+  orderMapButton: {
+    marginTop: 11,
+    minHeight: 44,
+    borderRadius: 14,
+    backgroundColor: "#FFF0DF",
+    borderWidth: 1,
+    borderColor: "#FFD9AD",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+  },
+
+  orderMapButtonText: {
+    color: ORANGE_DARK,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  orderRow: {
+    minHeight: 82,
+    paddingHorizontal: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#F1ECE5",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  orderRowLast: {
+    borderBottomWidth: 0,
+  },
+
+  orderIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#FFF1E5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  orderInfo: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+
+  orderCustomer: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  orderAddress: {
+    color: MUTED,
+    fontSize: 10,
+    marginTop: 4,
+  },
+
+  orderMeta: {
+    alignItems: "flex-end",
+    gap: 5,
+  },
+
+  orderNumber: {
+    color: "#756A60",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  orderStatus: {
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#EAF8EF",
+  },
+
+  orderStatusText: {
+    color: GREEN,
+    fontSize: 9,
+    fontWeight: "900",
+  },
+
+  infoCard: {
+    minHeight: 74,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 21,
+    backgroundColor: WHITE,
+    borderWidth: 1,
+    borderColor: "#E9DED1",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+    shadowColor: "#3D291D",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 2,
+  },
+
+  infoIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    backgroundColor: "#FFF1E4",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  infoText: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+
+  infoTitle: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  infoValue: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900",
+    marginTop: 3,
+  },
+
+  infoLive: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 999,
+    backgroundColor: "#F0FAF3",
+    borderWidth: 1,
+    borderColor: "#D7F0DE",
+  },
+
+  infoLiveText: {
+    color: GREEN,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  loading: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+
+  loadingText: {
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+});

@@ -1,0 +1,696 @@
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+import Screen from "../../components/Screen";
+import { getOrders } from "../../api/orders";
+import { useAppTheme } from "../../theme/useAppTheme";
+
+export default function ShopReportsScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const result = await getOrders();
+
+      const list = Array.isArray(result)
+        ? result
+        : result?.orders ||
+          result?.items ||
+          result?.data ||
+          [];
+
+      setOrders(Array.isArray(list) ? list : []);
+    } catch {
+      setOrders([]);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    load();
+  }, [load]);
+
+  const stats = useMemo(() => {
+    const completed = orders.filter(
+      (item) => item?.status === "delivered"
+    ).length;
+
+    const cancelled = orders.filter(
+      (item) =>
+        item?.status === "cancelled" ||
+        item?.status === "rejected"
+    ).length;
+
+    const active = orders.filter(
+      (item) =>
+        ![
+          "delivered",
+          "cancelled",
+          "rejected",
+        ].includes(String(item?.status || ""))
+    ).length;
+
+    const totalValue = orders.reduce((sum, item) => {
+      const value = Number(
+        item?.total ??
+          item?.grandTotal ??
+          item?.subtotal ??
+          0
+      );
+
+      return sum + (Number.isFinite(value) ? value : 0);
+    }, 0);
+
+    return {
+      total: orders.length,
+      active,
+      completed,
+      cancelled,
+      totalValue,
+    };
+  }, [orders]);
+
+  const formatMoney = (value: number) =>
+    value.toLocaleString("ar-EG");
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "pending":
+        return "قيد الانتظار";
+      case "confirmed":
+        return "تم التأكيد";
+      case "preparing":
+        return "جاري التحضير";
+      case "ready_for_pickup":
+        return "جاهز للاستلام";
+      case "assigned":
+        return "تم تعيين كابتن";
+      case "picked_up":
+        return "تم الاستلام";
+      case "on_the_way":
+        return "في الطريق";
+      case "delivered":
+        return "تم التوصيل";
+      case "cancelled":
+        return "ملغي";
+      case "rejected":
+        return "مرفوض";
+      default:
+        return "غير محدد";
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "delivered":
+        return appTheme.successColor;
+      case "cancelled":
+      case "rejected":
+        return appTheme.dangerColor;
+      case "pending":
+        return appTheme.warningColor;
+      default:
+        return appTheme.infoColor;
+    }
+  };
+
+  if (loading) {
+    return (
+      <Screen>
+        <View style={styles.loading}>
+          <View style={styles.loadingIcon}>
+            <ActivityIndicator
+              size="large"
+              color={appTheme.primaryColor}
+            />
+          </View>
+
+          <Text style={styles.loadingTitle}>
+            جاري تحميل التقرير
+          </Text>
+
+          <Text style={styles.loadingSubtitle}>
+            يتم تجهيز إحصائيات الطلبات
+          </Text>
+        </View>
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={appTheme.primaryColor}
+            colors={[appTheme.primaryColor]}
+          />
+        }
+        contentContainerStyle={styles.container}
+      >
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>
+              أداء المتجر
+            </Text>
+
+            <Text style={styles.title}>
+              التقارير
+            </Text>
+
+            <Text style={styles.subtitle}>
+              نظرة سريعة على نشاط الطلبات
+            </Text>
+          </View>
+
+          <View style={styles.headerIcon}>
+            <Ionicons
+              name="stats-chart-outline"
+              size={25}
+              color={appTheme.primaryColor}
+            />
+          </View>
+        </View>
+
+        {/* Main KPI */}
+        <View style={styles.mainKpi}>
+          <View style={styles.kpiIcon}>
+            <Ionicons
+              name="receipt-outline"
+              size={24}
+              color="#FFFFFF"
+            />
+          </View>
+
+          <Text style={styles.kpiLabel}>
+            إجمالي الطلبات
+          </Text>
+
+          <Text style={styles.kpiValue}>
+            {stats.total}
+          </Text>
+
+          <Text style={styles.kpiHint}>
+            طلب مسجل في النظام
+          </Text>
+        </View>
+
+        {/* Metrics */}
+        <View style={styles.metricsGrid}>
+          <Metric
+            title="نشطة"
+            value={stats.active}
+            icon="time-outline"
+            iconColor={appTheme.warningColor}
+            appTheme={appTheme}
+          />
+
+          <Metric
+            title="مكتملة"
+            value={stats.completed}
+            icon="checkmark-circle-outline"
+            iconColor={appTheme.successColor}
+            appTheme={appTheme}
+          />
+
+          <Metric
+            title="ملغاة"
+            value={stats.cancelled}
+            icon="close-circle-outline"
+            iconColor={appTheme.dangerColor}
+            appTheme={appTheme}
+          />
+
+          <Metric
+            title="قيمة الطلبات"
+            value={`${formatMoney(stats.totalValue)} د.ع`}
+            icon="cash-outline"
+            iconColor={appTheme.primaryColor}
+            appTheme={appTheme}
+            compact
+          />
+        </View>
+
+        {/* Recent Orders */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>
+            آخر الطلبات
+          </Text>
+
+          <Text style={styles.sectionCount}>
+            {Math.min(orders.length, 10)} طلب
+          </Text>
+        </View>
+
+        <View style={styles.ordersCard}>
+          {orders.length === 0 ? (
+            <View style={styles.empty}>
+              <View style={styles.emptyIcon}>
+                <Ionicons
+                  name="bar-chart-outline"
+                  size={34}
+                  color={appTheme.primaryColor}
+                />
+              </View>
+
+              <Text style={styles.emptyTitle}>
+                لا توجد بيانات بعد
+              </Text>
+
+              <Text style={styles.emptyText}>
+                ستظهر إحصائيات الطلبات هنا بعد إنشاء
+                أول طلب.
+              </Text>
+            </View>
+          ) : (
+            orders.slice(0, 10).map((order, index) => {
+              const status = String(
+                order?.status || ""
+              );
+
+              const orderNumber =
+                order?.orderNumber ||
+                order?.number ||
+                order?._id ||
+                "—";
+
+              const amount = Number(
+                order?.total ??
+                  order?.grandTotal ??
+                  order?.subtotal ??
+                  0
+              );
+
+              return (
+                <View
+                  key={String(
+                    order?._id ||
+                      order?.id ||
+                      index
+                  )}
+                  style={[
+                    styles.orderRow,
+                    index ===
+                      Math.min(orders.length, 10) - 1 &&
+                      styles.lastOrderRow,
+                  ]}
+                >
+                  <View style={styles.orderIcon}>
+                    <Ionicons
+                      name="bag-handle-outline"
+                      size={18}
+                      color={appTheme.primaryColor}
+                    />
+                  </View>
+
+                  <View style={styles.orderInfo}>
+                    <Text style={styles.orderNumber}>
+                      #{orderNumber}
+                    </Text>
+
+                    <Text style={styles.orderStatus}>
+                      {getStatusLabel(status)}
+                    </Text>
+                  </View>
+
+                  <View style={styles.orderRight}>
+                    <Text style={styles.orderAmount}>
+                      {Number.isFinite(amount)
+                        ? `${formatMoney(amount)} د.ع`
+                        : "—"}
+                    </Text>
+
+                    <View
+                      style={[
+                        styles.statusDot,
+                        {
+                          backgroundColor:
+                            getStatusColor(status),
+                        },
+                      ]}
+                    />
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function Metric({
+  title,
+  value,
+  icon,
+  iconColor,
+  appTheme,
+  compact = false,
+}: {
+  title: string;
+  value: string | number;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  appTheme: ReturnType<typeof useAppTheme>;
+  compact?: boolean;
+}) {
+  return (
+    <View
+      style={{
+        width: "48%",
+        backgroundColor: appTheme.cardColor,
+        borderWidth: 1,
+        borderColor: appTheme.borderColor,
+        borderRadius: 18,
+        padding: 14,
+        marginBottom: 10,
+      }}
+    >
+      <View
+        style={{
+          width: 38,
+          height: 38,
+          borderRadius: 12,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: `${iconColor}12`,
+          marginBottom: 10,
+        }}
+      >
+        <Ionicons
+          name={icon}
+          size={19}
+          color={iconColor}
+        />
+      </View>
+
+      <Text
+        style={{
+          color: appTheme.secondaryTextColor,
+          fontSize: 10,
+          fontWeight: "700",
+          textAlign: "right",
+        }}
+      >
+        {title}
+      </Text>
+
+      <Text
+        style={{
+          marginTop: 5,
+          color: appTheme.textColor,
+          fontSize: compact ? 15 : 22,
+          fontWeight: "900",
+          textAlign: "right",
+        }}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>
+) =>
+  StyleSheet.create({
+    container: {
+      paddingBottom: 30,
+    },
+
+    header: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 18,
+    },
+
+    headerText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    eyebrow: {
+      color: appTheme.primaryColor,
+      fontSize: 12,
+      fontWeight: "900",
+      marginBottom: 3,
+    },
+
+    title: {
+      color: appTheme.textColor,
+      fontSize: 29,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    subtitle: {
+      marginTop: 4,
+      color: appTheme.secondaryTextColor,
+      fontSize: 13,
+      fontWeight: "500",
+      textAlign: "right",
+    },
+
+    headerIcon: {
+      width: 52,
+      height: 52,
+      borderRadius: 17,
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: 14,
+      backgroundColor: appTheme.surfaceColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+    },
+
+    mainKpi: {
+      borderRadius: 22,
+      backgroundColor: appTheme.primaryColor,
+      padding: 20,
+      marginBottom: 12,
+    },
+
+    kpiIcon: {
+      width: 46,
+      height: 46,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "rgba(255,255,255,0.16)",
+      alignSelf: "flex-end",
+      marginBottom: 14,
+    },
+
+    kpiLabel: {
+      color: "rgba(255,255,255,0.78)",
+      fontSize: 11,
+      fontWeight: "700",
+      textAlign: "right",
+    },
+
+    kpiValue: {
+      color: "#FFFFFF",
+      fontSize: 36,
+      fontWeight: "900",
+      textAlign: "right",
+      marginTop: 2,
+    },
+
+    kpiHint: {
+      color: "rgba(255,255,255,0.72)",
+      fontSize: 11,
+      fontWeight: "600",
+      textAlign: "right",
+      marginTop: 2,
+    },
+
+    metricsGrid: {
+      flexDirection: "row-reverse",
+      flexWrap: "wrap",
+      justifyContent: "space-between",
+      marginBottom: 10,
+    },
+
+    sectionHeader: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 7,
+      marginBottom: 9,
+    },
+
+    sectionTitle: {
+      color: appTheme.textColor,
+      fontSize: 17,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    sectionCount: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+
+    ordersCard: {
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      borderRadius: 20,
+      paddingHorizontal: 15,
+    },
+
+    orderRow: {
+      minHeight: 70,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      borderBottomWidth: 1,
+      borderBottomColor: appTheme.borderColor,
+    },
+
+    lastOrderRow: {
+      borderBottomWidth: 0,
+    },
+
+    orderIcon: {
+      width: 39,
+      height: 39,
+      borderRadius: 13,
+      alignItems: "center",
+      justifyContent: "center",
+      marginLeft: 10,
+      backgroundColor: `${appTheme.primaryColor}10`,
+    },
+
+    orderInfo: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    orderNumber: {
+      color: appTheme.textColor,
+      fontSize: 13,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    orderStatus: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "600",
+      marginTop: 3,
+      textAlign: "right",
+    },
+
+    orderRight: {
+      alignItems: "flex-end",
+      marginRight: 10,
+    },
+
+    orderAmount: {
+      color: appTheme.textColor,
+      fontSize: 11,
+      fontWeight: "800",
+    },
+
+    statusDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      marginTop: 6,
+    },
+
+    empty: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 45,
+      paddingHorizontal: 25,
+    },
+
+    emptyIcon: {
+      width: 72,
+      height: 72,
+      borderRadius: 24,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.primaryColor}10`,
+      marginBottom: 14,
+    },
+
+    emptyTitle: {
+      color: appTheme.textColor,
+      fontSize: 17,
+      fontWeight: "900",
+      textAlign: "center",
+    },
+
+    emptyText: {
+      marginTop: 7,
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      lineHeight: 19,
+      fontWeight: "500",
+      textAlign: "center",
+    },
+
+    loading: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    loadingIcon: {
+      width: 76,
+      height: 76,
+      borderRadius: 25,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.primaryColor}10`,
+      marginBottom: 17,
+    },
+
+    loadingTitle: {
+      color: appTheme.textColor,
+      fontSize: 18,
+      fontWeight: "900",
+    },
+
+    loadingSubtitle: {
+      marginTop: 7,
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      fontWeight: "500",
+    },
+  });

@@ -1,0 +1,132 @@
+import { PushDeviceModel } from "../models/PushDevice.js";
+
+const EXPO_PUSH_URL =
+  "https://exp.host/--/api/v2/push/send";
+
+type PushPayload = {
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+};
+
+function chunks<T>(items: T[], size: number): T[][] {
+  const result: T[][] = [];
+
+  for (let i = 0; i < items.length; i += size) {
+    result.push(items.slice(i, i + size));
+  }
+
+  return result;
+}
+
+export async function sendExpoPushToUsers(
+  userIds: string[],
+  payload: PushPayload
+) {
+  if (userIds.length === 0) {
+    return {
+      devices: 0,
+      sent: 0,
+      failed: 0,
+    };
+  }
+
+  const devices = await PushDeviceModel.find(
+    {
+      userId: {
+        $in: userIds,
+      },
+    },
+    {
+      _id: 1,
+      token: 1,
+    }
+  ).lean();
+
+  if (devices.length === 0) {
+    return {
+      devices: 0,
+      sent: 0,
+      failed: 0,
+    };
+  }
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const batch of chunks(devices, 100)) {
+    try {
+      const response = await fetch(EXPO_PUSH_URL, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Accept-Encoding": "gzip, deflate",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(
+          batch.map((device) => ({
+            to: device.token,
+            sound: "default",
+            title: payload.title,
+            body: payload.body,
+            badge: 1,
+            data: payload.data || {},
+          }))
+        ),
+      });
+
+      const result = await response.json() as any;
+
+      if (!response.ok) {
+        failed += batch.length;
+
+        console.error(
+          "Expo push HTTP error:",
+          response.status,
+          result
+        );
+
+        continue;
+      }
+
+      const tickets = Array.isArray(result?.data)
+        ? result.data
+        : [];
+
+      for (let i = 0; i < batch.length; i++) {
+        const ticket = tickets[i];
+
+        if (ticket?.status === "ok") {
+          sent++;
+          continue;
+        }
+
+        failed++;
+
+        const errorCode =
+          ticket?.details?.error;
+
+        if (errorCode === "DeviceNotRegistered") {
+          try {
+            await PushDeviceModel.deleteOne({
+              _id: batch[i]._id,
+            });
+          } catch {}
+        }
+      }
+    } catch (error) {
+      failed += batch.length;
+
+      console.error(
+        "Expo push request error:",
+        error
+      );
+    }
+  }
+
+  return {
+    devices: devices.length,
+    sent,
+    failed,
+  };
+}

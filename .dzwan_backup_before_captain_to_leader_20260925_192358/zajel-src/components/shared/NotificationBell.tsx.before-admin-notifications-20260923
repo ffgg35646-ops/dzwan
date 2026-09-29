@@ -1,0 +1,391 @@
+import React, {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { apiGet } from "../../api/request";
+
+export default function NotificationBell() {
+  const navigation = useNavigation<any>();
+  const [open, setOpen] = useState(false);
+  const [count, setCount] = useState(0);
+  const acknowledgedCount = useRef(0);
+  const [message, setMessage] = useState(
+    "لا توجد رسائل جديدة في الدعم السريع.",
+  );
+
+  const [position, setPosition] = useState({
+    left: 12,
+    top: 64,
+  });
+
+
+  const menuWidth = Math.min(
+    366,
+    366,
+  );
+
+  const loadSupportNotification =
+    useCallback(async () => {
+      try {
+        const response = await apiGet(
+          "/support-tickets/my/unread-count",
+        );
+
+        const value = Number(
+          response?.count ?? 0,
+        );
+
+        if (value <= 0) {
+          acknowledgedCount.current = 0;
+          setCount(0);
+        } else if (
+          value > acknowledgedCount.current
+        ) {
+          setCount(value);
+        } else {
+          setCount(0);
+        }
+
+        setMessage(
+          response?.message ||
+            "لديك رسالة جديدة في الدعم السريع.",
+        );
+      } catch {
+        setCount(0);
+      }
+    }, []);
+
+  useEffect(() => {
+    void loadSupportNotification();
+
+    const timer = setInterval(
+      () => void loadSupportNotification(),
+      10000,
+    );
+
+    return () => clearInterval(timer);
+  }, [loadSupportNotification]);
+
+  function openMenu() {
+    setOpen(true);
+  }
+
+  function goToSupport() {
+    setOpen(false);
+    navigation.navigate("الدعم");
+  }
+
+  return (
+    <>
+      <Pressable
+        onPress={() => {
+          if (count > 0) {
+            acknowledgedCount.current = count;
+            setCount(0);
+          }
+
+          if (open) {
+            setOpen(false);
+          } else {
+            openMenu();
+          }
+        }}
+        style={({ pressed }) => [
+          styles.button,
+          pressed && styles.pressed,
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel="الإشعارات"
+      >
+        <Ionicons
+          name="notifications-outline"
+          size={22}
+          color="#0F172A"
+        />
+
+        {count > 0 ? (
+          <View style={styles.totalBadge}>
+            <Text style={styles.totalBadgeText}>
+              {count > 99 ? "99+" : count}
+            </Text>
+          </View>
+        ) : null}
+      </Pressable>
+
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            style={styles.modalBackdrop}
+            onPress={() => setOpen(false)}
+          />
+
+          <View
+            pointerEvents="box-none"
+            style={styles.appFrame}
+          >
+            <View style={styles.menu}>
+            <View style={styles.menuHead}>
+              <View>
+                <Text style={styles.menuTitle}>
+                  التنبيهات
+                </Text>
+
+                <Text style={styles.menuSub}>
+                  إشعارات الدعم السريع
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={() => setOpen(false)}
+                style={styles.closeButton}
+              >
+                <Ionicons
+                  name="close"
+                  size={17}
+                  color="#64748B"
+                />
+              </Pressable>
+            </View>
+
+            <Pressable
+              onPress={goToSupport}
+              style={({ pressed }) => [
+                styles.card,
+                pressed && styles.cardPressed,
+              ]}
+            >
+              <View style={styles.cardIcon}>
+                <Ionicons
+                  name="chatbubble-ellipses-outline"
+                  size={20}
+                  color="#E87516"
+                />
+              </View>
+
+              <View style={styles.cardBody}>
+                <View style={styles.cardTop}>
+                  <Text style={styles.cardTitle}>
+                    الدعم السريع
+                  </Text>
+
+                  {count > 0 ? (
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countBadgeText}>
+                        {count > 99 ? "99+" : count}
+                      </Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                <Text
+                  style={styles.cardSmall}
+                  numberOfLines={3}
+                >
+                  {count > 0
+                    ? message
+                    : "لا توجد رسائل جديدة في الدعم السريع."}
+                </Text>
+              </View>
+            </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
+}
+
+const styles = StyleSheet.create({
+  button: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.86)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.98)",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+    shadowColor: "#000000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    elevation: 4,
+  },
+
+  pressed: {
+    opacity: 0.75,
+  },
+
+  totalBadge: {
+    position: "absolute",
+    top: -5,
+    right: -5,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: "#DC2626",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  totalBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  modalRoot: {
+    flex: 1,
+    position: "relative",
+    alignItems: "center",
+  },
+
+  appFrame: {
+    width: "100%",
+    maxWidth: 390,
+    height: "100%",
+    position: "relative",
+  },
+
+  modalBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "transparent",
+  },
+
+  menu: {
+    position: "absolute",
+    padding: 10,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.98)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    shadowOffset: {
+      width: 0,
+      height: 9,
+    },
+    elevation: 14,
+  },
+
+  menuHead: {
+    minHeight: 38,
+    paddingHorizontal: 5,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 7,
+  },
+
+  menuTitle: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+
+  menuSub: {
+    marginTop: 2,
+    fontSize: 10,
+    color: "#94A3B8",
+  },
+
+  closeButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    backgroundColor: "rgba(241,245,249,0.85)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  card: {
+    minHeight: 76,
+    borderRadius: 15,
+    padding: 10,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    borderWidth: 1,
+    borderColor: "rgba(226,232,240,0.90)",
+    backgroundColor: "rgba(248,250,252,0.82)",
+  },
+
+  cardPressed: {
+    opacity: 0.72,
+  },
+
+  cardIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,244,227,0.95)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 9,
+  },
+
+  cardBody: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  cardTop: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 7,
+  },
+
+  cardTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+
+  cardSmall: {
+    marginTop: 5,
+    fontSize: 11,
+    lineHeight: 18,
+    color: "#64748B",
+  },
+
+  countBadge: {
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 5,
+    borderRadius: 11,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  countBadgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+});

@@ -1,0 +1,2570 @@
+import Core11OrderStateModel from "../models/Core11OrderState.js";
+import { resolveDeliveryFee } from "../services/pricing.service.js";
+import { evaluateRewardsForDeliveredOrder } from "../services/reward.service.js";
+import { audit } from "../services/system-audit.service.js";
+import {
+  recordOrderCashToEstablishment,
+  recordOrderCashCollectedFromCustomer,
+} from "../services/order-cash.service.js";
+import type { Response } from "express";
+import { randomUUID } from "node:crypto";
+import { Types } from "mongoose";
+import { z } from "zod";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import type { ScopedRequest } from "../middleware/scope.middleware.js";
+import { UserModel } from "../models/User.js";
+import { CustomerAddressModel } from "../models/CustomerAddress.js";
+import { EstablishmentModel } from "../models/Establishment.js";
+import { MaintenanceSettingsModel } from "../models/MaintenanceSettings.js";
+import { ProductModel } from "../models/Product.js";
+import { CancellationRecordModel } from "../models/CancellationRecord.js";
+import { OrderModel, ORDER_STATUSES, type OrderStatus } from "../models/Order.js";
+import { LocationModel } from "../models/Location.js";
+import SequenceCounterModel from "../models/SequenceCounter.js";
+import { createNotification } from "../services/notification.service.js";
+import { assertDeliveryProof } from "../services/delivery-proof.service.js";
+import { saveOrderEvent } from "../services/requirements-11-29-runtime.service.js";
+import { createAuditLog } from "../services/audit-log.service.js";
+import {
+  startStageTimer,
+  closeStageTimer,
+} from "../services/ops-31-47.service.js";
+import { buildOrderCustomerSnapshot } from "../services/order-customer-snapshot.service.js";
+import { dispatchOrder } from "../services/dispatch-manager.service.js";
+import { saveCancellation } from "../services/ops-31-47.service.js";
+
+const createOrderSchema = z.object({
+  customerName: z.string().trim().min(1).max(200),
+  customerPhone: z.string().trim().min(1).max(50),
+  deliveryAddress: z.string().trim().min(1).max(1000),
+
+  deliveryGovernorateId: z.string().trim().min(1),
+  deliveryAreaId: z.string().trim().min(1),
+
+  deliveryLatitude: z.number().optional().nullable(),
+  deliveryLongitude: z.number().optional().nullable(),
+
+  subtotal: z.number().positive(),
+
+  items: z
+    .array(
+      z.object({
+        productId: z.string().trim().min(1),
+        quantity: z.number().int().min(1).max(100),
+      }),
+    )
+    .default([]),
+
+  customerNote:
+    z.string().trim().max(1000).optional().nullable(),
+});
+
+const updateStatusSchema = z.object({
+  status: z.enum(ORDER_STATUSES),
+  reason: z.string().trim().max(500).optional().nullable(),
+});
+
+const assignCaptainSchema = z.object({
+  captainId: z.string().trim().min(1),
+});
+
+function validId(value: string): boolean {
+  return Types.ObjectId.isValid(value);
+}
+
+function canAccessOrder(
+  req: ScopedRequest,
+  governorateId: string,
+  areaId: string,
+): boolean {
+  const scope = req.scopedUser;
+
+  if (!scope) return false;
+
+  if (
+    scope.role === "admin" ||
+    scope.role === "super_admin"
+  ) {
+    return true;
+  }
+
+  if (scope.role === "governorate_leader") {
+    return scope.governorateId === governorateId;
+  }
+
+  if (scope.role === "area_leader") {
+    return (
+      scope.governorateId === governorateId &&
+      scope.areaId === areaId
+    );
+  }
+
+  return false;
+}
+
+function canCustomerAccess(
+  req: ScopedRequest,
+  customerId: string,
+): boolean {
+  return (
+    req.scopedUser?.role === "customer" &&
+    req.scopedUser.id === customerId
+  );
+}
+
+
+async function validateActiveLocation(
+  governorateId: string,
+  areaId: string,
+): Promise<{
+  ok: boolean;
+  message?: string;
+}> {
+  const location = await LocationModel.findById(
+    governorateId,
+  )
+    .select("isActive establishmentsEnabled areas")
+    .lean();
+
+  if (!location) {
+    return {
+      ok: false,
+      message: "المحافظة المرتبطة بالطلب غير موجودة.",
+    };
+  }
+
+  if (!location.isActive) {
+    return {
+      ok: false,
+      message: "المحافظة متوقفة حاليًا.",
+    };
+  }
+
+  if (location.establishmentsEnabled === false) {
+    return {
+      ok: false,
+      message: "المطاعم والمحلات متوقفة حاليًا في هذه المحافظة.",
+    };
+  }
+
+  const area = location.areas.find(
+    (item) => item._id.toString() === areaId,
+  );
+
+  if (!area) {
+    return {
+      ok: false,
+      message: "المنطقة المرتبطة بالطلب غير موجودة.",
+    };
+  }
+
+  if (!area.isActive) {
+    return {
+      ok: false,
+      message: "المنطقة متوقفة حاليًا.",
+    };
+  }
+
+  if (area.establishmentsEnabled === false) {
+    return {
+      ok: false,
+      message: "المطاعم والمحلات متوقفة حاليًا في هذه المنطقة.",
+    };
+  }
+
+  return { ok: true };
+}
+
+async function getOrderScope(
+  establishmentId: Types.ObjectId,
+) {
+  const establishment =
+    await EstablishmentModel.findById(
+      establishmentId,
+    )
+      .select(
+        "governorateId areaId status captainId",
+      )
+      .lean();
+
+  if (!establishment) {
+    return null;
+  }
+
+  return {
+    governorateId:
+      establishment.governorateId.toString(),
+    areaId:
+      establishment.areaId.toString(),
+    status: establishment.status,
+  };
+}
+
+function isAllowedTransition(
+  from: OrderStatus,
+  to: OrderStatus,
+): boolean {
+  const transitions: Record<
+    OrderStatus,
+    OrderStatus[]
+  > = {
+    pending: [
+      "confirmed",
+      "rejected",
+      "cancelled",
+    ],
+
+    confirmed: [
+      "heading_to_shop",
+      "cancelled",
+    ],
+
+    heading_to_shop: [
+      "arrived_at_shop",
+      "cancelled",
+    ],
+
+    arrived_at_shop: [
+      "picked_up",
+      "cancelled",
+    ],
+
+    picked_up: [
+      "on_the_way",
+      "cancelled",
+    ],
+
+    on_the_way: [
+      "delivered",
+      "cancelled",
+    ],
+
+    delivered: [
+      "completed",
+    ],
+
+    completed: [],
+
+    cancelled: [],
+
+    rejected: [],
+
+    preparing: [
+      "ready_for_pickup",
+      "cancelled",
+    ],
+
+    ready_for_pickup: [
+      "assigned",
+      "cancelled",
+    ],
+
+    assigned: [
+      "heading_to_shop",
+      "picked_up",
+      "cancelled",
+    ],
+  };
+
+  return transitions[from].includes(to);
+}
+
+async function makeOrderNumber(): Promise<string> {
+  const counter =
+    await SequenceCounterModel.findOneAndUpdate(
+      {
+        _id: "orderNumber",
+      },
+      {
+        $inc: {
+          value: 1,
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: false,
+      },
+    ).lean();
+
+  if (
+    !counter ||
+    !Number.isFinite(Number(counter.value))
+  ) {
+    throw new Error(
+      "ORDER_NUMBER_COUNTER_FAILED",
+    );
+  }
+
+  // أول طلب = 11
+  return String(
+    Number(counter.value) + 10,
+  );
+}
+
+
+async function attachCustomerSnapshot(order: any) {
+  if (!order?._id) return order;
+
+  const state = await Core11OrderStateModel.findOne({
+    orderId: order._id,
+  })
+    .select("customerSnapshot")
+    .lean();
+
+  if (state?.customerSnapshot) {
+    order.customerSnapshot = state.customerSnapshot;
+  }
+
+  return order;
+}
+
+async function attachCustomerSnapshots(orders: any[]) {
+  if (!Array.isArray(orders) || orders.length === 0) {
+    return orders;
+  }
+
+  const ids = orders
+    .map((order) => order?._id)
+    .filter(Boolean);
+
+  if (ids.length === 0) return orders;
+
+  const states = await Core11OrderStateModel.find({
+    orderId: { $in: ids },
+  })
+    .select("orderId customerSnapshot")
+    .lean();
+
+  const byOrder = new Map(
+    states.map((state: any) => [
+      String(state.orderId),
+      state.customerSnapshot,
+    ]),
+  );
+
+  for (const order of orders) {
+    const snapshot = byOrder.get(String(order._id));
+    if (snapshot) {
+      order.customerSnapshot = snapshot;
+    }
+  }
+
+  return orders;
+}
+
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function parseDateStart(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseDateEnd(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return null;
+  }
+
+  const date = new Date(`${value}T23:59:59.999Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+export async function listOrders(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const scopedReq =
+      req as ScopedRequest;
+
+    const filter: Record<string, unknown> = {};
+
+    const status =
+      typeof scopedReq.query.status ===
+      "string"
+        ? scopedReq.query.status
+        : "";
+
+    if (
+      status &&
+      ORDER_STATUSES.includes(
+        status as OrderStatus,
+      )
+    ) {
+      filter.status = status;
+    }
+
+    const customerId =
+      typeof scopedReq.query.customerId ===
+      "string"
+        ? scopedReq.query.customerId
+        : "";
+
+    if (
+      customerId &&
+      validId(customerId)
+    ) {
+      filter.customerId =
+        new Types.ObjectId(customerId);
+    }
+
+    const establishmentId =
+      typeof scopedReq.query
+        .establishmentId === "string"
+        ? scopedReq.query.establishmentId
+        : "";
+
+    if (
+      establishmentId &&
+      validId(establishmentId)
+    ) {
+      filter.establishmentId =
+        new Types.ObjectId(
+          establishmentId,
+        );
+    }
+
+    const search =
+      typeof scopedReq.query.search === "string"
+        ? scopedReq.query.search.trim()
+        : "";
+
+    const areaSearch =
+      typeof scopedReq.query.area === "string"
+        ? scopedReq.query.area.trim()
+        : "";
+
+    const fromDate =
+      typeof scopedReq.query.fromDate === "string"
+        ? scopedReq.query.fromDate.trim()
+        : "";
+
+    const toDate =
+      typeof scopedReq.query.toDate === "string"
+        ? scopedReq.query.toDate.trim()
+        : "";
+
+    const advancedConditions: Record<string, unknown>[] = [];
+
+    if (search) {
+      const searchRegex = new RegExp(
+        escapeRegex(search),
+        "i",
+      );
+
+      const [matchingCaptains, matchingEstablishments] =
+        await Promise.all([
+          UserModel.find({
+            role: "captain",
+            $or: [
+              { fullName: searchRegex },
+              { phone: searchRegex },
+            ],
+          })
+            .select("_id")
+            .lean(),
+
+          EstablishmentModel.find({
+            $or: [
+              { name: searchRegex },
+              { phone: searchRegex },
+            ],
+          })
+            .select("_id")
+            .lean(),
+        ]);
+
+      advancedConditions.push({
+        $or: [
+          { orderNumber: searchRegex },
+
+          {
+            captainId: {
+              $in: matchingCaptains.map(
+                (item) => item._id,
+              ),
+            },
+          },
+
+          {
+            establishmentId: {
+              $in: matchingEstablishments.map(
+                (item) => item._id,
+              ),
+            },
+          },
+        ],
+      });
+    }
+
+    if (areaSearch) {
+      const areaRegex = new RegExp(
+        escapeRegex(areaSearch),
+        "i",
+      );
+
+      const matchingLocations =
+        await LocationModel.find({
+          "areas.name": areaRegex,
+        })
+          .select("areas")
+          .lean();
+
+      const areaIds =
+        matchingLocations.flatMap(
+          (location) =>
+            location.areas
+              .filter((area) =>
+                areaRegex.test(area.name),
+              )
+              .map((area) => area._id),
+        );
+
+      const establishmentsInAreas =
+        areaIds.length
+          ? await EstablishmentModel.find({
+              areaId: {
+                $in: areaIds,
+              },
+            })
+              .select("_id")
+              .lean()
+          : [];
+
+      advancedConditions.push({
+        $or: [
+          {
+            deliveryAreaId: {
+              $in: areaIds,
+            },
+          },
+
+          {
+            establishmentId: {
+              $in:
+                establishmentsInAreas.map(
+                  (item) => item._id,
+                ),
+            },
+          },
+        ],
+      });
+    }
+
+    const from =
+      parseDateStart(fromDate);
+
+    const to =
+      parseDateEnd(toDate);
+
+    if (from || to) {
+      const createdAt: Record<string, Date> = {};
+
+      if (from) {
+        createdAt.$gte = from;
+      }
+
+      if (to) {
+        createdAt.$lte = to;
+      }
+
+      filter.createdAt = createdAt;
+    }
+
+    const scope =
+      scopedReq.scopedUser;
+
+    if (
+      scope?.role ===
+        "governorate_leader" &&
+      scope.governorateId
+    ) {
+      const establishments =
+        await EstablishmentModel.find({
+          governorateId:
+            new Types.ObjectId(
+              scope.governorateId,
+            ),
+        })
+          .select("_id")
+          .lean();
+
+      filter.establishmentId = {
+        $in: establishments.map(
+          (item) => item._id,
+        ),
+      };
+    }
+
+    if (
+      scope?.role === "area_leader" &&
+      scope.governorateId &&
+      scope.areaId
+    ) {
+      const establishments =
+        await EstablishmentModel.find({
+          governorateId:
+            new Types.ObjectId(
+              scope.governorateId,
+            ),
+          areaId:
+            new Types.ObjectId(
+              scope.areaId,
+            ),
+        })
+          .select("_id")
+          .lean();
+
+      filter.establishmentId = {
+        $in: establishments.map(
+          (item) => item._id,
+        ),
+      };
+    }
+
+    if (
+      scope?.role === "customer"
+    ) {
+      filter.customerId =
+        new Types.ObjectId(scope.id);
+    }
+
+    if (
+      scope?.role === "captain"
+    ) {
+      filter.captainId =
+        new Types.ObjectId(scope.id);
+    }
+
+    if (
+      scope?.role === "shop"
+    ) {
+      const establishment =
+        await EstablishmentModel.findOne({
+          ownerUserId:
+            new Types.ObjectId(scope.id),
+        })
+          .select("_id")
+          .lean();
+
+      if (!establishment) {
+        
+    res.status(200).json({
+          success: true,
+          orders: [],
+          total: 0,
+        });
+        return;
+      }
+
+      filter.establishmentId =
+        establishment._id;
+    }
+
+    if (advancedConditions.length) {
+      const existingAnd =
+        Array.isArray(
+          (filter as any).$and,
+        )
+          ? (filter as any).$and
+          : [];
+
+      (filter as any).$and = [
+        ...existingAnd,
+        ...advancedConditions,
+      ];
+    }
+
+    const orders =
+      await OrderModel.find(filter)
+        .populate(
+          "customerId",
+          "_id fullName phone email",
+        )
+        .populate(
+          "establishmentId",
+          "_id name type status phone email address latitude longitude governorateId areaId",
+        )
+        .populate(
+          "addressId",
+          "_id label address notes governorateId areaId",
+        )
+        .populate(
+          "captainId",
+          "_id fullName phone status isOnline",
+        )
+        .sort({
+          createdAt: -1,
+        })
+        .lean();
+
+
+        const cancellationRecords =
+          await CancellationRecordModel.find({
+            orderId: {
+              $in: orders.map((order) => order._id),
+            },
+          })
+            .populate(
+              "cancelledBy",
+              "_id fullName phone email",
+            )
+            .sort({
+              createdAt: -1,
+            })
+            .lean();
+
+        const cancellationByOrder =
+          new Map<string, any>();
+
+        for (const record of cancellationRecords) {
+          const key = String(record.orderId);
+
+          if (!cancellationByOrder.has(key)) {
+            cancellationByOrder.set(
+              key,
+              record,
+            );
+          }
+        }
+
+        const ordersWithCancellation =
+          orders.map((order) => ({
+            ...order,
+            cancellationRecord:
+              cancellationByOrder.get(
+                String(order._id),
+              ) || null,
+          }));
+
+        await attachCustomerSnapshots(orders);
+
+    res.status(200).json({
+      success: true,
+      orders: ordersWithCancellation,
+      total: ordersWithCancellation.length,
+    });
+  } catch (error) {
+    console.error(
+      "List orders error:",
+      error,
+    );
+
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ أثناء تحميل الطلبات.",
+    });
+  }
+}
+
+export async function getOrder(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const scopedReq =
+      req as ScopedRequest;
+
+    const order =
+      await OrderModel.findById(
+        String(scopedReq.params.id),
+      )
+        .populate(
+          "customerId",
+          "_id fullName phone email",
+        )
+        .populate(
+          "establishmentId",
+          "_id name type status governorateId areaId",
+        )
+        .populate(
+          "addressId",
+          "_id label address notes governorateId areaId",
+        )
+        .populate(
+          "captainId",
+          "_id fullName phone status isOnline",
+        )
+        .lean();
+
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: "الطلب غير موجود.",
+      });
+      return;
+    }
+
+    const establishment =
+      await EstablishmentModel.findById(
+        order.establishmentId,
+      )
+        .select(
+          "governorateId areaId",
+        )
+        .lean();
+
+    if (!establishment) {
+      res.status(404).json({
+        success: false,
+        message:
+          "المنشأة المرتبطة بالطلب غير موجودة.",
+      });
+      return;
+    }
+
+    const establishmentAllowed =
+      canAccessOrder(
+        scopedReq,
+        establishment.governorateId.toString(),
+        establishment.areaId.toString(),
+      );
+
+    const orderCustomerId =
+      typeof order.customerId === "object" &&
+      order.customerId !== null &&
+      "_id" in order.customerId
+        ? String(
+            (order.customerId as { _id: unknown })._id,
+          )
+        : String(order.customerId);
+
+    const customerAllowed =
+      canCustomerAccess(
+        scopedReq,
+        orderCustomerId,
+      );
+
+    if (
+      !establishmentAllowed &&
+      !customerAllowed &&
+      !(
+        scopedReq.scopedUser?.role ===
+          "captain" &&
+        (
+          (
+            typeof order.captainId === "object" &&
+            order.captainId !== null &&
+            "_id" in order.captainId &&
+            String(
+              (order.captainId as { _id: unknown })._id,
+            ) === scopedReq.scopedUser.id
+          ) ||
+          (
+            !order.captainId ||
+            typeof order.captainId !== "object"
+          ) &&
+          String(order.captainId ?? "") ===
+            scopedReq.scopedUser.id
+        )
+      ) &&
+      !(
+        scopedReq.scopedUser?.role ===
+          "shop" &&
+        (
+          await EstablishmentModel.exists({
+            _id: order.establishmentId,
+            ownerUserId:
+              new Types.ObjectId(
+                scopedReq.scopedUser.id,
+              ),
+          })
+        )
+      )
+    ) {
+      res.status(403).json({
+        success: false,
+        message:
+          "لا يمكنك الوصول إلى هذا الطلب.",
+      });
+      return;
+    }
+
+    await attachCustomerSnapshot(order);
+    res.status(200).json({
+      success: true,
+      order,
+    });
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(
+        "Get order error:",
+        error,
+      );
+    }
+
+    const errorObject =
+      error as {
+        name?: unknown;
+      };
+
+    if (
+      errorObject.name === "CastError"
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "المعرف المرسل غير صحيح.",
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      message:
+        "تعذر تحميل بيانات الطلب حاليًا.",
+    });
+  }
+}
+
+export async function createOrder(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const maintenance =
+      await MaintenanceSettingsModel.findOne().lean();
+
+    if (maintenance?.enabled) {
+      const now = new Date();
+
+      const startsAt = maintenance.startsAt
+        ? new Date(maintenance.startsAt)
+        : null;
+
+      const endsAt = maintenance.endsAt
+        ? new Date(maintenance.endsAt)
+        : null;
+
+      const maintenanceActive =
+        (!startsAt || now >= startsAt) &&
+        (!endsAt || now <= endsAt);
+
+      if (maintenanceActive) {
+        res.status(503).json({
+          success: false,
+          maintenance: true,
+          message:
+            maintenance.message ||
+            "النظام في وضع الصيانة حاليًا.",
+          title:
+            maintenance.title ||
+            "الصيانة",
+        });
+        return;
+      }
+    }
+
+    const scopedReq = req as ScopedRequest;
+
+    const data = createOrderSchema.parse(
+      scopedReq.body,
+    );
+
+    // Only the restaurant/shop creates the order.
+    if (scopedReq.scopedUser?.role !== "shop") {
+      res.status(403).json({
+        success: false,
+        message:
+          "إنشاء الطلب متاح للمطعم أو المحل فقط.",
+      });
+      return;
+    }
+
+    // Resolve the establishment from the logged-in shop.
+    const establishment =
+      await EstablishmentModel.findOne({
+        ownerUserId:
+          new Types.ObjectId(
+            scopedReq.scopedUser.id,
+          ),
+        status: "active",
+      })
+        .select(
+          "name type status phone address governorateId areaId latitude longitude ownerUserId",
+        )
+        .lean();
+
+    if (!establishment) {
+      res.status(404).json({
+        success: false,
+        message:
+          "المنشأة المرتبطة بهذا الحساب غير موجودة أو غير مفعلة.",
+      });
+      return;
+    }
+
+    if (
+      !Types.ObjectId.isValid(data.deliveryGovernorateId) ||
+      !Types.ObjectId.isValid(data.deliveryAreaId)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "المحافظة أو المنطقة غير صحيحة.",
+      });
+      return;
+    }
+
+    const destinationGovernorate =
+      await LocationModel.findById(
+        data.deliveryGovernorateId,
+      ).lean();
+
+    if (!destinationGovernorate) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    if (
+      destinationGovernorate.isActive !== true ||
+      destinationGovernorate.captainsEnabled === false
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "متأسف، المحافظة غير متاحة في الوقت الحالي.",
+      });
+      return;
+    }
+
+    const destinationArea =
+      destinationGovernorate.areas.find(
+        (area: any) =>
+          String(area._id) ===
+          data.deliveryAreaId,
+      );
+
+    if (!destinationArea) {
+      res.status(404).json({
+        success: false,
+        message: "المنطقة غير موجودة داخل المحافظة المختارة.",
+      });
+      return;
+    }
+
+    if (
+      destinationArea.isActive !== true ||
+      destinationArea.captainsEnabled === false
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "متأسف، المنطقة غير متاحة في الوقت الحالي.",
+      });
+      return;
+    }
+
+    const sourceGovernorate =
+      await LocationModel.findById(
+        establishment.governorateId,
+      ).lean();
+
+    const sourceArea =
+      sourceGovernorate?.areas?.find(
+        (area: any) =>
+          String(area._id) ===
+          String(establishment.areaId),
+      );
+
+    // Customer data already supported by the project.
+    const customerSnapshot =
+      buildOrderCustomerSnapshot(data);
+
+    const productIds =
+      data.items.map(
+        (item) => item.productId,
+      );
+
+    if (
+      productIds.some(
+        (id) => !validId(id),
+      )
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "معرف أحد المنتجات غير صحيح.",
+      });
+      return;
+    }
+
+    let items: any[] = [];
+
+    if (productIds.length > 0) {
+      const uniqueProductIds = [
+        ...new Set(productIds),
+      ];
+
+      const products =
+        await ProductModel.find({
+          _id: {
+            $in: uniqueProductIds.map(
+              (id) =>
+                new Types.ObjectId(id),
+            ),
+          },
+          establishmentId:
+            establishment._id,
+          status: "active",
+        }).lean();
+
+      if (
+        products.length !==
+        uniqueProductIds.length
+      ) {
+        res.status(400).json({
+          success: false,
+          message:
+            "يوجد منتج غير موجود أو غير متاح أو تابع لمنشأة أخرى.",
+        });
+        return;
+      }
+
+      const productMap =
+        new Map(
+          products.map(
+            (product) => [
+              product._id.toString(),
+              product,
+            ],
+          ),
+        );
+
+      items = data.items.map(
+        (item) => {
+          const product =
+            productMap.get(
+              item.productId,
+            )!;
+
+          const totalPrice =
+            Number(
+              (
+                product.price *
+                item.quantity
+              ).toFixed(2),
+            );
+
+          return {
+            productId:
+              product._id,
+            name:
+              product.name,
+            quantity:
+              item.quantity,
+            unitPrice:
+              product.price,
+            totalPrice,
+          };
+        },
+      );
+    }
+
+    // The shop enters the order value directly.
+    const subtotal =
+      Number(
+        data.subtotal.toFixed(2),
+      );
+
+    const pricing =
+      await resolveDeliveryFee({
+        establishmentId:
+          establishment._id,
+        establishmentType:
+          establishment.type,
+
+        fromGovernorateId:
+          establishment.governorateId,
+        fromAreaId:
+          establishment.areaId,
+
+        toGovernorateId:
+          new Types.ObjectId(
+            data.deliveryGovernorateId,
+          ),
+        toAreaId:
+          new Types.ObjectId(
+            data.deliveryAreaId,
+          ),
+
+        fromLatitude:
+          establishment.latitude,
+        fromLongitude:
+          establishment.longitude,
+
+        toLatitude:
+          customerSnapshot.latitude,
+        toLongitude:
+          customerSnapshot.longitude,
+      });
+
+    const deliveryFee =
+      Number(
+        pricing.fee.toFixed(2),
+      );
+
+    const total =
+      Number(
+        (
+          subtotal +
+          deliveryFee
+        ).toFixed(2),
+      );
+
+    const order =
+      await OrderModel.create({
+        orderNumber:
+          await makeOrderNumber(),
+
+        customerId: null,
+
+        customerName:
+          customerSnapshot.name,
+
+        customerPhone:
+          customerSnapshot.phone,
+
+        deliveryAddress:
+          customerSnapshot.addressText,
+
+        establishmentId:
+          establishment._id,
+
+        pickupEstablishmentName:
+          establishment.name,
+
+        pickupEstablishmentType:
+          establishment.type,
+
+        pickupEstablishmentPhone:
+          establishment.phone || "",
+
+        pickupAddress:
+          establishment.address || "",
+
+        pickupGovernorateId:
+          establishment.governorateId,
+
+        pickupAreaId:
+          establishment.areaId,
+
+        pickupGovernorateName:
+          sourceGovernorate?.name || "",
+
+        pickupAreaName:
+          sourceArea?.name || "",
+
+        pickupLatitude:
+          establishment.latitude ?? null,
+
+        pickupLongitude:
+          establishment.longitude ?? null,
+
+        deliveryGovernorateId:
+          new Types.ObjectId(
+            data.deliveryGovernorateId,
+          ),
+
+        deliveryAreaId:
+          new Types.ObjectId(
+            data.deliveryAreaId,
+          ),
+
+        deliveryGovernorateName:
+          destinationGovernorate.name || "",
+
+        deliveryAreaName:
+          destinationArea.name || "",
+
+        addressId: null,
+
+        captainId: null,
+
+        items,
+
+        subtotal,
+
+        deliveryFee,
+
+        total,
+
+        status: "pending",
+
+        customerNote:
+          customerSnapshot.note ??
+          data.customerNote ??
+          null,
+      });
+
+    // إرسال الطلب فورًا إلى نظام التوزيع.
+    try {
+      const dispatchResult = await dispatchOrder(order._id);
+
+      console.log(
+        "ORDER DISPATCH RESULT:",
+        order.orderNumber,
+        dispatchResult,
+      );
+    } catch (dispatchError) {
+      console.error(
+        "ORDER DISPATCH ERROR:",
+        order.orderNumber,
+        dispatchError,
+      );
+    }
+
+    // Store the existing customer snapshot system.
+    await Core11OrderStateModel.findOneAndUpdate(
+      { orderId: order._id },
+      {
+        $set: {
+          flowStatus: "pending",
+          customerSnapshot,
+        },
+        $push: {
+          timeline: {
+            status: "pending",
+            at: new Date(),
+            actorId:
+              req.user?.sub &&
+              Types.ObjectId.isValid(
+                req.user.sub,
+              )
+                ? new Types.ObjectId(
+                    req.user.sub,
+                  )
+                : null,
+            note:
+              "تم إنشاء الطلب من المطعم أو المحل.",
+          },
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      },
+    );
+
+    await saveOrderEvent(
+      String(order._id),
+      "order_created",
+      {
+        status:
+          order.status,
+        actorId:
+          req.user?.sub || null,
+      },
+    );
+
+    await Promise.all([
+      startStageTimer({
+        orderId: order._id,
+        stage: "total",
+      }),
+      startStageTimer({
+        orderId: order._id,
+        stage: "captain_wait",
+      }),
+    ]);
+
+    res.status(201).json({
+      success: true,
+      message:
+        "تم إنشاء الطلب بنجاح.",
+      order,
+      establishment: {
+        id:
+          establishment._id,
+        name:
+          establishment.name,
+        type:
+          establishment.type,
+        phone:
+          establishment.phone || "",
+        address:
+          establishment.address || "",
+        governorateId:
+          establishment.governorateId,
+        areaId:
+          establishment.areaId,
+        governorateName:
+          sourceGovernorate?.name || "",
+        areaName:
+          sourceArea?.name || "",
+        latitude:
+          establishment.latitude,
+        longitude:
+          establishment.longitude,
+      },
+      customer:
+        customerSnapshot,
+      pricing,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message:
+          "بيانات الطلب غير صحيحة.",
+        errors:
+          error.issues,
+      });
+      return;
+    }
+
+    if (
+      error instanceof Error &&
+      [
+        "CUSTOMER_NAME_REQUIRED",
+        "CUSTOMER_PHONE_REQUIRED",
+        "DELIVERY_ADDRESS_REQUIRED",
+        "CUSTOMER_ADDRESS_OR_LOCATION_REQUIRED",
+        "CUSTOMER_LOCATION_COORDINATES_REQUIRED",
+      ].includes(
+        error.message,
+      )
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "بيانات الزبون وعنوان التوصيل مطلوبة.",
+      });
+      return;
+    }
+
+    console.error(
+      "Create order error:",
+      error,
+    );
+
+    const errorObject =
+      error as {
+        name?: unknown;
+      };
+
+    if (
+      errorObject.name ===
+      "CastError"
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "المعرف المرسل غير صحيح.",
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      message:
+        "حدث خطأ أثناء إنشاء الطلب.",
+    });
+  }
+}
+
+export async function updateOrderStatus(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const scopedReq =
+      req as ScopedRequest;
+
+    const data =
+      updateStatusSchema.parse(
+        scopedReq.body,
+      );
+
+    const order =
+      await OrderModel.findById(
+        String(scopedReq.params.id),
+      );
+
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: "الطلب غير موجود.",
+      });
+      return;
+    }
+
+    const scope =
+      await getOrderScope(
+        order.establishmentId,
+      );
+
+    if (!scope) {
+      res.status(404).json({
+        success: false,
+        message:
+          "المنشأة المرتبطة بالطلب غير موجودة.",
+      });
+      return;
+    }
+
+    const activeOrderLocation =
+      await validateActiveLocation(
+        scope.governorateId,
+        scope.areaId,
+      );
+
+    if (!activeOrderLocation.ok) {
+      res.status(400).json({
+        success: false,
+        message:
+          activeOrderLocation.message ||
+          "المحافظة أو المنطقة متوقفة حاليًا.",
+      });
+      return;
+    }
+
+    const scopedUser =
+      scopedReq.scopedUser;
+
+    if (!scopedUser) {
+      res.status(401).json({
+        success: false,
+        message: "Authentication required.",
+      });
+      return;
+    }
+
+    const role = scopedUser.role;
+
+    const isCustomer =
+      role === "customer" &&
+      !!order.customerId &&
+      scopedUser.id ===
+        order.customerId.toString();
+
+    const isCaptain =
+      role === "captain" &&
+      scopedUser.id ===
+        order.captainId?.toString();
+
+    const isShop =
+      role === "shop" &&
+      !!(
+        await EstablishmentModel.exists({
+          _id: order.establishmentId,
+          ownerUserId:
+            new Types.ObjectId(
+              scopedUser.id,
+            ),
+        })
+      );
+
+    const isManager =
+      canAccessOrder(
+        scopedReq,
+        scope.governorateId,
+        scope.areaId,
+      );
+
+    console.log("===== STATUS DEBUG 1 =====");
+    console.log({
+      orderId: String(order._id),
+      orderStatus: order.status,
+      orderCaptainId: order.captainId
+        ? String(order.captainId)
+        : null,
+      scopedUserId: scopedUser.id,
+      scopedUserRole: scopedUser.role,
+      requestedStatus: data.status,
+      isCaptain,
+      isCustomer,
+      isShop,
+      isManager,
+    });
+
+    if (
+      !isCustomer &&
+      !isCaptain &&
+      !isShop &&
+      !isManager
+    ) {
+      console.log("===== STATUS DEBUG 403 =====");
+      console.log("REASON: user is not allowed to access this order");
+      res.status(403).json({
+        success: false,
+        message:
+          "لا يمكنك تغيير حالة هذا الطلب.",
+      });
+      return;
+    }
+
+    const requestedStatus = data.status;
+
+    const shopStatuses = [
+      "confirmed",
+      "preparing",
+      "ready_for_pickup",
+      "cancelled",
+      "rejected",
+    ];
+
+    const captainStatuses = [
+      "heading_to_shop",
+      "arrived_at_shop",
+      "picked_up",
+      "on_the_way",
+      "delivered",
+    ];
+
+    const customerStatuses = [
+      "cancelled",
+    ];
+
+    const managerStatuses = [
+      "confirmed",
+      "preparing",
+      "ready_for_pickup",
+      "assigned",
+      "cancelled",
+      "rejected",
+    ];
+
+    const captainAllowed =
+      isCaptain &&
+      captainStatuses.includes(
+        requestedStatus,
+      );
+
+    const shopAllowed =
+      isShop &&
+      shopStatuses.includes(
+        requestedStatus,
+      );
+
+    const customerAllowedForStatus =
+      isCustomer &&
+      customerStatuses.includes(
+        requestedStatus,
+      );
+
+    const managerAllowed =
+      isManager &&
+      managerStatuses.includes(
+        requestedStatus,
+      );
+
+    console.log("===== STATUS DEBUG 2 =====");
+    console.log({
+      captainAllowed,
+      shopAllowed,
+      customerAllowedForStatus,
+      managerAllowed,
+      requestedStatus,
+      orderStatus: order.status,
+    });
+
+    if (
+      !captainAllowed &&
+      !shopAllowed &&
+      !customerAllowedForStatus &&
+      !managerAllowed
+    ) {
+      console.log("===== STATUS DEBUG 403 =====");
+      console.log("REASON: requested status is not allowed");
+      res.status(403).json({
+        success: false,
+        message:
+          "حسابك لا يملك صلاحية تغيير الطلب إلى هذه الحالة.",
+      });
+      return;
+    }
+
+    if (
+      !isAllowedTransition(
+        order.status,
+        data.status,
+      )
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          `لا يمكن تغيير حالة الطلب من ${order.status} إلى ${data.status}.`,
+      });
+      return;
+    }
+
+    if (
+      data.status === "assigned" ||
+      data.status === "picked_up" ||
+      data.status === "on_the_way" ||
+      data.status === "delivered"
+    ) {
+      if (!order.captainId) {
+        res.status(400).json({
+          success: false,
+          message:
+            "لا يمكن الانتقال لهذه الحالة بدون كابتن معين.",
+        });
+        return;
+      }
+    }
+
+    if (data.status === "delivered") {
+      try {
+        await assertDeliveryProof(
+          order._id,
+          order.captainId!,
+        );
+      } catch (error: any) {
+        const code = String(error?.message || "");
+
+        const messages: Record<string, string> = {
+          DELIVERY_PROOF_NOT_FOUND:
+            "لا يمكن إتمام التسليم قبل إنشاء إثبات التسليم.",
+          DELIVERY_OTP_REQUIRED:
+            "لا يمكن إتمام التسليم قبل التحقق من رمز التسليم.",
+          DELIVERY_OTP_EXPIRED:
+            "انتهت صلاحية رمز التسليم.",
+          DELIVERY_OTP_MAX_ATTEMPTS:
+            "تم تجاوز الحد الأقصى لمحاولات رمز التسليم.",
+          DELIVERY_OTP_INVALID:
+            "رمز التسليم غير صحيح.",
+          DELIVERY_CAPTAIN_MISMATCH:
+            "إثبات التسليم مرتبط بكابتن آخر.",
+        };
+
+        res.status(403).json({
+          success: false,
+          message:
+            messages[code] ||
+            "لا يمكن إتمام التسليم قبل استكمال إثبات التسليم.",
+          code,
+        });
+        return;
+      }
+    }
+
+    if (
+      (data.status === "cancelled" ||
+        data.status === "rejected") &&
+      !data.reason?.trim()
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "سبب الإلغاء أو الرفض إجباري.",
+      });
+      return;
+    }
+
+    const now = new Date();
+    const previousStatus = order.status;
+
+    order.status =
+      data.status;
+
+    if (
+      data.status === "confirmed"
+    ) {
+      order.confirmedAt = now;
+    }
+
+    if (
+      data.status === "assigned"
+    ) {
+      order.assignedAt = now;
+    }
+
+    if (
+      data.status === "picked_up"
+    ) {
+      order.pickedUpAt = now;
+    }
+
+    if (
+      data.status === "delivered"
+    ) {
+      order.deliveredAt = now;
+    }
+
+    if (
+      data.status === "cancelled"
+    ) {
+      order.cancelledAt = now;
+      order.cancellationReason =
+        data.reason ?? null;
+    }
+
+    if (
+      data.status === "rejected"
+    ) {
+      order.cancellationReason =
+        data.reason ?? null;
+    }
+
+    await order.save();
+
+    if (
+      data.status === "cancelled" ||
+      data.status === "rejected"
+    ) {
+      await saveCancellation({
+        orderId: order._id,
+        cancelledBy: new Types.ObjectId(
+          scopedUser.id,
+        ),
+        cancelledByRole: scopedUser.role,
+        reason:
+          data.reason?.trim() ||
+          "تم إلغاء الطلب.",
+      });
+    }
+
+    // بعد التحقق من التسليم، يغلق النظام الطلب تلقائيًا.
+    if (data.status === "delivered") {
+      const completedAt = new Date();
+
+      order.status = "completed";
+      await order.save();
+
+      await saveOrderEvent(
+        String(order._id),
+        "status_completed",
+        {
+          status: "completed",
+          actorId: scopedUser.id,
+          captainId:
+            order.captainId?.toString() || null,
+          note: "تم إغلاق الطلب تلقائيًا بعد إتمام التسليم.",
+          metadata: {
+            previousStatus: "delivered",
+            completedAt,
+          },
+        },
+      );
+    }
+
+    await saveOrderEvent(
+      String(order._id),
+      `status_${data.status}`,
+      {
+        status: data.status,
+        actorId: scopedUser.id,
+        captainId: order.captainId?.toString() || null,
+        note:
+          data.status === "cancelled"
+            ? data.reason ?? "تم إلغاء الطلب."
+            : data.status === "rejected"
+              ? data.reason ?? "تم رفض الطلب."
+              : null,
+        metadata: {
+          previousStatus,
+          reason: data.reason ?? null,
+        },
+      },
+    );
+
+    if (data.status === "heading_to_shop") {
+      await closeStageTimer(order._id, "captain_wait");
+      await startStageTimer({
+        orderId: order._id,
+        stage: "captain_to_shop",
+      });
+    }
+
+    if (data.status === "arrived_at_shop") {
+      await closeStageTimer(order._id, "captain_to_shop");
+      await startStageTimer({
+        orderId: order._id,
+        stage: "shop_wait",
+      });
+    }
+
+    if (data.status === "picked_up") {
+      await closeStageTimer(order._id, "shop_wait");
+      await startStageTimer({
+        orderId: order._id,
+        stage: "delivery",
+      });
+    }
+
+    if (data.status === "delivered") {
+      await closeStageTimer(order._id, "delivery");
+      await closeStageTimer(order._id, "total");
+    }
+
+    if (data.status === "cancelled" || data.status === "rejected") {
+      await Promise.all([
+        closeStageTimer(order._id, "captain_wait"),
+        closeStageTimer(order._id, "captain_to_shop"),
+        closeStageTimer(order._id, "shop_wait"),
+        closeStageTimer(order._id, "delivery"),
+        closeStageTimer(order._id, "total"),
+      ]);
+    }
+
+    if (data.status === "picked_up" && order.captainId) {
+      try {
+        await recordOrderCashToEstablishment(
+          order._id,
+          order.captainId,
+        );
+      } catch (error) {
+        console.error(
+          "Cash to establishment recording error:",
+          error,
+        );
+      }
+    }
+
+    if (data.status === "delivered" && order.captainId) {
+      try {
+        await recordOrderCashCollectedFromCustomer(
+          order._id,
+          order.captainId,
+        );
+      } catch (error) {
+        console.error(
+          "Cash from customer recording error:",
+          error,
+        );
+      }
+    }
+
+    if (data.status === "delivered") {
+      try {
+        await evaluateRewardsForDeliveredOrder(
+          order._id,
+        );
+      } catch (error) {
+        console.error(
+          "Reward evaluation error:",
+          error,
+        );
+      }
+    }
+
+    if (order.customerId) {
+      await createNotification({
+        userId: order.customerId,
+        type: "order",
+        title: "تحديث الطلب",
+        message: `تم تحديث حالة الطلب ${order.orderNumber} إلى ${data.status}.`,
+        orderId: order._id,
+        establishmentId: order.establishmentId,
+      });
+    }
+
+    if (order.captainId) {
+      await createNotification({
+        userId: order.captainId,
+        type: "order",
+        title: "تحديث طلب",
+        message: `تم تحديث حالة الطلب ${order.orderNumber}.`,
+        orderId: order._id,
+        establishmentId: order.establishmentId,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message:
+        "تم تحديث حالة الطلب بنجاح.",
+      order,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message:
+          "حالة الطلب غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    console.error(
+      "Update order status error:",
+      error,
+    );
+
+    res.status(500).json({
+      success: false,
+      message:
+        "حدث خطأ أثناء تحديث حالة الطلب.",
+    });
+  }
+}
+
+export async function assignCaptain(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const scopedReq =
+      req as ScopedRequest;
+
+    const data =
+      assignCaptainSchema.parse(
+        scopedReq.body,
+      );
+
+    if (
+      !validId(data.captainId)
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "معرف الكابتن غير صحيح.",
+      });
+      return;
+    }
+
+    const order =
+      await OrderModel.findById(
+        String(scopedReq.params.id),
+      );
+
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: "الطلب غير موجود.",
+      });
+      return;
+    }
+
+    const scope =
+      await getOrderScope(
+        order.establishmentId,
+      );
+
+    if (!scope) {
+      res.status(404).json({
+        success: false,
+        message:
+          "المنشأة المرتبطة بالطلب غير موجودة.",
+      });
+      return;
+    }
+
+    const scopeManagerAccess =
+      canAccessOrder(
+        scopedReq,
+        scope.governorateId,
+        scope.areaId,
+      );
+
+    const shopAccess =
+      scopedReq.scopedUser?.role === "shop" &&
+      !!(
+        await EstablishmentModel.exists({
+          _id: order.establishmentId,
+          ownerUserId:
+            new Types.ObjectId(
+              scopedReq.scopedUser.id,
+            ),
+        })
+      );
+
+    if (!scopeManagerAccess && !shopAccess) {
+      res.status(403).json({
+        success: false,
+        message:
+          "لا يمكنك إسناد طلب خارج نطاقك.",
+      });
+      return;
+    }
+
+    if (
+      ![
+        "pending",
+        "confirmed",
+        "preparing",
+        "ready_for_pickup",
+      ].includes(order.status)
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "لا يمكن إسناد كابتن بعد بدء تنفيذ التوصيل.",
+      });
+      return;
+    }
+
+    const captain =
+      await UserModel.findOne({
+        _id: data.captainId,
+        role: "captain",
+        status: "active",
+      })
+        .select(
+          "_id fullName phone status governorateId areaId",
+        )
+        .lean();
+
+    if (!captain) {
+      res.status(404).json({
+        success: false,
+        message:
+          "الكابتن غير موجود أو غير مفعل.",
+      });
+      return;
+    }
+
+    if (
+      captain.governorateId?.toString() !==
+      scope.governorateId
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "الكابتن لا يتبع محافظة المنشأة.",
+      });
+      return;
+    }
+
+    if (
+      captain.areaId?.toString() !==
+      scope.areaId
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "الكابتن لا يتبع منطقة المنشأة.",
+      });
+      return;
+    }
+
+    if (!captain.governorateId || !captain.areaId) {
+      res.status(400).json({
+        success: false,
+        message:
+          "بيانات موقع الكابتن غير مكتملة.",
+      });
+      return;
+    }
+
+    const activeCaptainLocation =
+      await validateActiveLocation(
+        captain.governorateId.toString(),
+        captain.areaId.toString(),
+      );
+
+    if (!activeCaptainLocation.ok) {
+      res.status(400).json({
+        success: false,
+        message:
+          activeCaptainLocation.message ||
+          "منطقة عمل الكابتن متوقفة حاليًا.",
+      });
+      return;
+    }
+
+    const previousStatus = order.status;
+
+    order.captainId =
+      captain._id;
+
+    if (
+      order.status ===
+      "ready_for_pickup"
+    ) {
+      order.status =
+        "assigned";
+      order.assignedAt =
+        new Date();
+    }
+
+    await order.save();
+
+    await saveOrderEvent(
+      String(order._id),
+      "captain_assigned",
+      {
+        status: order.status,
+        actorId: scopedReq.scopedUser?.id || null,
+        captainId: captain._id.toString(),
+        note: "تم إسناد الطلب إلى الكابتن.",
+        metadata: {
+          previousStatus,
+          captainId: captain._id.toString(),
+        },
+      },
+    );
+
+    await closeStageTimer(order._id, "captain_wait");
+
+    await startStageTimer({
+      orderId: order._id,
+      stage: "captain_to_shop",
+    });
+
+    res.status(200).json({
+      success: true,
+      message:
+        "تم إسناد الطلب للكابتن بنجاح.",
+      order,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message:
+          "بيانات إسناد الكابتن غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    console.error(
+      "Assign captain error:",
+      error,
+    );
+
+    res.status(500).json({
+      success: false,
+      message:
+        "حدث خطأ أثناء إسناد الكابتن.",
+    });
+  }
+}
+
+
+export async function reassignCaptain(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const scopedReq = req as ScopedRequest;
+
+    const data = assignCaptainSchema.parse(
+      scopedReq.body,
+    );
+
+    if (
+      !validId(data.captainId) ||
+      !validId(String(scopedReq.params.id))
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "معرف الطلب أو الكابتن غير صحيح.",
+      });
+      return;
+    }
+
+    const role = scopedReq.scopedUser?.role;
+
+    if (
+      role !== "admin" &&
+      role !== "super_admin"
+    ) {
+      res.status(403).json({
+        success: false,
+        message:
+          "إعادة تعيين الكابتن متاحة للإدارة فقط.",
+      });
+      return;
+    }
+
+    const order = await OrderModel.findById(
+      String(scopedReq.params.id),
+    );
+
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: "الطلب غير موجود.",
+      });
+      return;
+    }
+
+    const scope = await getOrderScope(
+      order.establishmentId,
+    );
+
+    if (!scope) {
+      res.status(404).json({
+        success: false,
+        message:
+          "المنشأة المرتبطة بالطلب غير موجودة.",
+      });
+      return;
+    }
+
+    const oldCaptainId = order.captainId
+      ? order.captainId.toString()
+      : null;
+
+    if (
+      oldCaptainId &&
+      oldCaptainId === data.captainId
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "الكابتن الجديد هو نفس الكابتن الحالي.",
+      });
+      return;
+    }
+
+    const captain =
+      await UserModel.findOne({
+        _id: data.captainId,
+        role: "captain",
+        status: "active",
+      })
+        .select(
+          "_id fullName phone status governorateId areaId",
+        )
+        .lean();
+
+    if (!captain) {
+      res.status(404).json({
+        success: false,
+        message:
+          "الكابتن الجديد غير موجود أو غير مفعل.",
+      });
+      return;
+    }
+
+    if (
+      !captain.governorateId ||
+      !captain.areaId
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "بيانات موقع الكابتن الجديد غير مكتملة.",
+      });
+      return;
+    }
+
+    if (
+      captain.governorateId.toString() !==
+      scope.governorateId
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "الكابتن الجديد لا يتبع محافظة المنشأة.",
+      });
+      return;
+    }
+
+    if (
+      captain.areaId.toString() !==
+      scope.areaId
+    ) {
+      res.status(400).json({
+        success: false,
+        message:
+          "الكابتن الجديد لا يتبع منطقة المنشأة.",
+      });
+      return;
+    }
+
+    const activeCaptainLocation =
+      await validateActiveLocation(
+        captain.governorateId.toString(),
+        captain.areaId.toString(),
+      );
+
+    if (!activeCaptainLocation.ok) {
+      res.status(400).json({
+        success: false,
+        message:
+          activeCaptainLocation.message ||
+          "منطقة عمل الكابتن الجديد متوقفة حاليًا.",
+      });
+      return;
+    }
+
+    const before = {
+      captainId: oldCaptainId,
+      status: order.status,
+      assignedAt: order.assignedAt ?? null,
+    };
+
+    order.captainId = captain._id;
+
+    if (!order.assignedAt) {
+      order.assignedAt = new Date();
+    }
+
+    await order.save();
+
+    // إشعار صاحب المطعم / المحل بتغيير الكابتن.
+    try {
+      const { EstablishmentModel } =
+        await import("../models/Establishment.js");
+
+      const { createNotification } =
+        await import("../services/notification.service.js");
+
+      const establishment =
+        await EstablishmentModel.findById(
+          order.establishmentId,
+        )
+          .select("_id name ownerUserId")
+          .lean();
+
+      if (establishment?.ownerUserId) {
+        await createNotification({
+          userId: establishment.ownerUserId,
+          type: "establishment",
+          title: "🔄 تم تغيير كابتن الطلب",
+          message:
+            `تمت إعادة تعيين الطلب ${order.orderNumber} إلى كابتن آخر من الإدارة.`,
+          orderId: order._id,
+          establishmentId: establishment._id,
+        });
+      }
+    } catch (notificationError) {
+      console.error(
+        "Shop reassignment notification error:",
+        notificationError,
+      );
+    }
+
+    await saveOrderEvent(
+      String(order._id),
+      "captain_reassigned",
+      {
+        status: order.status,
+        actorId:
+          scopedReq.scopedUser?.id || null,
+        captainId: captain._id.toString(),
+        note:
+          "تم سحب الطلب من الكابتن السابق وإعادة إسناده إلى كابتن آخر.",
+        metadata: {
+          previousCaptainId: oldCaptainId,
+          newCaptainId:
+            captain._id.toString(),
+          reason: "admin_reassignment",
+        },
+      },
+    );
+
+    await createAuditLog({
+      actorId: scopedReq.scopedUser?.id
+        ? new Types.ObjectId(
+            scopedReq.scopedUser.id,
+          )
+        : null,
+      actorRole: role,
+      action: "order.captain_reassigned",
+      entityType: "Order",
+      entityId: order._id,
+      before,
+      after: {
+        captainId:
+          captain._id.toString(),
+        status: order.status,
+        assignedAt: order.assignedAt ?? null,
+      },
+      ip: req.ip,
+      userAgent:
+        req.get("user-agent") ?? null,
+      description:
+        `تمت إعادة تعيين الطلب ${order.orderNumber ?? order._id.toString()} من الكابتن السابق إلى ${captain.fullName}.`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message:
+        "تمت إعادة تعيين الطلب إلى الكابتن الجديد بنجاح.",
+      order,
+      reassignment: {
+        previousCaptainId: oldCaptainId,
+        newCaptainId:
+          captain._id.toString(),
+        newCaptainName: captain.fullName,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message:
+          "بيانات إعادة تعيين الكابتن غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    console.error(
+      "Reassign captain error:",
+      error,
+    );
+
+    res.status(500).json({
+      success: false,
+      message:
+        "حدث خطأ أثناء إعادة تعيين الكابتن.",
+    });
+  }
+}
+
+
+export async function adminOrderDecision(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const orderId = String(req.params.id || "");
+    const decision = String((req.body as any)?.status || "");
+
+    if (!["rejected", "delivered"].includes(decision)) {
+      return res.status(400).json({
+        success: false,
+        message: "القرار يجب أن يكون rejected أو delivered.",
+      });
+    }
+
+    const order = await OrderModel.findById(orderId);
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        message: "الطلب غير موجود.",
+      });
+    }
+
+    if (order.status !== "pending") {
+      return res.status(400).json({
+        success: false,
+        message: "لا يمكن اتخاذ القرار إلا للطلب المعلق.",
+      });
+    }
+
+    const previousStatus = order.status;
+
+    order.status = decision as any;
+
+    if (decision === "rejected") {
+      order.captainId = null;
+    }
+
+    await order.save();
+
+    return res.status(200).json({
+      success: true,
+      message:
+        decision === "rejected"
+          ? "تم رفض الطلب."
+          : "تم تسجيل استلام الطلب.",
+      order,
+      previousStatus,
+    });
+  } catch (error) {
+    console.error("Admin order decision error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "حدث خطأ أثناء تحديث الطلب.",
+    });
+  }
+}

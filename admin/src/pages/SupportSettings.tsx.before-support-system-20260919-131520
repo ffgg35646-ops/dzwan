@@ -1,0 +1,544 @@
+import { useEffect, useState } from "react";
+import {
+  Globe2,
+  CheckCircle2,
+  Globe,
+  MessageCircle,
+  Phone,
+  Plus,
+  Save,
+  Send,
+  Settings2,
+  Trash2,
+} from "lucide-react";
+import { api } from "../lib/api";
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "12px 14px",
+  border: "1px solid #CBD5E1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#0F172A",
+  fontSize: 14,
+};
+
+function ArrayField({
+  title,
+  icon,
+  values,
+  onChange,
+  placeholder,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  values: string[];
+  onChange: (values: string[]) => void;
+  placeholder: string;
+}) {
+  function add() {
+    onChange([...values, ""]);
+  }
+
+  function update(index: number, value: string) {
+    const next = [...values];
+    next[index] = value;
+    onChange(next);
+  }
+
+  function remove(index: number) {
+    onChange(values.filter((_, i) => i !== index));
+  }
+
+  return (
+    <section
+      style={{
+        background: "#fff",
+        border: "1px solid #E2E8F0",
+        borderRadius: 18,
+        padding: 20,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 14,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
+          {icon}
+          <strong>{title}</strong>
+        </div>
+
+        <button
+          type="button"
+          onClick={add}
+          style={{
+            border: "1px solid #F5D08A",
+            background: "#FFF4E3",
+            color: "#E87516",
+            borderRadius: 10,
+            padding: "7px 10px",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          <Plus size={15} />
+          إضافة
+        </button>
+      </div>
+
+      {values.length === 0 ? (
+        <div style={{ color: "#94A3B8", fontSize: 12 }}>
+          لا توجد بيانات مضافة.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 9 }}>
+          {values.map((value, index) => (
+            <div key={index} style={{ display: "flex", gap: 8 }}>
+              <input
+                value={value}
+                placeholder={placeholder}
+                onChange={(e) => update(index, e.target.value)}
+                style={inputStyle}
+              />
+
+              <button
+                type="button"
+                onClick={() => remove(index)}
+                style={{
+                  width: 44,
+                  border: "1px solid #FECACA",
+                  background: "#FEF2F2",
+                  color: "#DC2626",
+                  borderRadius: 11,
+                  cursor: "pointer",
+                  display: "grid",
+                  placeItems: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function LinkField({
+  label,
+  value,
+  onChange,
+  icon,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  icon: React.ReactNode;
+  placeholder: string;
+}) {
+  return (
+    <div>
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          fontSize: 13,
+          fontWeight: 800,
+          marginBottom: 7,
+          color: "#334155",
+        }}
+      >
+        {icon}
+        {label}
+      </label>
+
+      <input
+        value={value || ""}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        style={inputStyle}
+      />
+    </div>
+  );
+}
+
+export default function SupportSettings() {
+  const [data, setData] = useState<any>({
+    phoneNumbers: [],
+    whatsapp: [],
+    telegram: [],
+    facebook: "",
+    instagram: "",
+    youtube: "",
+    tiktok: "",
+    message: "",
+    workingHours: "",
+    enabled: true,
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  async function load() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get("/support");
+      setData(
+        response.data?.data || {
+          phoneNumbers: [],
+          whatsapp: [],
+          telegram: [],
+          facebook: "",
+          instagram: "",
+          youtube: "",
+          tiktok: "",
+          message: "",
+          workingHours: "",
+          enabled: true,
+        }
+      );
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message || "تعذر تحميل بيانات الدعم"
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function save() {
+    try {
+      setSaving(true);
+      setMessage("");
+      setError("");
+
+      const response = await api.patch("/support", data);
+
+      if (response.data?.data) {
+        setData(response.data.data);
+      }
+
+      setMessage("تم حفظ بيانات الدعم والتواصل بنجاح");
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message || "تعذر حفظ بيانات الدعم"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div dir="rtl" style={{ padding: 28 }}>
+        <div
+          style={{
+            background: "#fff",
+            border: "1px solid #E2E8F0",
+            borderRadius: 18,
+            padding: 25,
+          }}
+        >
+          جاري تحميل بيانات الدعم...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div dir="rtl" style={{ padding: 28, maxWidth: 1250, margin: "0 auto" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 20,
+          flexWrap: "wrap",
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 7,
+              color: "#E87516",
+              fontSize: 12,
+              fontWeight: 800,
+            }}
+          >
+            <Settings2 size={16} />
+            SUPPORT CENTER
+          </div>
+
+          <h1 style={{ margin: "7px 0", fontSize: 28, color: "#0F172A" }}>
+            بيانات الدعم والتواصل
+          </h1>
+
+          <p style={{ margin: 0, color: "#64748B" }}>
+            إدارة جميع قنوات التواصل ورسالة الدعم وساعات العمل.
+          </p>
+        </div>
+
+        <button
+          onClick={() => void save()}
+          disabled={saving}
+          style={{
+            border: 0,
+            borderRadius: 12,
+            padding: "12px 20px",
+            background: saving ? "#94A3B8" : "#E87516",
+            color: "#fff",
+            fontWeight: 800,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            cursor: saving ? "not-allowed" : "pointer",
+          }}
+        >
+          <Save size={17} />
+          {saving ? "جاري الحفظ..." : "حفظ التغييرات"}
+        </button>
+      </div>
+
+      {(message || error) && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 15,
+            borderRadius: 14,
+            background: error ? "#FEF2F2" : "#ECFDF5",
+            border: `1px solid ${error ? "#FECACA" : "#A7F3D0"}`,
+            color: error ? "#B91C1C" : "#047857",
+          }}
+        >
+          {error || message}
+        </div>
+      )}
+
+      <section
+        style={{
+          background: data.enabled
+            ? "linear-gradient(135deg, #E87516, #C95F0C)"
+            : "#475569",
+          color: "#fff",
+          borderRadius: 20,
+          padding: 22,
+          marginBottom: 20,
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 20,
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
+          <div
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 13,
+              background: "rgba(255,255,255,.14)",
+              display: "grid",
+              placeItems: "center",
+            }}
+          >
+            <MessageCircle size={23} />
+          </div>
+
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 16 }}>
+              مركز الدعم
+            </div>
+            <div style={{ opacity: 0.82, fontSize: 12, marginTop: 4 }}>
+              {data.enabled ? "الدعم مفعل ويظهر للمستخدمين" : "الدعم متوقف حالياً"}
+            </div>
+          </div>
+        </div>
+
+        <label
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            cursor: "pointer",
+            fontWeight: 800,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={data.enabled ?? true}
+            onChange={(e) =>
+              setData({ ...data, enabled: e.target.checked })
+            }
+            style={{ width: 19, height: 19, accentColor: "#fff" }}
+          />
+          تفعيل الدعم
+        </label>
+      </section>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 18,
+        }}
+      >
+        <ArrayField
+          title="أرقام الهاتف"
+          icon={<Phone size={18} color="#E87516" />}
+          values={Array.isArray(data.phoneNumbers) ? data.phoneNumbers : []}
+          onChange={(values) => setData({ ...data, phoneNumbers: values })}
+          placeholder="رقم الهاتف"
+        />
+
+        <ArrayField
+          title="WhatsApp"
+          icon={<MessageCircle size={18} color="#F28C28" />}
+          values={Array.isArray(data.whatsapp) ? data.whatsapp : []}
+          onChange={(values) => setData({ ...data, whatsapp: values })}
+          placeholder="رقم أو رابط WhatsApp"
+        />
+
+        <ArrayField
+          title="Telegram"
+          icon={<Send size={18} color="#2563EB" />}
+          values={Array.isArray(data.telegram) ? data.telegram : []}
+          onChange={(values) => setData({ ...data, telegram: values })}
+          placeholder="حساب أو رابط Telegram"
+        />
+
+        <section
+          style={{
+            background: "#fff",
+            border: "1px solid #E2E8F0",
+            borderRadius: 18,
+            padding: 20,
+          }}
+        >
+          <div style={{ display: "grid", gap: 15 }}>
+            <LinkField
+              label="Facebook"
+              value={data.facebook}
+              onChange={(value) => setData({ ...data, facebook: value })}
+              icon={<Globe2 size={16} />}
+              placeholder="رابط الصفحة"
+            />
+
+            <LinkField
+              label="Instagram"
+              value={data.instagram}
+              onChange={(value) => setData({ ...data, instagram: value })}
+              icon={<Globe2 size={16} />}
+              placeholder="رابط الحساب"
+            />
+
+            <LinkField
+              label="YouTube"
+              value={data.youtube}
+              onChange={(value) => setData({ ...data, youtube: value })}
+              icon={<Globe2 size={16} />}
+              placeholder="رابط القناة"
+            />
+
+            <LinkField
+              label="TikTok"
+              value={data.tiktok}
+              onChange={(value) => setData({ ...data, tiktok: value })}
+              icon={<Globe size={16} />}
+              placeholder="رابط الحساب"
+            />
+          </div>
+        </section>
+
+        <section
+          style={{
+            background: "#fff",
+            border: "1px solid #E2E8F0",
+            borderRadius: 18,
+            padding: 20,
+          }}
+        >
+          <label style={{ display: "block", fontWeight: 800, fontSize: 13, marginBottom: 7 }}>
+            ساعات العمل
+          </label>
+
+          <input
+            value={data.workingHours || ""}
+            onChange={(e) =>
+              setData({ ...data, workingHours: e.target.value })
+            }
+            placeholder="مثال: يومياً من 9 صباحاً حتى 12 مساءً"
+            style={inputStyle}
+          />
+        </section>
+
+        <section
+          style={{
+            background: "#fff",
+            border: "1px solid #E2E8F0",
+            borderRadius: 18,
+            padding: 20,
+          }}
+        >
+          <label style={{ display: "block", fontWeight: 800, fontSize: 13, marginBottom: 7 }}>
+            رسالة الدعم
+          </label>
+
+          <textarea
+            value={data.message || ""}
+            onChange={(e) =>
+              setData({ ...data, message: e.target.value })
+            }
+            placeholder="اكتب الرسالة التي تظهر للمستخدم..."
+            rows={5}
+            style={{
+              ...inputStyle,
+              resize: "vertical",
+              lineHeight: 1.7,
+            }}
+          />
+        </section>
+      </div>
+
+      <div
+        style={{
+          marginTop: 20,
+          padding: 16,
+          borderRadius: 15,
+          background: "#FFF4E3",
+          border: "1px solid #F5D08A",
+          color: "#C95F0C",
+          display: "flex",
+          alignItems: "center",
+          gap: 9,
+          fontSize: 12,
+        }}
+      >
+        <CheckCircle2 size={17} />
+        جميع القنوات الموجودة في إعدادات الـBackend يتم حفظها كما هي دون تغيير في الـAPI.
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,1244 @@
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+import Screen from "../../components/Screen";
+import { useAuthStore } from "../../store/authStore";
+import { useAppTheme } from "../../theme/useAppTheme";
+import {
+  changePassword,
+  requestEmailChange,
+  verifyEmailChange,
+} from "../../api/profile";
+
+
+type ProfileData = {
+  id?: string;
+  fullName?: string;
+  phone?: string;
+  email?: string | null;
+  status?: string;
+  governorateName?: string | null;
+  areaName?: string | null;
+};
+
+
+const AVATARS: Array<{
+  icon: keyof typeof Ionicons.glyphMap;
+  background: string;
+  foreground: string;
+}> = [
+  { icon: "bicycle", background: "#E0F2FE", foreground: "#0369A1" },
+  { icon: "flash", background: "#FEF3C7", foreground: "#B45309" },
+  { icon: "navigate", background: "#DCFCE7", foreground: "#15803D" },
+  { icon: "rocket", background: "#EDE9FE", foreground: "#6D28D9" },
+  { icon: "shield-checkmark", background: "#FCE7F3", foreground: "#BE185D" },
+  { icon: "speedometer", background: "#F3E8FF", foreground: "#7E22CE" },
+  { icon: "star", background: "#FFEDD5", foreground: "#C2410C" },
+  { icon: "car-sport", background: "#CCFBF1", foreground: "#0F766E" },
+  { icon: "map", background: "#DBEAFE", foreground: "#1D4ED8" },
+  { icon: "sparkles", background: "#F1F5F9", foreground: "#334155" },
+];
+
+function avatarIndex(seed: string) {
+  let hash = 0;
+
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+
+  return hash % AVATARS.length;
+}
+
+
+
+function errorMessage(error: any, fallback: string) {
+  return (
+    error?.response?.data?.message ||
+    error?.data?.message ||
+    error?.message ||
+    fallback
+  );
+}
+
+export default function CaptainProfileScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const authUser = useAuthStore((s) => s.user);
+  const setAuthUser = useAuthStore((s) => s.setUser);
+
+  const profile: ProfileData | null = authUser
+    ? {
+        id: authUser.id,
+        fullName: authUser.name,
+        phone: authUser.phone,
+        email: authUser.email ?? null,
+        status: authUser.status,
+        governorateName:
+          authUser.governorateName ?? null,
+        areaName:
+          authUser.areaName ?? null,
+      }
+    : null;
+const [emailModal, setEmailModal] = useState(false);
+  const [emailStep, setEmailStep] = useState<"email" | "otp">("email");
+  const [newEmail, setNewEmail] = useState("");
+  const [emailOtp, setEmailOtp] = useState("");
+  const [emailVerificationId, setEmailVerificationId] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+
+  const [passwordModal, setPasswordModal] = useState(false);
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
+const avatar = useMemo(() => {
+    const seed =
+      profile?.id ||
+      profile?.phone ||
+      profile?.email ||
+      profile?.fullName ||
+      "captain";
+
+    return AVATARS[avatarIndex(seed)];
+  }, [profile]);
+return Boolean(
+          document?.status === "approved" &&
+            (!document.expiresAt ||
+              new Date(document.expiresAt).getTime() >
+                Date.now()),
+        );
+      }),
+    [documents],
+  );
+
+  function openEmailModal() {
+    setNewEmail("");
+    setEmailOtp("");
+    setEmailVerificationId("");
+    setEmailStep("email");
+    setEmailModal(true);
+  }
+
+  function closeEmailModal() {
+    if (!emailBusy) {
+      setEmailModal(false);
+    }
+  }
+
+  async function sendEmailCode() {
+    const email = newEmail.trim().toLowerCase();
+
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      Alert.alert("البريد الإلكتروني", "أدخل بريدًا إلكترونيًا صحيحًا.");
+      return;
+    }
+
+    try {
+      setEmailBusy(true);
+
+      const result: any = await requestEmailChange(email);
+      const verificationId =
+        result?.verificationId ||
+        result?.data?.verificationId;
+
+      if (!verificationId) {
+        throw new Error("لم يتم إنشاء طلب التحقق.");
+      }
+
+      setEmailVerificationId(String(verificationId));
+      setEmailStep("otp");
+
+      Alert.alert(
+        "تم إرسال الكود",
+        "تم إرسال كود التحقق إلى البريد الإلكتروني الجديد.",
+      );
+    } catch (error) {
+      Alert.alert(
+        "تعذر إرسال الكود",
+        errorMessage(error, "تعذر إرسال كود التحقق."),
+      );
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  async function confirmEmailCode() {
+    const otp = emailOtp.trim();
+
+    if (!emailVerificationId || !otp) {
+      Alert.alert("كود التحقق", "أدخل كود التحقق.");
+      return;
+    }
+
+    try {
+      setEmailBusy(true);
+
+      await verifyEmailChange(
+        emailVerificationId,
+        otp,
+      );
+      if (authUser) {
+        setAuthUser({
+          ...authUser,
+          email: newEmail.trim().toLowerCase(),
+        });
+      }
+
+setEmailModal(false);
+
+      Alert.alert(
+        "تم بنجاح",
+        "تم تغيير البريد الإلكتروني بنجاح.",
+      );
+    } catch (error) {
+      Alert.alert(
+        "تعذر التحقق",
+        errorMessage(error, "كود التحقق غير صحيح."),
+      );
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
+  async function submitPasswordChange() {
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      Alert.alert(
+        "كلمة المرور",
+        "املأ جميع خانات كلمة المرور.",
+      );
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      Alert.alert(
+        "كلمة المرور",
+        "كلمة المرور الجديدة يجب ألا تقل عن 6 أحرف.",
+      );
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      Alert.alert(
+        "كلمة المرور",
+        "تأكيد كلمة المرور غير مطابق.",
+      );
+      return;
+    }
+
+    try {
+      setPasswordBusy(true);
+
+      await changePassword({
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      });
+
+      setPasswordModal(false);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+
+      Alert.alert(
+        "تم بنجاح",
+        "تم تغيير كلمة المرور بنجاح.",
+      );
+    } catch (error) {
+      Alert.alert(
+        "تعذر تغيير كلمة المرور",
+        errorMessage(
+          error,
+          "تعذر تغيير كلمة المرور.",
+        ),
+      );
+    } finally {
+      setPasswordBusy(false);
+    }
+  }
+const name = profile?.fullName || "الكابتن";
+  const phone = profile?.phone || "—";
+  const email = profile?.email || "غير مضاف";
+  const avatarSeed =
+    profile?.id ||
+    profile?.phone ||
+    profile?.email ||
+    name;
+
+  return (
+    <Screen>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+      >
+        <View style={styles.heading}>
+          <View style={styles.headingIcon}>
+            <Ionicons
+              name="person-outline"
+              size={21}
+              color={appTheme.primaryColor}
+            />
+          </View>
+
+          <View style={styles.headingText}>
+            <Text style={styles.eyebrow}>زاجل ديلفري</Text>
+            <Text style={styles.title}>حسابي</Text>
+          </View>
+        </View>
+
+        <View style={styles.hero}>
+          <View
+            style={[
+              styles.avatar,
+              { backgroundColor: avatar.background },
+            ]}
+          >
+            <Ionicons
+              name={avatar.icon}
+              size={40}
+              color={avatar.foreground}
+            />
+          </View>
+
+          <View style={styles.heroText}>
+            <Text style={styles.heroName}>{name}</Text>
+
+            <View style={styles.heroBadge}>
+              <Ionicons
+                name="bicycle-outline"
+                size={14}
+                color="#CCFBF1"
+              />
+              <Text style={styles.heroBadgeText}>
+                كابتن توصيل
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <SectionTitle
+          icon="person-circle-outline"
+          title="البيانات الأساسية"
+          styles={styles}
+        />
+
+        <View style={styles.card}>
+          <LockedRow
+            icon="person-outline"
+            label="الاسم"
+            value={name}
+            styles={styles}
+          />
+
+          <LockedRow
+            icon="call-outline"
+            label="رقم الهاتف"
+            value={phone}
+            styles={styles}
+          />
+
+          <LockedRow
+            icon="location-outline"
+            label="المحافظة"
+            value={
+              profile?.governorateName ||
+              "غير متوفرة"
+            }
+            styles={styles}
+          />
+
+          <LockedRow
+            icon="map-outline"
+            label="المنطقة"
+            value={
+              profile?.areaName ||
+              "غير متوفرة"
+            }
+            styles={styles}
+            last
+          />
+        </View>
+
+        <SectionTitle
+          icon="shield-checkmark-outline"
+          title="أمان الحساب"
+          styles={styles}
+        />
+
+        <View style={styles.card}>
+          <ActionRow
+            icon="mail-outline"
+            label="البريد الإلكتروني"
+            value={email}
+            buttonText="تغيير"
+            onPress={openEmailModal}
+            styles={styles}
+          />
+
+          <ActionRow
+            icon="lock-closed-outline"
+            label="كلمة المرور"
+            value="••••••••"
+            buttonText="تغيير"
+            onPress={() => setPasswordModal(true)}
+            styles={styles}
+            last
+          />
+        </View>
+
+        <View style={styles.readonlyNotice}>
+          <View style={styles.noticeIcon}>
+            <Ionicons
+              name="lock-closed-outline"
+              size={18}
+              color={appTheme.primaryColor}
+            />
+          </View>
+
+          <Text style={styles.noticeText}>
+            الاسم والمحافظة والمنطقة ورقم الهاتف بيانات مرتبطة بالتسجيل ولا يمكن تعديلها من التطبيق.
+          </Text>
+        </View>
+
+
+        <View style={styles.footerSpace} />
+      </ScrollView>
+
+      <Modal
+        visible={emailModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeEmailModal}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderIcon}>
+                <Ionicons
+                  name="mail-outline"
+                  size={21}
+                  color={appTheme.primaryColor}
+                />
+              </View>
+
+              <View style={styles.modalHeaderText}>
+                <Text style={styles.modalTitle}>
+                  تغيير البريد الإلكتروني
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  {emailStep === "email"
+                    ? "أدخل البريد الإلكتروني الجديد"
+                    : "أدخل الكود المرسل إلى البريد الجديد"}
+                </Text>
+              </View>
+            </View>
+
+            {emailStep === "email" ? (
+              <>
+                <Field
+                  label="البريد الإلكتروني الجديد"
+                  value={newEmail}
+                  onChangeText={setNewEmail}
+                  placeholder="example@gmail.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  icon="mail-outline"
+                  editable={!emailBusy}
+                  styles={styles}
+                />
+
+                <ModalButton
+                  title={
+                    emailBusy
+                      ? "جاري الإرسال..."
+                      : "إرسال كود التحقق"
+                  }
+                  icon="send-outline"
+                  onPress={sendEmailCode}
+                  disabled={emailBusy}
+                  styles={styles}
+                />
+              </>
+            ) : (
+              <>
+                <View style={styles.otpHint}>
+                  <Ionicons
+                    name="shield-checkmark-outline"
+                    size={20}
+                    color={appTheme.primaryColor}
+                  />
+                  <Text style={styles.otpHintText}>
+                    تم إرسال كود من 6 أرقام إلى:
+                    {"\n"}
+                    {newEmail}
+                  </Text>
+                </View>
+
+                <Field
+                  label="كود التحقق"
+                  value={emailOtp}
+                  onChangeText={(value) =>
+                    setEmailOtp(
+                      value.replace(/\D/g, ""),
+                    )
+                  }
+                  placeholder="000000"
+                  keyboardType="number-pad"
+                  icon="keypad-outline"
+                  editable={!emailBusy}
+                  maxLength={6}
+                  styles={styles}
+                />
+
+                <ModalButton
+                  title={
+                    emailBusy
+                      ? "جاري التأكيد..."
+                      : "تأكيد تغيير البريد"
+                  }
+                  icon="checkmark-circle-outline"
+                  onPress={confirmEmailCode}
+                  disabled={emailBusy}
+                  styles={styles}
+                />
+
+                <Pressable
+                  onPress={sendEmailCode}
+                  disabled={emailBusy}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    إعادة إرسال الكود
+                  </Text>
+                </Pressable>
+              </>
+            )}
+
+            <Pressable
+              onPress={closeEmailModal}
+              disabled={emailBusy}
+              style={styles.cancelButton}
+            >
+              <Text style={styles.cancelButtonText}>
+                إلغاء
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={passwordModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          !passwordBusy && setPasswordModal(false)
+        }
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderIcon}>
+                <Ionicons
+                  name="lock-closed-outline"
+                  size={21}
+                  color={appTheme.primaryColor}
+                />
+              </View>
+
+              <View style={styles.modalHeaderText}>
+                <Text style={styles.modalTitle}>
+                  تغيير كلمة المرور
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  أدخل كلمة المرور الحالية ثم الجديدة
+                </Text>
+              </View>
+            </View>
+
+            <Field
+              label="كلمة المرور الحالية"
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              placeholder="أدخل كلمة المرور الحالية"
+              secureTextEntry
+              icon="lock-closed-outline"
+              editable={!passwordBusy}
+              styles={styles}
+            />
+
+            <Field
+              label="كلمة المرور الجديدة"
+              value={newPassword}
+              onChangeText={setNewPassword}
+              placeholder="6 أحرف على الأقل"
+              secureTextEntry
+              icon="key-outline"
+              editable={!passwordBusy}
+              styles={styles}
+            />
+
+            <Field
+              label="تأكيد كلمة المرور الجديدة"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="أعد كتابة كلمة المرور"
+              secureTextEntry
+              icon="checkmark-done-outline"
+              editable={!passwordBusy}
+              styles={styles}
+            />
+
+            <ModalButton
+              title={
+                passwordBusy
+                  ? "جاري الحفظ..."
+                  : "حفظ كلمة المرور الجديدة"
+              }
+              icon="checkmark-circle-outline"
+              onPress={submitPasswordChange}
+              disabled={passwordBusy}
+              styles={styles}
+            />
+
+            <Pressable
+              onPress={() =>
+                !passwordBusy && setPasswordModal(false)
+              }
+              disabled={passwordBusy}
+              style={styles.cancelButton}
+            >
+              <Text style={styles.cancelButtonText}>
+                إلغاء
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+    </Screen>
+  );
+}
+
+function SectionTitle({
+  icon,
+  title,
+  styles,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <View style={styles.sectionTitleRow}>
+      <View style={styles.sectionTitleIcon}>
+        <Ionicons
+          name={icon}
+          size={18}
+          color={styles.sectionTitleIconColor.color as string}
+        />
+      </View>
+      <Text style={styles.sectionTitle}>
+        {title}
+      </Text>
+    </View>
+  );
+}
+
+function LockedRow({
+  icon,
+  label,
+  value,
+  styles,
+  last = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  styles: ReturnType<typeof createStyles>;
+  last?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.infoRow,
+        !last && styles.infoRowBorder,
+      ]}
+    >
+      <View style={styles.rowIcon}>
+        <Ionicons
+          name={icon}
+          size={19}
+          color={styles.rowIconColor.color as string}
+        />
+      </View>
+
+      <View style={styles.rowContent}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowValue}>{value}</Text>
+      </View>
+
+    </View>
+  );
+}
+
+function ActionRow({
+  icon,
+  label,
+  value,
+  buttonText,
+  onPress,
+  styles,
+  last = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  buttonText: string;
+  onPress: () => void;
+  styles: ReturnType<typeof createStyles>;
+  last?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.infoRow,
+        !last && styles.infoRowBorder,
+      ]}
+    >
+      <View style={styles.rowIcon}>
+        <Ionicons
+          name={icon}
+          size={19}
+          color={styles.rowIconColor.color as string}
+        />
+      </View>
+
+      <View style={styles.rowContent}>
+        <Text style={styles.rowLabel}>{label}</Text>
+        <Text style={styles.rowValue}>{value}</Text>
+      </View>
+
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [
+          styles.changeButton,
+          pressed && styles.buttonPressed,
+        ]}
+      >
+        <Text style={styles.changeButtonText}>
+          {buttonText}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  icon,
+  styles,
+  secureTextEntry = false,
+  keyboardType = "default",
+  autoCapitalize = "sentences",
+  editable = true,
+  maxLength,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  styles: ReturnType<typeof createStyles>;
+  secureTextEntry?: boolean;
+  keyboardType?: any;
+  autoCapitalize?: any;
+  editable?: boolean;
+  maxLength?: number;
+}) {
+  return (
+    <View style={styles.fieldWrap}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+
+      <View style={styles.inputWrap}>
+        <View style={styles.inputIcon}>
+          <Ionicons
+            name={icon}
+            size={18}
+            color={styles.rowIconColor.color as string}
+          />
+        </View>
+
+        <TextInput
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#94A3B8"
+          secureTextEntry={secureTextEntry}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          editable={editable}
+          maxLength={maxLength}
+          style={styles.input}
+          textAlign="right"
+        />
+      </View>
+    </View>
+  );
+}
+
+function ModalButton({
+  title,
+  icon,
+  onPress,
+  disabled,
+  styles,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  disabled?: boolean;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.primaryButton,
+        pressed && styles.buttonPressed,
+        disabled && styles.buttonDisabled,
+      ]}
+    >
+      <Ionicons
+        name={icon}
+        size={18}
+        color="#FFFFFF"
+      />
+      <Text style={styles.primaryButtonText}>
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>,
+) =>
+  StyleSheet.create({
+    content: {
+      paddingHorizontal: 2,
+      paddingBottom: 24,
+    },
+
+    heading: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 10,
+    },
+
+    headingIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor + "12",
+    },
+
+    headingText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    eyebrow: {
+      color: appTheme.primaryColor,
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    title: {
+      marginTop: 2,
+      color: appTheme.textColor,
+      fontSize: 28,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    hero: {
+      marginTop: 18,
+      padding: 20,
+      borderRadius: 24,
+      backgroundColor: appTheme.primaryDarkColor,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 15,
+      overflow: "hidden",
+    },
+
+    avatar: {
+      width: 78,
+      height: 78,
+      borderRadius: 25,
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 4,
+      borderColor: "rgba(255,255,255,.16)",
+    },
+
+    heroText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    heroName: {
+      color: "#FFFFFF",
+      fontSize: 23,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    heroBadge: {
+      marginTop: 9,
+      paddingHorizontal: 11,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: "rgba(255,255,255,.12)",
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 6,
+    },
+
+    heroBadgeText: {
+      color: "#CCFBF1",
+      fontSize: 11,
+      fontWeight: "800",
+    },
+
+    sectionTitleRow: {
+      marginTop: 22,
+      marginBottom: 10,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 8,
+    },
+
+    sectionTitleIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor + "12",
+    },
+
+    sectionTitleIconColor: {
+      color: appTheme.primaryColor,
+    },
+
+    sectionTitle: {
+      flex: 1,
+      color: appTheme.textColor,
+      fontSize: 17,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    card: {
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      backgroundColor: appTheme.cardColor,
+      paddingHorizontal: 14,
+      overflow: "hidden",
+    },
+
+    infoRow: {
+      minHeight: 76,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 10,
+    },
+
+    infoRowBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: appTheme.borderColor,
+    },
+
+    rowIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 13,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor + "12",
+    },
+
+    rowIconColor: {
+      color: appTheme.primaryColor,
+    },
+
+    rowContent: {
+      flex: 1,
+      alignItems: "flex-end",
+      minWidth: 0,
+    },
+
+    rowLabel: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "700",
+      textAlign: "right",
+    },
+
+    rowValue: {
+      marginTop: 3,
+      color: appTheme.textColor,
+      fontSize: 14,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    changeButton: {
+      minWidth: 66,
+      paddingHorizontal: 11,
+      paddingVertical: 9,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor,
+    },
+
+    changeButtonText: {
+      color: "#FFFFFF",
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    buttonPressed: {
+      opacity: 0.78,
+    },
+
+    readonlyNotice: {
+      marginTop: 12,
+      padding: 13,
+      borderRadius: 17,
+      backgroundColor: appTheme.primaryColor + "0B",
+      borderWidth: 1,
+      borderColor: appTheme.primaryColor + "18",
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 9,
+    },
+
+    noticeIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor + "12",
+    },
+
+    noticeText: {
+      flex: 1,
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "700",
+      lineHeight: 18,
+      textAlign: "right",
+    },
+
+    loadingPage: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+      padding: 30,
+    },
+
+    loadingText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: "rgba(15,23,42,.56)",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 18,
+    },
+
+    modalCard: {
+      width: "100%",
+      maxWidth: 520,
+      borderRadius: 24,
+      padding: 20,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+    },
+
+    modalHeader: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 18,
+    },
+
+    modalHeaderIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 13,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor + "12",
+    },
+
+    modalHeaderText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    modalTitle: {
+      color: appTheme.textColor,
+      fontSize: 18,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    modalSubtitle: {
+      marginTop: 3,
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "700",
+      textAlign: "right",
+    },
+
+    fieldWrap: {
+      marginTop: 12,
+    },
+
+    fieldLabel: {
+      marginBottom: 7,
+      color: appTheme.textColor,
+      fontSize: 11,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    inputWrap: {
+      minHeight: 50,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      backgroundColor: appTheme.backgroundColor,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      paddingHorizontal: 10,
+    },
+
+    inputIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor + "10",
+    },
+
+    input: {
+      flex: 1,
+      minWidth: 0,
+      paddingHorizontal: 10,
+      color: appTheme.textColor,
+      fontSize: 14,
+      fontWeight: "700",
+    },
+
+    otpHint: {
+      padding: 13,
+      borderRadius: 15,
+      backgroundColor: appTheme.primaryColor + "0B",
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 8,
+      marginBottom: 6,
+    },
+
+    otpHintText: {
+      flex: 1,
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      lineHeight: 18,
+      fontWeight: "700",
+      textAlign: "right",
+    },
+
+    primaryButton: {
+      minHeight: 50,
+      marginTop: 16,
+      borderRadius: 14,
+      backgroundColor: appTheme.primaryColor,
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row-reverse",
+      gap: 8,
+      paddingHorizontal: 16,
+    },
+
+    primaryButtonText: {
+      color: "#FFFFFF",
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    buttonDisabled: {
+      opacity: 0.55,
+    },
+
+    secondaryButton: {
+      marginTop: 10,
+      alignItems: "center",
+      paddingVertical: 10,
+    },
+
+    secondaryButtonText: {
+      color: appTheme.primaryColor,
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    cancelButton: {
+      marginTop: 9,
+      minHeight: 44,
+      borderRadius: 13,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#F1F5F9",
+    },
+
+    cancelButtonText: {
+      color: "#475569",
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    footerSpace: {
+      height: 20,
+    },
+  });

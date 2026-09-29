@@ -1,0 +1,191 @@
+import { useState } from "react";
+import type { FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
+import { api, setAccessToken } from "../lib/api";
+import type { AuthResponse } from "../types/auth";
+import MessageModal from "../components/admin/MessageModal";
+
+export default function Login() {
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await api.post<AuthResponse>("/auth/login", {
+        email: email.trim(),
+        password,
+      });
+
+      const user = response.data.user;
+
+      if (user.role !== "super_admin" && user.role !== "admin") {
+        setAccessToken(null);
+        window.localStorage.removeItem(
+          "dzwan_admin_permissions",
+        );
+        setError("هذا الحساب غير مصرح له بالدخول إلى لوحة الإدارة.");
+        return;
+      }
+
+      if (
+        typeof (
+          (response.data as AuthResponse & {
+            accessToken?: string;
+          }).accessToken ?? null
+        ) === "string"
+      ) {
+        setAccessToken(
+          (
+            response.data as AuthResponse & {
+              accessToken?: string;
+            }
+          ).accessToken ?? null,
+        );
+      }
+
+      const loginPermissions = Array.isArray(
+        user.permissions,
+      )
+        ? user.permissions.filter(
+            (item): item is string =>
+              typeof item === "string",
+          )
+        : [];
+
+      window.localStorage.setItem(
+        "dzwan_admin_permissions",
+        JSON.stringify(loginPermissions),
+      );
+
+      const firstAllowedPage =
+        loginPermissions.find((item) =>
+          item.startsWith("page:/"),
+        );
+
+      const firstAllowedPath =
+        firstAllowedPage?.slice("page:".length) ||
+        "/dashboard";
+
+      navigate(firstAllowedPath, {
+        replace: true,
+      });
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          "تعذر الاتصال بالخادم، حاول مرة أخرى."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <main className="login-page" dir="rtl">
+
+      <div className="ambient ambient-one" />
+      <div className="ambient ambient-two" />
+      <div className="ambient ambient-three" />
+
+      <div className="login-content">
+
+        <header className="brand">
+          <div className="zajel-brand">
+            <span
+              className="zajel-brand-icon"
+              aria-hidden="true"
+            >&#983932;</span>
+            <span className="zajel-brand-text">
+              زاجل دليفري
+            </span>
+          </div>
+          <p>لوحة الإدارة</p>
+        </header>
+
+        <section className="login-card">
+
+          <div className="card-heading">
+            <h2>تسجيل الدخول</h2>
+            <p>
+              سجّل الدخول للوصول إلى لوحة إدارة زاجل ديلفري.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit}>
+
+            <div className="field">
+              <label htmlFor="email">
+                البريد الإلكتروني
+              </label>
+
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="name@example.com"
+                autoComplete="email"
+                required
+              />
+            </div>
+
+            <div className="field">
+              <label htmlFor="password">
+                كلمة المرور
+              </label>
+
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="أدخل كلمة المرور"
+                autoComplete="current-password"
+                required
+              />
+            </div>
+
+
+            <button
+              type="submit"
+              disabled={loading}
+            >
+              {loading ? "جارٍ تسجيل الدخول..." : "دخول"}
+            </button>
+
+          </form>
+
+          <div className="card-bottom">
+            دخول آمن للمستخدمين المصرح لهم
+          </div>
+
+        </section>
+
+
+        <MessageModal
+          open={Boolean(error)}
+          title="تعذر تسجيل الدخول"
+          message={error}
+          tone="error"
+          showCancel={false}
+          confirmLabel="حسنًا"
+          onConfirm={() => setError("")}
+          onCancel={() => setError("")}
+        />
+
+        <footer className="login-footer">
+          © 2026 زاجل ديلفري
+        </footer>
+
+      </div>
+    </main>
+  );
+}

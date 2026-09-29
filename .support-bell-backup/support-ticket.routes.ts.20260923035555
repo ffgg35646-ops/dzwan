@@ -1,0 +1,80 @@
+
+import { Router } from "express";
+import { requireAuth, requireAdmin } from "../middleware/auth.middleware.js";
+
+import {
+  createSupportTicket,
+  listMySupportTickets,
+  getMySupportTicket,
+  addMySupportMessage,
+  listSupportTickets,
+  getSupportTicket,
+  addAdminSupportMessage,
+  updateSupportTicketStatus,
+  getSupportUnreadCount,
+  getMySupportUnreadCount,
+  markMySupportTicketRead,
+} from "../controllers/support-ticket.controller.js";
+
+const router = Router();
+
+router.use(requireAuth);
+
+router.post("/", createSupportTicket);
+
+router.get(
+  "/my/unread-count",
+  getMySupportUnreadCount,
+);
+
+router.get(
+  "/my",
+  listMySupportTickets,
+);
+
+router.get(
+  "/my/:id",
+  getMySupportTicket,
+);
+
+router.post(
+  "/my/:id/read",
+  markMySupportTicketRead,
+);
+
+router.post(
+  "/my/:id/messages",
+  addMySupportMessage,
+);
+
+router.get(
+  "/admin/unread-count",
+  requireAdmin,
+  getSupportUnreadCount,
+);
+
+router.get(
+  "/",
+  requireAdmin,
+  listSupportTickets,
+);
+
+router.get(
+  "/:id",
+  requireAdmin,
+  getSupportTicket,
+);
+
+router.post(
+  "/:id/messages",
+  requireAdmin,
+  addAdminSupportMessage,
+);
+
+router.patch(
+  "/:id/status",
+  requireAdmin,
+  updateSupportTicketStatus,
+);
+
+export default router;

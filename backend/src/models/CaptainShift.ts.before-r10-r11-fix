@@ -1,0 +1,43 @@
+import mongoose, { Schema, model } from "mongoose";
+
+const captainShiftSchema = new Schema(
+  {
+    captainId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+    dayOfWeek: {
+      type: Number,
+      required: true,
+      min: 0,
+      max: 6,
+    },
+    startTime: {
+      type: String,
+      required: true,
+    },
+    endTime: {
+      type: String,
+      required: true,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
+
+captainShiftSchema.index({
+  captainId: 1,
+  dayOfWeek: 1,
+  isActive: 1,
+});
+
+export const CaptainShiftModel =
+  mongoose.models.CaptainShift ||
+  model("CaptainShift", captainShiftSchema);

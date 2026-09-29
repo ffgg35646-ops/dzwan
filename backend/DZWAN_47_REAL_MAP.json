@@ -1,0 +1,3011 @@
+{
+  "backend": "/home/mohamed/Downloads/dzwan/backend",
+  "requirements": [
+    {
+      "number": 1,
+      "keywords": [
+        "auth",
+        "admin",
+        "permission"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/permissions/:userId",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/permissions/:userId",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/sub-admins",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/sub-admins",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/sub-admins/:id",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/admin",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/login",
+          "file": "src/routes/auth.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/refresh",
+          "file": "src/routes/auth.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/auth.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/logout",
+          "file": "src/routes/auth.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/auth.controller.ts"
+      ],
+      "services": [
+        "src/services/r25-admin-report.service.ts",
+        "src/services/auth.service.ts"
+      ],
+      "models": [
+        "src/models/StaffPermission.ts"
+      ]
+    },
+    {
+      "number": 2,
+      "keywords": [
+        "governorate"
+      ],
+      "status": "NOT_FOUND",
+      "routes": [],
+      "controllers": [],
+      "services": [],
+      "models": []
+    },
+    {
+      "number": 3,
+      "keywords": [
+        "area"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/me",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:captainId",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:captainId",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/toggle",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/areas",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/areas/:areaId",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id/areas/:areaId",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/captains/:captainId/work-areas",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain-work-area.controller.ts"
+      ],
+      "services": [
+        "src/services/captain-work-area.service.ts"
+      ],
+      "models": [
+        "src/models/CaptainWorkArea.ts",
+        "src/models/CaptainWorkAreaFinal.ts"
+      ]
+    },
+    {
+      "number": 4,
+      "keywords": [
+        "pricing"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/pricing.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/pricing.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/pricing.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/pricing.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/pricing.controller.ts"
+      ],
+      "services": [
+        "src/services/pricing.service.ts"
+      ],
+      "models": [
+        "src/models/PricingRule.ts"
+      ]
+    },
+    {
+      "number": 5,
+      "keywords": [
+        "establishment",
+        "registration"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/establishments/:establishmentId",
+          "file": "src/routes/establishment-report.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/approve",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reject",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/suspend",
+          "file": "src/routes/core11-establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reactivate",
+          "file": "src/routes/core11-establishment.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/location",
+          "file": "src/routes/core11-establishment.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/establishments/:establishmentId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/approve",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reject",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/suspend",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reactivate",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/location",
+          "file": "src/routes/establishment.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain-registration.controller.ts",
+        "src/controllers/establishment.controller.ts",
+        "src/controllers/establishment-user.controller.ts",
+        "src/controllers/core11-establishment.controller.ts",
+        "src/controllers/establishment-report.controller.ts"
+      ],
+      "services": [
+        "src/services/establishment-access.service.ts",
+        "src/services/establishment-location.service.ts",
+        "src/services/establishment-report.service.ts",
+        "src/services/r24-establishment-report.service.ts"
+      ],
+      "models": [
+        "src/models/Establishment.ts",
+        "src/models/CaptainRegistration.ts",
+        "src/models/EstablishmentReport.ts"
+      ]
+    },
+    {
+      "number": 6,
+      "keywords": [
+        "establishment",
+        "location"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/scoped-location.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/establishments/:establishmentId",
+          "file": "src/routes/establishment-report.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/establishment-user.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/suspend",
+          "file": "src/routes/core11-establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reactivate",
+          "file": "src/routes/core11-establishment.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/location",
+          "file": "src/routes/core11-establishment.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/areas",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/areas/:areaId",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id/areas/:areaId",
+          "file": "src/routes/location.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/establishments/:establishmentId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/approve",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reject",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/suspend",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reactivate",
+          "file": "src/routes/establishment.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/location",
+          "file": "src/routes/establishment.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/location.controller.ts",
+        "src/controllers/establishment.controller.ts",
+        "src/controllers/establishment-user.controller.ts",
+        "src/controllers/core11-establishment.controller.ts",
+        "src/controllers/scoped-location.controller.ts",
+        "src/controllers/establishment-report.controller.ts"
+      ],
+      "services": [
+        "src/services/establishment-access.service.ts",
+        "src/services/establishment-location.service.ts",
+        "src/services/establishment-report.service.ts",
+        "src/services/r24-establishment-report.service.ts"
+      ],
+      "models": [
+        "src/models/Establishment.ts",
+        "src/models/Location.ts",
+        "src/models/EstablishmentReport.ts"
+      ]
+    },
+    {
+      "number": 7,
+      "keywords": [
+        "customer",
+        "snapshot",
+        "order"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/orders/:id/dispatch",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/accept",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp/verify",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/photo",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:orderId",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/status",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/assign-captain",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers/:stage/finish",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/re-dispatch",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline/full",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cash/:captainId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/rating",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/reassign",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/stuck-orders",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/customer.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/customer.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/customer.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/order.controller.ts",
+        "src/controllers/customer.controller.ts"
+      ],
+      "services": [
+        "src/services/order-customer-snapshot.service.ts",
+        "src/services/order-timeline-30-46.service.ts",
+        "src/services/r29-order-timeline.service.ts",
+        "src/services/r21-order-notes.service.ts",
+        "src/services/core-order-flow.service.ts",
+        "src/services/order-cash.service.ts",
+        "src/services/order-intake-1-11.service.ts",
+        "src/services/order-lifecycle-1-11.service.ts"
+      ],
+      "models": [
+        "src/models/Order.ts",
+        "src/models/OrderStageEvent.ts",
+        "src/models/OrderStageTimer.ts",
+        "src/models/Core11OrderState.ts",
+        "src/models/CustomerAddress.ts",
+        "src/models/OrderTimeline.ts",
+        "src/models/StuckOrderAlert.ts"
+      ]
+    },
+    {
+      "number": 8,
+      "keywords": [
+        "order",
+        "intake"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/orders/:id/dispatch",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/accept",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp/verify",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/photo",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:orderId",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/status",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/assign-captain",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers/:stage/finish",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/re-dispatch",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline/full",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cash/:captainId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/rating",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/reassign",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/stuck-orders",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/order.controller.ts"
+      ],
+      "services": [
+        "src/services/order-customer-snapshot.service.ts",
+        "src/services/order-timeline-30-46.service.ts",
+        "src/services/r29-order-timeline.service.ts",
+        "src/services/r21-order-notes.service.ts",
+        "src/services/core-order-flow.service.ts",
+        "src/services/order-cash.service.ts",
+        "src/services/order-intake-1-11.service.ts",
+        "src/services/order-lifecycle-1-11.service.ts"
+      ],
+      "models": [
+        "src/models/Order.ts",
+        "src/models/OrderStageEvent.ts",
+        "src/models/OrderStageTimer.ts",
+        "src/models/Core11OrderState.ts",
+        "src/models/OrderTimeline.ts",
+        "src/models/StuckOrderAlert.ts"
+      ]
+    },
+    {
+      "number": 9,
+      "keywords": [
+        "order",
+        "lifecycle",
+        "status"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/api/system/status",
+          "file": "src/server.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/dispatch",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/accept",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/status",
+          "file": "src/routes/users.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp/verify",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/photo",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:orderId",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/status",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/assign-captain",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers/:stage/finish",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/re-dispatch",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline/full",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cash/:captainId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/rating",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/reassign",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/stuck-orders",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/order.controller.ts"
+      ],
+      "services": [
+        "src/services/order-customer-snapshot.service.ts",
+        "src/services/order-timeline-30-46.service.ts",
+        "src/services/r29-order-timeline.service.ts",
+        "src/services/r21-order-notes.service.ts",
+        "src/services/core-order-flow.service.ts",
+        "src/services/order-cash.service.ts",
+        "src/services/order-intake-1-11.service.ts",
+        "src/services/order-lifecycle-1-11.service.ts"
+      ],
+      "models": [
+        "src/models/Order.ts",
+        "src/models/OrderStageEvent.ts",
+        "src/models/OrderStageTimer.ts",
+        "src/models/Core11OrderState.ts",
+        "src/models/OrderTimeline.ts",
+        "src/models/StuckOrderAlert.ts"
+      ]
+    },
+    {
+      "number": 10,
+      "keywords": [
+        "dispatch"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/settings",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/settings",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/shifts",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/shifts",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/shifts/:id",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/queue",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/assignments",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/dispatch",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/accept",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/process",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/re-dispatch",
+          "file": "src/routes/ops-31-47.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/dispatch.controller.ts"
+      ],
+      "services": [
+        "src/services/dispatch-manager.service.ts",
+        "src/services/dispatch-policy-1-11.service.ts",
+        "src/services/smart-dispatch-score.service.ts",
+        "src/services/dispatch.service.ts"
+      ],
+      "models": [
+        "src/models/DispatchAssignment.ts",
+        "src/models/DispatchQueue.ts",
+        "src/models/DispatchSettings.ts"
+      ]
+    },
+    {
+      "number": 11,
+      "keywords": [
+        "shift",
+        "strict-shift",
+        "shift-policy"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/shifts",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/shifts",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/shifts/:id",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/weekly/select",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/weekly/change",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/current/check",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/shift/check",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain-shift-management.controller.ts"
+      ],
+      "services": [
+        "src/services/shift-policy-1-11.service.ts",
+        "src/services/strict-shift-enforcement.service.ts",
+        "src/services/r11-shift-guard.service.ts",
+        "src/services/captain-shift-management.service.ts",
+        "src/services/weekly-shift-policy.service.ts"
+      ],
+      "models": [
+        "src/models/CaptainShift.ts"
+      ]
+    },
+    {
+      "number": 12,
+      "keywords": [
+        "attendance"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/check-in",
+          "file": "src/routes/captain-attendance.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/check-out",
+          "file": "src/routes/captain-attendance.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/captain-attendance.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/captain-attendance.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/captains/:captainId/attendance/in",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/captains/:captainId/attendance/out",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain-attendance.controller.ts"
+      ],
+      "services": [
+        "src/services/r12-attendance.service.ts"
+      ],
+      "models": [
+        "src/models/CaptainAttendance.ts"
+      ]
+    },
+    {
+      "number": 13,
+      "keywords": [
+        "captain-registration",
+        "registration"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/approve",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reject",
+          "file": "src/routes/captain-registration.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain-registration.controller.ts"
+      ],
+      "services": [],
+      "models": [
+        "src/models/CaptainRegistration.ts"
+      ]
+    },
+    {
+      "number": 14,
+      "keywords": [
+        "captain"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/captain.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/captain.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/captain.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/approve",
+          "file": "src/routes/captain.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reject",
+          "file": "src/routes/captain.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/captain.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/captain-ledger.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:captainId",
+          "file": "src/routes/captain-ledger.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/check-in",
+          "file": "src/routes/captain-attendance.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/check-out",
+          "file": "src/routes/captain-attendance.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/captain-attendance.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/captain-attendance.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/approve",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/reject",
+          "file": "src/routes/captain-registration.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/weekly/select",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/weekly/change",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/current/check",
+          "file": "src/routes/captain-shift-management.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/me",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:captainId",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:captainId",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/toggle",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/assign-captain",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/ratings/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/cash/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain.controller.ts",
+        "src/controllers/captain-registration.controller.ts",
+        "src/controllers/captain-shift-management.controller.ts",
+        "src/controllers/captain-ledger.controller.ts",
+        "src/controllers/captain-document.controller.ts",
+        "src/controllers/captain-work-area.controller.ts",
+        "src/controllers/captain-attendance.controller.ts"
+      ],
+      "services": [
+        "src/services/captain-document-compliance.service.ts",
+        "src/services/r14-captain-profile.service.ts",
+        "src/services/captain-work-area.service.ts",
+        "src/services/captain-shift-management.service.ts",
+        "src/services/captain-work-eligibility.service.ts",
+        "src/services/captain-kpi.service.ts",
+        "src/services/captain-ledger.service.ts",
+        "src/services/captain-cash.service.ts",
+        "src/services/captain-rating.service.ts"
+      ],
+      "models": [
+        "src/models/CaptainRating.ts",
+        "src/models/CaptainDocument.ts",
+        "src/models/CaptainShift.ts",
+        "src/models/CaptainWorkArea.ts",
+        "src/models/CaptainCashTransaction.ts",
+        "src/models/CaptainAttendance.ts",
+        "src/models/CaptainRegistration.ts",
+        "src/models/CaptainWorkAreaFinal.ts",
+        "src/models/CaptainEmergency.ts",
+        "src/models/CaptainRatingFinal.ts",
+        "src/models/CaptainLedger.ts"
+      ]
+    },
+    {
+      "number": 15,
+      "keywords": [
+        "work-area"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/me",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:captainId",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:captainId",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/toggle",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/captain-work-area.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/captains/:captainId/work-areas",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain-work-area.controller.ts"
+      ],
+      "services": [
+        "src/services/captain-work-area.service.ts"
+      ],
+      "models": []
+    },
+    {
+      "number": 16,
+      "keywords": [
+        "dispatch",
+        "maxActiveOrders",
+        "operations"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/settings",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/settings",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/shifts",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/shifts",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/shifts/:id",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/queue",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/assignments",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/dispatch",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/accept",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/process",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/re-dispatch",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/dashboard/operations",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/core-operations-settings.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/",
+          "file": "src/routes/core-operations-settings.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/core-operations-settings.controller.ts",
+        "src/controllers/dispatch.controller.ts"
+      ],
+      "services": [
+        "src/services/dispatch-manager.service.ts",
+        "src/services/dispatch-policy-1-11.service.ts",
+        "src/services/smart-dispatch-score.service.ts",
+        "src/services/dispatch.service.ts"
+      ],
+      "models": [
+        "src/models/OperationsSettings.ts",
+        "src/models/DispatchAssignment.ts",
+        "src/models/CoreOperationsSettings.ts",
+        "src/models/DispatchQueue.ts",
+        "src/models/CentralOperationSetting.ts",
+        "src/models/DispatchSettings.ts"
+      ]
+    },
+    {
+      "number": 17,
+      "keywords": [
+        "cash"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/cash",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/cash/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/captains/:captainId/cash-statement",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cash/:captainId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [
+        "src/services/r17-cash.service.ts",
+        "src/services/order-cash.service.ts",
+        "src/services/captain-cash.service.ts"
+      ],
+      "models": [
+        "src/models/CaptainCashTransaction.ts"
+      ]
+    },
+    {
+      "number": 18,
+      "keywords": [
+        "ledger",
+        "cash"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/captain-ledger.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:captainId",
+          "file": "src/routes/captain-ledger.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/cash",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/cash/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/captains/:captainId/cash-statement",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cash/:captainId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain-ledger.controller.ts"
+      ],
+      "services": [
+        "src/services/r17-cash.service.ts",
+        "src/services/order-cash.service.ts",
+        "src/services/captain-ledger.service.ts",
+        "src/services/captain-cash.service.ts"
+      ],
+      "models": [
+        "src/models/CaptainCashTransaction.ts",
+        "src/models/CaptainLedger.ts"
+      ]
+    },
+    {
+      "number": 19,
+      "keywords": [
+        "delivery-proof"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/:orderId/otp",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp/verify",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/photo",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:orderId",
+          "file": "src/routes/delivery-proof.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/delivery-proof.controller.ts"
+      ],
+      "services": [
+        "src/services/delivery-proof.service.ts",
+        "src/services/r19-delivery-proof-final.service.ts"
+      ],
+      "models": []
+    },
+    {
+      "number": 20,
+      "keywords": [
+        "pickup",
+        "completion"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/ratings",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/ratings/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/cash",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/cash/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/kpi/captains/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/audit",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/audit",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/settings",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/settings",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/notification-rules",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "PUT",
+          "path": "/notification-rules/:event",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/sub-admins",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/sub-admins",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/sub-admins/:id",
+          "file": "src/routes/completion.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/completion.controller.ts"
+      ],
+      "services": [],
+      "models": [
+        "src/models/PickupPhoto.ts"
+      ]
+    },
+    {
+      "number": 21,
+      "keywords": [
+        "order-note",
+        "order",
+        "notes"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/orders/:id/dispatch",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/accept",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/otp/verify",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:orderId/photo",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:orderId",
+          "file": "src/routes/delivery-proof.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/status",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:id/assign-captain",
+          "file": "src/routes/order.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers/:stage/finish",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/re-dispatch",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline/full",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cash/:captainId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/rating",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/reassign",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/stuck-orders",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/order.controller.ts"
+      ],
+      "services": [
+        "src/services/order-customer-snapshot.service.ts",
+        "src/services/order-timeline-30-46.service.ts",
+        "src/services/r29-order-timeline.service.ts",
+        "src/services/r21-order-notes.service.ts",
+        "src/services/core-order-flow.service.ts",
+        "src/services/order-cash.service.ts",
+        "src/services/order-intake-1-11.service.ts",
+        "src/services/order-lifecycle-1-11.service.ts"
+      ],
+      "models": [
+        "src/models/Order.ts",
+        "src/models/OrderStageEvent.ts",
+        "src/models/OrderStageTimer.ts",
+        "src/models/Core11OrderState.ts",
+        "src/models/OrderTimeline.ts",
+        "src/models/StuckOrderAlert.ts"
+      ]
+    },
+    {
+      "number": 22,
+      "keywords": [
+        "rating"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/ratings",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/ratings/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/captains/:captainId/rating",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/rating",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [
+        "src/services/r22-rating-final.service.ts",
+        "src/services/captain-rating.service.ts"
+      ],
+      "models": [
+        "src/models/CaptainRating.ts",
+        "src/models/CaptainRatingFinal.ts"
+      ]
+    },
+    {
+      "number": 23,
+      "keywords": [
+        "kpi",
+        "performance"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/kpi/captains/:captainId",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/captains/:captainId/kpi",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [
+        "src/services/captain-kpi.service.ts",
+        "src/services/r23-kpi-final.service.ts"
+      ],
+      "models": []
+    },
+    {
+      "number": 24,
+      "keywords": [
+        "establishment-report"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/establishments/:establishmentId",
+          "file": "src/routes/establishment-report.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/establishment-report.controller.ts"
+      ],
+      "services": [
+        "src/services/establishment-report.service.ts",
+        "src/services/r24-establishment-report.service.ts"
+      ],
+      "models": []
+    },
+    {
+      "number": 25,
+      "keywords": [
+        "reports"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/reports.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/establishments/:establishmentId",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/reports/admin",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/reports.controller.ts"
+      ],
+      "services": [],
+      "models": []
+    },
+    {
+      "number": 26,
+      "keywords": [
+        "dashboard"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/dashboard/operations",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [
+        "src/services/r26-dashboard.service.ts"
+      ],
+      "models": []
+    },
+    {
+      "number": 27,
+      "keywords": [
+        "notification"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/notification.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/read",
+          "file": "src/routes/notification.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/read-all",
+          "file": "src/routes/notification.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/notification-rules",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "PUT",
+          "path": "/notification-rules/:event",
+          "file": "src/routes/completion.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/notification.controller.ts"
+      ],
+      "services": [
+        "src/services/notification.service.ts",
+        "src/services/r27-notification-target.service.ts",
+        "src/services/event-notification.service.ts"
+      ],
+      "models": [
+        "src/models/Notification.ts",
+        "src/models/NotificationRule.ts"
+      ]
+    },
+    {
+      "number": 28,
+      "keywords": [
+        "complaint"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/complaints",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/complaints",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/complaints/:id",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/complaints",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/complaints/:id",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/complaints",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/Complaint.ts",
+        "src/models/Complaint30_46.ts"
+      ]
+    },
+    {
+      "number": 29,
+      "keywords": [
+        "timeline"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline/full",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/orders/:orderId/timeline",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [
+        "src/services/order-timeline-30-46.service.ts",
+        "src/services/r29-order-timeline.service.ts"
+      ],
+      "models": [
+        "src/models/OrderTimeline.ts"
+      ]
+    },
+    {
+      "number": 30,
+      "keywords": [
+        "timer",
+        "stage"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/timers/:stage/finish",
+          "file": "src/routes/ops-31-47.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/OrderStageEvent.ts",
+        "src/models/OrderStageTimer.ts"
+      ]
+    },
+    {
+      "number": 31,
+      "keywords": [
+        "stuck"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/stuck/process",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/stuck",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/stuck/:id/resolve",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/stuck-orders",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/StuckOrderAlert.ts"
+      ]
+    },
+    {
+      "number": 32,
+      "keywords": [
+        "redispatch",
+        "dispatch"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/settings",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/settings",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/shifts",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/shifts",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/shifts/:id",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/queue",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/assignments",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/dispatch",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:id/accept",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/process",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/re-dispatch",
+          "file": "src/routes/ops-31-47.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/dispatch.controller.ts"
+      ],
+      "services": [
+        "src/services/dispatch-manager.service.ts",
+        "src/services/dispatch-policy-1-11.service.ts",
+        "src/services/smart-dispatch-score.service.ts",
+        "src/services/dispatch.service.ts"
+      ],
+      "models": [
+        "src/models/DispatchAssignment.ts",
+        "src/models/DispatchQueue.ts",
+        "src/models/DispatchSettings.ts"
+      ]
+    },
+    {
+      "number": 33,
+      "keywords": [
+        "emergency"
+      ],
+      "status": "FOUND",
+      "routes": [],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/CaptainEmergency.ts",
+        "src/models/EmergencyAlert.ts"
+      ]
+    },
+    {
+      "number": 34,
+      "keywords": [
+        "audit"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/audit",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/audit",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/audit.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/:id",
+          "file": "src/routes/audit.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/audit.controller.ts"
+      ],
+      "services": [
+        "src/services/audit.service.ts",
+        "src/services/audit-log.service.ts",
+        "src/services/system-audit.service.ts"
+      ],
+      "models": [
+        "src/models/AuditLog.ts"
+      ]
+    },
+    {
+      "number": 35,
+      "keywords": [
+        "sub-admin",
+        "staff"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/sub-admins",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/sub-admins",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/sub-admins/:id",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/staff.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/:userId",
+          "file": "src/routes/staff.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/staff.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/staff.controller.ts"
+      ],
+      "services": [],
+      "models": [
+        "src/models/StaffProfile.ts",
+        "src/models/StaffPermission.ts"
+      ]
+    },
+    {
+      "number": 36,
+      "keywords": [
+        "permission",
+        "staff-permission"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/permissions/:userId",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/permissions/:userId",
+          "file": "src/routes/ops-31-47.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/StaffPermission.ts"
+      ]
+    },
+    {
+      "number": 37,
+      "keywords": [
+        "document",
+        "compliance"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/captain-document.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/me",
+          "file": "src/routes/captain-document.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/captain/:captainId",
+          "file": "src/routes/captain-document.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/review",
+          "file": "src/routes/captain-document.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/captain-document.controller.ts"
+      ],
+      "services": [
+        "src/services/captain-document-compliance.service.ts"
+      ],
+      "models": [
+        "src/models/CaptainDocument.ts"
+      ]
+    },
+    {
+      "number": 38,
+      "keywords": [
+        "version",
+        "app-version"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/app-versions",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/app-versions",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/app-version-check",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/versions/:app",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/AppVersion.ts"
+      ]
+    },
+    {
+      "number": 39,
+      "keywords": [
+        "version",
+        "force"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/app-versions",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/app-versions",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/app-version-check",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/versions/:app",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [
+        "src/services/strict-shift-enforcement.service.ts"
+      ],
+      "models": [
+        "src/models/AppVersion.ts"
+      ]
+    },
+    {
+      "number": 40,
+      "keywords": [
+        "security"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/security-events",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/security-log",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/SystemSecurityLog.ts",
+        "src/models/SecurityEvent.ts"
+      ]
+    },
+    {
+      "number": 41,
+      "keywords": [
+        "search"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/search",
+          "file": "src/routes/ops-31-47.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": []
+    },
+    {
+      "number": 42,
+      "keywords": [
+        "backup"
+      ],
+      "status": "NOT_FOUND",
+      "routes": [],
+      "controllers": [],
+      "services": [],
+      "models": []
+    },
+    {
+      "number": 43,
+      "keywords": [
+        "maintenance"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/maintenance",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/maintenance",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/maintenance",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/MaintenanceSettings.ts"
+      ]
+    },
+    {
+      "number": 44,
+      "keywords": [
+        "system-settings",
+        "settings",
+        "central"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/settings",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/settings",
+          "file": "src/routes/dispatch.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/system-settings.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/",
+          "file": "src/routes/system-settings.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/settings.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/core11-settings.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/",
+          "file": "src/routes/core11-settings.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/settings",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/settings",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/core-operations-settings.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/",
+          "file": "src/routes/core-operations-settings.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/settings",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "PUT",
+          "path": "/settings",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/core-operations-settings.controller.ts",
+        "src/controllers/settings.controller.ts",
+        "src/controllers/system-settings.controller.ts"
+      ],
+      "services": [
+        "src/services/system-settings.service.ts"
+      ],
+      "models": [
+        "src/models/OperationsSettings.ts",
+        "src/models/SystemSettings.ts",
+        "src/models/CoreOperationsSettings.ts",
+        "src/models/MaintenanceSettings.ts",
+        "src/models/CentralOperationSetting.ts",
+        "src/models/DispatchSettings.ts"
+      ]
+    },
+    {
+      "number": 45,
+      "keywords": [
+        "geofence"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/geofence/resolve",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/geofence.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/",
+          "file": "src/routes/geofence.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id",
+          "file": "src/routes/geofence.routes.ts"
+        },
+        {
+          "method": "DELETE",
+          "path": "/:id",
+          "file": "src/routes/geofence.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/geofence.controller.ts"
+      ],
+      "services": [],
+      "models": [
+        "src/models/Geofence.ts"
+      ]
+    },
+    {
+      "number": 46,
+      "keywords": [
+        "cancellation",
+        "cancel"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/cancel",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [],
+      "services": [],
+      "models": [
+        "src/models/CancellationRecord.ts"
+      ]
+    },
+    {
+      "number": 47,
+      "keywords": [
+        "notification",
+        "event"
+      ],
+      "status": "FOUND",
+      "routes": [
+        {
+          "method": "GET",
+          "path": "/",
+          "file": "src/routes/notification.routes.ts"
+        },
+        {
+          "method": "PATCH",
+          "path": "/:id/read",
+          "file": "src/routes/notification.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/read-all",
+          "file": "src/routes/notification.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/security-events",
+          "file": "src/routes/ops-31-47.routes.ts"
+        },
+        {
+          "method": "GET",
+          "path": "/notification-rules",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "PUT",
+          "path": "/notification-rules/:event",
+          "file": "src/routes/completion.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-11-29.routes.ts"
+        },
+        {
+          "method": "POST",
+          "path": "/orders/:orderId/events",
+          "file": "src/routes/requirements-30-46.routes.ts"
+        }
+      ],
+      "controllers": [
+        "src/controllers/notification.controller.ts"
+      ],
+      "services": [
+        "src/services/notification.service.ts",
+        "src/services/r27-notification-target.service.ts",
+        "src/services/event-notification.service.ts"
+      ],
+      "models": [
+        "src/models/OrderStageEvent.ts",
+        "src/models/Notification.ts",
+        "src/models/NotificationRule.ts",
+        "src/models/SecurityEvent.ts"
+      ]
+    }
+  ],
+  "auth": {
+    "routes": [
+      {
+        "method": "POST",
+        "path": "/login",
+        "file": "src/routes/auth.routes.ts"
+      },
+      {
+        "method": "POST",
+        "path": "/refresh",
+        "file": "src/routes/auth.routes.ts"
+      },
+      {
+        "method": "GET",
+        "path": "/me",
+        "file": "src/routes/auth.routes.ts"
+      },
+      {
+        "method": "POST",
+        "path": "/logout",
+        "file": "src/routes/auth.routes.ts"
+      }
+    ],
+    "controllers": [
+      "src/controllers/auth.controller.ts"
+    ]
+  },
+  "orderContract": {
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/",
+        "file": "src/routes/order.routes.ts"
+      },
+      {
+        "method": "POST",
+        "path": "/",
+        "file": "src/routes/order.routes.ts"
+      },
+      {
+        "method": "GET",
+        "path": "/:id",
+        "file": "src/routes/order.routes.ts"
+      },
+      {
+        "method": "PATCH",
+        "path": "/:id/status",
+        "file": "src/routes/order.routes.ts"
+      },
+      {
+        "method": "POST",
+        "path": "/:id/assign-captain",
+        "file": "src/routes/order.routes.ts"
+      }
+    ],
+    "controllers": [
+      "src/controllers/order.controller.ts"
+    ],
+    "services": [
+      "src/services/order-customer-snapshot.service.ts",
+      "src/services/order-timeline-30-46.service.ts",
+      "src/services/r29-order-timeline.service.ts",
+      "src/services/r21-order-notes.service.ts",
+      "src/services/core-order-flow.service.ts",
+      "src/services/order-cash.service.ts",
+      "src/services/order-intake-1-11.service.ts",
+      "src/services/order-lifecycle-1-11.service.ts"
+    ]
+  }
+}

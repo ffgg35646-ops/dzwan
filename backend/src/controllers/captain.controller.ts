@@ -1,0 +1,904 @@
+import { logSecurity } from "../services/ops-31-47.service.js";
+import { CaptainLocationModel } from "../models/CaptainLocation.js";
+import { CaptainDocumentModel } from "../models/CaptainDocument.js";
+import mongoose from "mongoose";
+import type { Response } from "express";
+import { Types } from "mongoose";
+import { z } from "zod";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import {
+  loadUserScope,
+  type ScopedRequest,
+} from "../middleware/scope.middleware.js";
+import { UserModel } from "../models/User.js";
+import CaptainRegistrationModel from "../models/CaptainRegistration.js";
+import { StaffPermissionModel } from "../models/StaffPermission.js";
+import { createAuditLog } from "../services/audit-log.service.js";
+import { applyDefaultCoverage } from "../services/captain-coverage.service.js";
+
+const updateCaptainSchema = z.object({
+  fullName: z.string().trim().min(2).max(120).optional(),
+  phone: z.string().trim().min(5).max(30).optional(),
+  email: z.string().trim().email().optional(),
+  status: z
+    .enum(["pending", "active", "rejected", "suspended", "inactive"])
+    .optional(),
+});
+
+async function hasCaptainScope(
+  req: ScopedRequest,
+  governorateId: string | null | undefined,
+  areaId: string | null | undefined,
+): Promise<boolean> {
+  const scope = req.scopedUser;
+
+  if (!scope) return false;
+
+  if (scope.role === "super_admin") {
+    return true;
+  }
+
+  if (scope.role === "governorate_leader") {
+    return !!(
+      scope.governorateId &&
+      governorateId &&
+      scope.governorateId === governorateId
+    );
+  }
+
+  if (scope.role === "area_leader") {
+    return !!(
+      scope.governorateId &&
+      scope.areaId &&
+      governorateId &&
+      areaId &&
+      scope.governorateId === governorateId &&
+      scope.areaId === areaId
+    );
+  }
+
+  if (scope.role !== "admin") {
+    return false;
+  }
+
+  const permissions =
+    await StaffPermissionModel.findOne({
+      userId: new Types.ObjectId(scope.id),
+    })
+      .select("governorateIds areaIds permissions")
+      .lean();
+
+  if (!permissions) {
+    return false;
+  }
+
+  const staffPermissions =
+    permissions.permissions ?? [];
+
+  // الأدمن الفرعي الذي تم منحه صفحة الكباتن
+  // لا يحتاج نطاق محافظة/منطقة إضافي.
+  if (
+    staffPermissions.includes("page:/captains") ||
+    staffPermissions.includes("admin.all")
+  ) {
+    return true;
+  }
+
+  if (!governorateId) {
+    return false;
+  }
+
+  const allowedGovernorates =
+    (permissions.governorateIds ?? []).map(
+      (x) => x.toString(),
+    );
+
+  const allowedAreas =
+    (permissions.areaIds ?? []).map(
+      (x) => x.toString(),
+    );
+
+  if (
+    allowedGovernorates.length > 0 &&
+    !allowedGovernorates.includes(
+      governorateId,
+    )
+  ) {
+    return false;
+  }
+
+  if (
+    allowedAreas.length > 0 &&
+    (!areaId || !allowedAreas.includes(areaId))
+  ) {
+    return false;
+  }
+
+  return (
+    allowedGovernorates.length > 0 ||
+    allowedAreas.length > 0
+  );
+}
+
+async function getCaptainLocation(userId: string) {
+  const captain = await UserModel.findOne({
+    _id: userId,
+    role: "captain",
+  })
+    .select("governorateId areaId")
+    .lean();
+
+  if (!captain) return null;
+
+  return {
+    governorateId: captain.governorateId?.toString() ?? null,
+    areaId: captain.areaId?.toString() ?? null,
+  };
+}
+
+export async function listCaptains(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const scopedReq = req as ScopedRequest;
+
+  try {
+    await loadUserScope(scopedReq, res, async () => {
+      const filter: Record<string, unknown> = {
+        role: "captain",
+      };
+
+      const scope = scopedReq.scopedUser;
+
+      if (
+        scope?.role === "governorate_leader" &&
+        scope.governorateId
+      ) {
+        filter.governorateId = new Types.ObjectId(
+          scope.governorateId,
+        );
+      }
+
+      if (
+        scope?.role === "area_leader" &&
+        scope.governorateId &&
+        scope.areaId
+      ) {
+        filter.governorateId = new Types.ObjectId(
+          scope.governorateId,
+        );
+        filter.areaId = new Types.ObjectId(
+          scope.areaId,
+        );
+      }
+
+      if (scope?.role === "admin") {
+        const permission =
+          await StaffPermissionModel.findOne({
+            userId: new Types.ObjectId(scope.id),
+          })
+            .select("permissions governorateIds areaIds")
+            .lean();
+
+        const permissions =
+          permission?.permissions ?? [];
+
+        const captainPageAllowed =
+          permissions.includes("page:/captains") ||
+          permissions.includes("page:/reports") ||
+          permissions.includes("page:/notifications") ||
+          permissions.includes("page:/operations-center") ||
+          permissions.includes("page:/cash-accounting") ||
+          permissions.includes("page:/captain-attendance");
+
+        if (
+          !captainPageAllowed &&
+          !permissions.includes("captains.read") &&
+          !permissions.includes("captains.all") &&
+          !permissions.includes("admin.all")
+        ) {
+          res.status(403).json({
+            success: false,
+            message:
+              "ليس لديك صلاحية مشاهدة الكباتن.",
+          });
+          return;
+        }
+
+        const governorateIds =
+          (permission?.governorateIds ?? []).map(
+            (x) => new Types.ObjectId(x),
+          );
+
+        const areaIds =
+          (permission?.areaIds ?? []).map(
+            (x) => new Types.ObjectId(x),
+          );
+
+        if (governorateIds.length > 0) {
+          filter.governorateId = {
+            $in: governorateIds,
+          };
+        }
+
+        if (areaIds.length > 0) {
+          filter.areaId = {
+            $in: areaIds,
+          };
+        }
+
+        if (
+          !captainPageAllowed &&
+          governorateIds.length === 0 &&
+          areaIds.length === 0
+        ) {
+          res.status(403).json({
+            success: false,
+            message:
+              "لا يوجد نطاق جغرافي محدد لهذا الأدمن.",
+          });
+          return;
+        }
+      }
+
+      const captains = await UserModel.find(filter)
+        .select(
+          "_id fullName email phone role status avatarUrl isOnline lastSeenAt lastLoginAt approvedAt approvedBy rejectionReason suspensionReason governorateId areaId createdAt updatedAt",
+        )
+        .sort({ createdAt: -1 })
+        .lean();
+
+      res.status(200).json({
+        success: true,
+        captains,
+      });
+    });
+  } catch (error) {
+    console.error("List captains error:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "حدث خطأ أثناء تحميل الكباتن.",
+      });
+    }
+  }
+}
+
+export async function getCaptain(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const scopedReq = req as ScopedRequest;
+
+  try {
+    const captainId = String(scopedReq.params.id || "").trim();
+
+    if (!mongoose.Types.ObjectId.isValid(captainId)) {
+      res.status(400).json({
+        success: false,
+        message: "معرّف الكابتن غير صالح.",
+      });
+      return;
+    }
+
+    await loadUserScope(scopedReq, res, async () => {
+      const captain = await UserModel.findOne({
+        _id: captainId,
+        role: "captain",
+      })
+        .select(
+          "_id fullName email phone role status avatarUrl isOnline lastSeenAt lastLoginAt approvedAt approvedBy rejectionReason suspensionReason governorateId areaId createdAt updatedAt",
+        )
+        .lean();
+
+      if (!captain) {
+        res.status(404).json({
+          success: false,
+          message: "الكابتن غير موجود.",
+        });
+        return;
+      }
+
+      if (
+        !(await hasCaptainScope(
+          scopedReq,
+          captain.governorateId?.toString(),
+          captain.areaId?.toString(),
+        ))
+      ) {
+        res.status(403).json({
+          success: false,
+          message: "لا يمكنك الوصول إلى كابتن خارج نطاقك.",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        captain,
+      });
+    });
+  } catch (error) {
+    console.error("Get captain error:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "حدث خطأ أثناء تحميل بيانات الكابتن.",
+      });
+    }
+  }
+}
+
+export async function updateCaptain(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const scopedReq = req as ScopedRequest;
+
+  try {
+    await loadUserScope(scopedReq, res, async () => {
+      const data = updateCaptainSchema.parse(scopedReq.body);
+
+      const captain = await UserModel.findOne({
+        _id: String(scopedReq.params.id),
+        role: "captain",
+      });
+
+      if (!captain) {
+        res.status(404).json({
+          success: false,
+          message: "الكابتن غير موجود.",
+        });
+        return;
+      }
+
+      if (
+        !(await hasCaptainScope(
+          scopedReq,
+          captain.governorateId?.toString(),
+          captain.areaId?.toString(),
+        ))
+      ) {
+        res.status(403).json({
+          success: false,
+          message: "لا يمكنك تعديل كابتن خارج نطاقك.",
+        });
+        return;
+      }
+
+      const before = {
+        fullName: captain.fullName,
+        phone: captain.phone,
+        email: captain.email,
+        status: captain.status,
+        governorateId:
+          captain.governorateId?.toString() ?? null,
+        areaId:
+          captain.areaId?.toString() ?? null,
+      };
+
+      if (data.fullName !== undefined) {
+        captain.fullName = data.fullName;
+      }
+
+      if (data.phone !== undefined) {
+        captain.phone = data.phone;
+      }
+
+      if (data.email !== undefined) {
+        captain.email = data.email.toLowerCase();
+      }
+
+      if (data.status !== undefined) {
+        captain.status = data.status;
+      }
+
+      await captain.save();
+
+      await createAuditLog({
+        actorId: Types.ObjectId.isValid(
+          String(scopedReq.user?.sub),
+        )
+          ? new Types.ObjectId(
+              String(scopedReq.user?.sub),
+            )
+          : null,
+        actorRole:
+          scopedReq.scopedUser?.role ?? null,
+        action: "captain.update",
+        entityType: "Captain",
+        entityId: captain._id,
+        before,
+        after: {
+          fullName: captain.fullName,
+          phone: captain.phone,
+          email: captain.email,
+          status: captain.status,
+          governorateId:
+            captain.governorateId?.toString() ?? null,
+          areaId:
+            captain.areaId?.toString() ?? null,
+        },
+        ip: req.ip,
+        userAgent:
+          req.get("user-agent") ?? null,
+        description:
+          `تم تعديل بيانات الكابتن ${captain.fullName}.`,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "تم تحديث بيانات الكابتن بنجاح.",
+        captain,
+      });
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "بيانات الكابتن غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    console.error("Update captain error:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "حدث خطأ أثناء تحديث الكابتن.",
+      });
+    }
+  }
+}
+
+export async function approveCaptain(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const scopedReq = req as ScopedRequest;
+
+  try {
+    await loadUserScope(scopedReq, res, async () => {
+      const location = await getCaptainLocation(
+        String(scopedReq.params.id),
+      );
+
+      if (!location) {
+        res.status(404).json({
+          success: false,
+          message: "الكابتن غير موجود.",
+        });
+        return;
+      }
+
+      if (
+        !(await hasCaptainScope(
+          scopedReq,
+          location.governorateId,
+          location.areaId,
+        ))
+      ) {
+        res.status(403).json({
+          success: false,
+          message: "لا يمكنك قبول كابتن خارج نطاقك.",
+        });
+        return;
+      }
+
+      const captainId = String(scopedReq.params.id);
+
+      await applyDefaultCoverage(captainId);
+
+      const requiredDocumentTypes = [
+        "id_front",
+        "id_back",
+        "residence_front",
+        "residence_back",
+      ];
+
+      const approvedDocuments =
+        await CaptainDocumentModel.find({
+          captainId,
+          status: "approved",
+          $or: [
+            { expiresAt: null },
+            { expiresAt: { $gt: new Date() } },
+          ],
+        })
+          .select("documentType")
+          .lean();
+
+      const approvedTypes = new Set(
+        approvedDocuments.map((doc) => doc.documentType),
+      );
+
+      const missingDocuments =
+        requiredDocumentTypes.filter(
+          (type) => !approvedTypes.has(type),
+        );
+
+      if (missingDocuments.length > 0) {
+        res.status(400).json({
+          success: false,
+          message:
+            "لا يمكن قبول الكابتن قبل اعتماد المستندات الأربعة.",
+          code: "CAPTAIN_DOCUMENTS_INCOMPLETE",
+          missingDocuments,
+        });
+        return;
+      }
+
+      const captain = await UserModel.findOneAndUpdate(
+        {
+          _id: captainId,
+          role: "captain",
+        },
+        {
+          $set: {
+            status: "active",
+            approvedAt: new Date(),
+            approvedBy: scopedReq.user?.sub,
+            rejectionReason: null,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        },
+      )
+        .select(
+          "_id fullName email phone role status avatarUrl approvedAt approvedBy governorateId areaId",
+        )
+        .lean();
+
+      await createAuditLog({
+        actorId: Types.ObjectId.isValid(
+          String(scopedReq.user?.sub),
+        )
+          ? new Types.ObjectId(
+              String(scopedReq.user?.sub),
+            )
+          : null,
+        actorRole:
+          scopedReq.scopedUser?.role ?? null,
+        action: "captain.approve",
+        entityType: "Captain",
+        entityId: captain?._id ?? null,
+        before: {
+          status: "pending",
+        },
+        after: {
+          status: "active",
+          approvedAt:
+            captain?.approvedAt ?? null,
+          approvedBy:
+            captain?.approvedBy ?? null,
+        },
+        ip: req.ip,
+        userAgent:
+          req.get("user-agent") ?? null,
+        description:
+          `تمت الموافقة على الكابتن ${captain?.fullName ?? ""}.`,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "تم قبول الكابتن وتفعيله.",
+        captain,
+      });
+    });
+  } catch (error) {
+    console.error("Approve captain error:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "حدث خطأ أثناء قبول الكابتن.",
+      });
+    }
+  }
+}
+
+export async function rejectCaptain(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const scopedReq = req as ScopedRequest;
+
+  try {
+    await loadUserScope(scopedReq, res, async () => {
+      const reason =
+        typeof scopedReq.body?.reason === "string"
+          ? scopedReq.body.reason.trim()
+          : "";
+
+      const location = await getCaptainLocation(
+        String(scopedReq.params.id),
+      );
+
+      if (!location) {
+        res.status(404).json({
+          success: false,
+          message: "الكابتن غير موجود.",
+        });
+        return;
+      }
+
+      if (
+        !(await hasCaptainScope(
+          scopedReq,
+          location.governorateId,
+          location.areaId,
+        ))
+      ) {
+        res.status(403).json({
+          success: false,
+          message: "لا يمكنك رفض كابتن خارج نطاقك.",
+        });
+        return;
+      }
+
+      const captain = await UserModel.findOneAndUpdate(
+        {
+          _id: String(scopedReq.params.id),
+          role: "captain",
+        },
+        {
+          $set: {
+            status: "rejected",
+            rejectionReason: reason || null,
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+        },
+      )
+        .select(
+          "_id fullName email phone role status rejectionReason governorateId areaId",
+        )
+        .lean();
+
+      await createAuditLog({
+        actorId: Types.ObjectId.isValid(
+          String(scopedReq.user?.sub),
+        )
+          ? new Types.ObjectId(
+              String(scopedReq.user?.sub),
+            )
+          : null,
+        actorRole:
+          scopedReq.scopedUser?.role ?? null,
+        action: "captain.reject",
+        entityType: "Captain",
+        entityId: captain?._id ?? null,
+        before: {
+          status: "pending",
+        },
+        after: {
+          status: "rejected",
+          rejectionReason: reason || null,
+        },
+        ip: req.ip,
+        userAgent:
+          req.get("user-agent") ?? null,
+        description:
+          `تم رفض الكابتن ${captain?.fullName ?? ""}.`,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "تم رفض الكابتن.",
+        captain,
+      });
+    });
+  } catch (error) {
+    console.error("Reject captain error:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "حدث خطأ أثناء رفض الكابتن.",
+      });
+    }
+  }
+}
+
+export async function deleteCaptain(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  const scopedReq = req as ScopedRequest;
+
+  try {
+    await loadUserScope(scopedReq, res, async () => {
+      const location = await getCaptainLocation(
+        String(scopedReq.params.id),
+      );
+
+      if (!location) {
+        res.status(404).json({
+          success: false,
+          message: "الكابتن غير موجود.",
+        });
+        return;
+      }
+
+      if (
+        !(await hasCaptainScope(
+          scopedReq,
+          location.governorateId,
+          location.areaId,
+        ))
+      ) {
+        res.status(403).json({
+          success: false,
+          message: "لا يمكنك حذف كابتن خارج نطاقك.",
+        });
+        return;
+      }
+
+      const captain = await UserModel.findOne({
+        _id: String(scopedReq.params.id),
+        role: "captain",
+      })
+        .select(
+          "_id fullName phone email status governorateId areaId",
+        )
+        .lean();
+
+      await UserModel.findOneAndDelete({
+        _id: String(scopedReq.params.id),
+        role: "captain",
+      });
+
+      if (captain?.phone) {
+        await CaptainRegistrationModel.deleteOne({
+          phone: captain.phone,
+          status: "approved",
+        });
+      }
+
+      await createAuditLog({
+        actorId: Types.ObjectId.isValid(
+          String(scopedReq.user?.sub),
+        )
+          ? new Types.ObjectId(
+              String(scopedReq.user?.sub),
+            )
+          : null,
+        actorRole:
+          scopedReq.scopedUser?.role ?? null,
+        action: "captain.delete",
+        entityType: "Captain",
+        entityId: captain?._id ?? null,
+        before: captain
+          ? {
+              fullName: captain.fullName,
+              phone: captain.phone,
+              email: captain.email,
+              status: captain.status,
+              governorateId:
+                captain.governorateId?.toString() ?? null,
+              areaId:
+                captain.areaId?.toString() ?? null,
+            }
+          : null,
+        after: null,
+        ip: req.ip,
+        userAgent:
+          req.get("user-agent") ?? null,
+        description:
+          `تم حذف الكابتن ${captain?.fullName ?? ""}.`,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "تم حذف الكابتن بنجاح.",
+      });
+    });
+  } catch (error) {
+    console.error("Delete captain error:", error);
+
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        message: "حدث خطأ أثناء حذف الكابتن.",
+      });
+    }
+  }
+}
+
+
+export async function updateCaptainLocation(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const captainId = String(req.user?.sub);
+
+    if (
+      !captainId ||
+      !Types.ObjectId.isValid(captainId)
+    ) {
+      res.status(401).json({
+        success: false,
+        message: "غير مصرح.",
+      });
+      return;
+    }
+
+    const latitude = Number(req.body?.latitude);
+    const longitude = Number(req.body?.longitude);
+
+    if (
+      !Number.isFinite(latitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "إحداثيات الموقع غير صحيحة.",
+      });
+      return;
+    }
+
+    const captain = await UserModel.findOne({
+      _id: captainId,
+      role: "captain",
+    })
+      .select("_id")
+      .lean();
+
+    if (!captain) {
+      res.status(404).json({
+        success: false,
+        message: "الكابتن غير موجود.",
+      });
+      return;
+    }
+
+    const location =
+      await CaptainLocationModel.findOneAndUpdate(
+        { captainId },
+        {
+          $set: {
+            latitude,
+            longitude,
+            updatedAt: new Date(),
+          },
+          $setOnInsert: {
+            captainId,
+          },
+        },
+        {
+          upsert: true,
+          new: true,
+          runValidators: true,
+        },
+      ).lean();
+
+    res.status(200).json({
+      success: true,
+      message: "تم تحديث موقع الكابتن.",
+      location,
+    });
+  } catch (error) {
+    console.error(
+      "Update captain location error:",
+      error,
+    );
+
+    res.status(500).json({
+      success: false,
+      message: "تعذر تحديث موقع الكابتن.",
+    });
+  }
+}

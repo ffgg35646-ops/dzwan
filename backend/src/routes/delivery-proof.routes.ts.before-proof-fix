@@ -1,0 +1,19 @@
+import { Router } from "express";
+import {
+  requireAuth,
+} from "../middleware/auth.middleware.js";
+import {
+  createOtp,
+  verifyOtp,
+  uploadPhoto,
+  proofDetails,
+} from "../controllers/delivery-proof.controller.js";
+
+const router = Router();
+
+router.post("/:orderId/otp", requireAuth, createOtp);
+router.post("/:orderId/otp/verify", requireAuth, verifyOtp);
+router.post("/:orderId/photo", requireAuth, uploadPhoto);
+router.get("/:orderId", requireAuth, proofDetails);
+
+export default router;

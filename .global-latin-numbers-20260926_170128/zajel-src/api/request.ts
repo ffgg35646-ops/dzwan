@@ -1,0 +1,51 @@
+
+import * as clientModule from "./client";
+
+const api: any =
+  (clientModule as any).api ??
+  (clientModule as any).client ??
+  (clientModule as any).apiClient ??
+  (clientModule as any).axiosClient ??
+  (clientModule as any).default ??
+  clientModule;
+
+function unwrap(response: any) {
+  return response?.data?.data ?? response?.data ?? response;
+}
+
+export async function apiGet(path: string, config?: any) {
+  const response = await api.get(path, config);
+  return unwrap(response);
+}
+
+export async function apiPost(
+  path: string,
+  body?: any,
+  config?: any
+) {
+  const response = await api.post(path, body, config);
+  return unwrap(response);
+}
+
+export async function apiPatch(
+  path: string,
+  body?: any,
+  config?: any
+) {
+  const response = await api.patch(path, body, config);
+  return unwrap(response);
+}
+
+export async function apiPut(
+  path: string,
+  body?: any,
+  config?: any
+) {
+  const response = await api.put(path, body, config);
+  return unwrap(response);
+}
+
+export async function apiDelete(path: string, config?: any) {
+  const response = await api.delete(path, config);
+  return unwrap(response);
+}

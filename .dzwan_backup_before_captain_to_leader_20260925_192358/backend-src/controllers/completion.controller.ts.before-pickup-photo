@@ -1,0 +1,577 @@
+import type { Request, Response } from "express";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { Types } from "mongoose";
+import { z } from "zod";
+
+import { CaptainRatingModel } from "../models/CaptainRating.js";
+import CaptainCashTransactionModel from "../models/CaptainCashTransaction.js";
+import { AuditLogModel } from "../models/AuditLog.js";
+import { OperationsSettingsModel } from "../models/OperationsSettings.js";
+import { NotificationRuleModel } from "../models/NotificationRule.js";
+import { UserModel } from "../models/User.js";
+
+import {
+  recordCaptainCash,
+  getCaptainCashStatement,
+} from "../services/captain-cash.service.js";
+
+import { getCaptainKpi } from "../services/captain-kpi.service.js";
+
+import {
+  createAuditLog,
+  getAuditLogs,
+} from "../services/audit-log.service.js";
+
+function oid(value: string) {
+  return Types.ObjectId.isValid(value)
+    ? new Types.ObjectId(value)
+    : null;
+}
+
+function period(req: AuthenticatedRequest) {
+  const to =
+    req.query.to
+      ? new Date(String(req.query.to))
+      : new Date();
+
+  const from =
+    req.query.from
+      ? new Date(String(req.query.from))
+      : new Date(
+          to.getTime() -
+            30 * 24 * 60 * 60 * 1000,
+        );
+
+  return { from, to };
+}
+
+// -------------------------
+// Ratings
+// -------------------------
+export async function createCaptainRating(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const data = z.object({
+      establishmentId: z.string(),
+      orderId: z.string(),
+      captainId: z.string(),
+      stars: z.number().int().min(1).max(5),
+      comment: z.string().max(2000).optional(),
+    }).parse(req.body);
+
+    const captainId = oid(data.captainId);
+    const establishmentId = oid(data.establishmentId);
+    const orderId = oid(data.orderId);
+
+    if (!captainId || !establishmentId || !orderId) {
+      return res.status(400).json({
+        message: "معرفات التقييم غير صحيحة.",
+      });
+    }
+
+    const exists =
+      await CaptainRatingModel.findOne({
+        orderId,
+      });
+
+    if (exists) {
+      return res.status(409).json({
+        message: "تم تقييم هذا الطلب مسبقًا.",
+      });
+    }
+
+    const rating =
+      await CaptainRatingModel.create({
+        captainId,
+        establishmentId,
+        orderId,
+        stars: data.stars,
+        comment: data.comment ?? null,
+      });
+
+    return res.status(201).json({
+      message: "تم حفظ التقييم.",
+      rating,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر حفظ التقييم.",
+    });
+  }
+}
+
+export async function captainRatings(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const captainId = oid(
+    String(req.params.captainId),
+  );
+
+  if (!captainId) {
+    return res.status(400).json({
+      message: "معرف الكابتن غير صحيح.",
+    });
+  }
+
+  const ratings =
+    await CaptainRatingModel.find({
+      captainId,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+  const average =
+    ratings.length > 0
+      ? Number(
+          (
+            ratings.reduce(
+              (sum, item) =>
+                sum + item.stars,
+              0,
+            ) / ratings.length
+          ).toFixed(2),
+        )
+      : 0;
+
+  return res.json({
+    total: ratings.length,
+    average,
+    ratings,
+  });
+}
+
+// -------------------------
+// Cash
+// -------------------------
+export async function addCashTransaction(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const data = z.object({
+      captainId: z.string(),
+      orderId: z.string().optional(),
+      type: z.enum([
+        "paid_to_establishment",
+        "collected_from_customer",
+        "delivery_fee",
+        "adjustment",
+      ]),
+      amount: z.number().min(0),
+      description: z.string().max(1000).optional(),
+    }).parse(req.body);
+
+    const captainId = oid(data.captainId);
+
+    if (!captainId) {
+      return res.status(400).json({
+        message: "معرف الكابتن غير صحيح.",
+      });
+    }
+
+    const transaction =
+      await recordCaptainCash({
+        captainId,
+        orderId: data.orderId
+          ? oid(data.orderId)
+          : null,
+        type: data.type,
+        amount: data.amount,
+        description:
+          data.description ?? null,
+      });
+
+    return res.status(201).json({
+      message: "تم تسجيل الحركة النقدية.",
+      transaction,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر تسجيل الحركة النقدية.",
+    });
+  }
+}
+
+export async function captainCash(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const captainId = oid(
+    String(req.params.captainId),
+  );
+
+  if (!captainId) {
+    return res.status(400).json({
+      message: "معرف الكابتن غير صحيح.",
+    });
+  }
+
+  const { from, to } = period(req);
+
+  return res.json(
+    await getCaptainCashStatement(
+      captainId,
+      from,
+      to,
+    ),
+  );
+}
+
+// -------------------------
+// KPI
+// -------------------------
+export async function captainKpi(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const captainId = oid(
+    String(req.params.captainId),
+  );
+
+  if (!captainId) {
+    return res.status(400).json({
+      message: "معرف الكابتن غير صحيح.",
+    });
+  }
+
+  const { from, to } = period(req);
+
+  return res.json(
+    await getCaptainKpi(
+      captainId,
+      from,
+      to,
+    ),
+  );
+}
+
+// -------------------------
+// Audit
+// -------------------------
+export async function auditLogs(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  return res.json({
+    logs: await getAuditLogs(),
+  });
+}
+
+export async function auditLog(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const actorId: import("mongoose").Types.ObjectId | null = req.user?.sub ? oid(String(req.user.sub)) : null;
+
+  const data = z.object({
+    action: z.string().min(2).max(120),
+    entityType: z.string().min(2).max(120),
+    entityId: z.string().optional(),
+    before: z.record(z.string(), z.unknown()).optional(),
+    after: z.record(z.string(), z.unknown()).optional(),
+    description: z.string().max(3000).optional(),
+  }).parse(req.body);
+
+  const row = await createAuditLog({
+    actorId,
+    actorRole: req.user?.role ?? null,
+    action: data.action,
+    entityType: data.entityType,
+    entityId: data.entityId
+      ? oid(data.entityId)
+      : null,
+    before: data.before ?? null,
+    after: data.after ?? null,
+    ip: req.ip,
+    userAgent:
+      req.get("user-agent") ?? null,
+    description:
+      data.description ?? null,
+  });
+
+  return res.status(201).json({
+    log: row,
+  });
+}
+
+// -------------------------
+// Operations Settings
+// -------------------------
+export async function getOperationsSettings(
+  _req: AuthenticatedRequest,
+  res: Response,
+) {
+  const settings =
+    (await OperationsSettingsModel.findOne()) ??
+    (await OperationsSettingsModel.create({}));
+
+  return res.json({
+    settings,
+  });
+}
+
+export async function updateOperationsSettings(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const data = z.object({
+    pricingMode: z.enum([
+      "geofencing",
+      "area_to_area",
+    ]).optional(),
+
+    stuckOrderMinutes: z.number().int().min(1).max(1440).optional(),
+
+    requireCompleteCaptainDocuments: z.boolean().optional(),
+    requirePickupPhoto: z.boolean().optional(),
+    requireDeliveryOtp: z.boolean().optional(),
+    requireDeliveryPhoto: z.boolean().optional(),
+
+    shopCanCancel: z.boolean().optional(),
+    captainCanCancel: z.boolean().optional(),
+    adminCanCancel: z.boolean().optional(),
+
+    ratingEnabled: z.boolean().optional(),
+  }).parse(req.body);
+
+  const before =
+    await OperationsSettingsModel.findOne()
+      .lean();
+
+  const settings =
+    await OperationsSettingsModel.findOneAndUpdate(
+      {},
+      { $set: data },
+      {
+        upsert: true,
+        returnDocument: "after",
+        setDefaultsOnInsert: true,
+      },
+    );
+
+  const actorId: import("mongoose").Types.ObjectId | null = req.user?.sub ? oid(String(req.user.sub)) : null;
+
+  await createAuditLog({
+    actorId,
+    actorRole: req.user?.role ?? null,
+    action: "operations_settings.update",
+    entityType: "OperationsSettings",
+    before: before as Record<string, unknown> | null,
+    after: settings?.toObject() as Record<string, unknown> | undefined,
+    ip: req.ip,
+    userAgent:
+      req.get("user-agent") ?? null,
+  });
+
+  return res.json({
+    message: "تم تحديث الإعدادات المركزية.",
+    settings,
+  });
+}
+
+// -------------------------
+// Notification Rules
+// -------------------------
+export async function listNotificationRules(
+  _req: AuthenticatedRequest,
+  res: Response,
+) {
+  return res.json({
+    rules: await NotificationRuleModel.find()
+      .sort({ event: 1 })
+      .lean(),
+  });
+}
+
+export async function upsertNotificationRule(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const data = z.object({
+    event: z.string().min(2).max(120),
+    enabled: z.boolean().default(true),
+    recipients: z.array(z.string()).default([]),
+    title: z.string().min(2).max(200),
+    message: z.string().min(2).max(1000),
+  }).parse(req.body);
+
+  const rule =
+    await NotificationRuleModel.findOneAndUpdate(
+      { event: data.event },
+      data,
+      {
+        upsert: true,
+        returnDocument: "after",
+      },
+    );
+
+  return res.json({
+    message: "تم حفظ قاعدة الإشعار.",
+    rule,
+  });
+}
+
+// -------------------------
+// Sub-admins
+// -------------------------
+export async function createSubAdmin(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const data = z.object({
+    fullName: z.string().min(2).max(120),
+    phone: z.string().min(5).max(30),
+    email: z.string().email().optional(),
+    password: z.string().min(8).max(100),
+    governorateId: z.string().optional(),
+    areaId: z.string().optional(),
+  }).parse(req.body);
+
+  const bcrypt = await import("bcryptjs");
+
+  const exists =
+    await UserModel.findOne({
+      $or: [
+        { phone: data.phone },
+        ...(data.email
+          ? [{ email: data.email }]
+          : []),
+      ],
+    });
+
+  if (exists) {
+    return res.status(409).json({
+      message: "رقم الهاتف أو البريد مستخدم بالفعل.",
+    });
+  }
+
+  const passwordHash =
+    await bcrypt.hash(data.password, 12);
+
+  const user =
+    await UserModel.create({
+      role: "admin",
+      status: "active",
+      fullName: data.fullName,
+      phone: data.phone,
+      email: data.email,
+      passwordHash,
+      governorateId: data.governorateId
+        ? oid(data.governorateId)
+        : null,
+      areaId: data.areaId
+        ? oid(data.areaId)
+        : null,
+      isOnline: false,
+    });
+
+  return res.status(201).json({
+    message: "تم إنشاء الأدمن الفرعي.",
+    user: {
+      id: user._id,
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+    },
+  });
+}
+
+export async function listSubAdmins(
+  _req: AuthenticatedRequest,
+  res: Response,
+) {
+  const admins =
+    await UserModel.find({
+      role: "admin",
+    })
+      .select(
+        "_id fullName phone email role status governorateId areaId createdAt",
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+
+  return res.json({
+    admins,
+  });
+}
+
+export async function updateSubAdmin(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const id = String(req.params.id);
+
+  if (!Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      message: "معرف الأدمن غير صحيح.",
+    });
+  }
+
+  const data = z.object({
+    fullName: z.string().min(2).max(120).optional(),
+    status: z.enum([
+      "active",
+      "suspended",
+      "inactive",
+    ]).optional(),
+    governorateId: z.string().nullable().optional(),
+    areaId: z.string().nullable().optional(),
+  }).parse(req.body);
+
+  const user =
+    await UserModel.findOneAndUpdate(
+      {
+        _id: id,
+        role: "admin",
+      },
+      {
+        $set: {
+          ...data,
+          governorateId:
+            data.governorateId === undefined
+              ? undefined
+              : data.governorateId
+                ? oid(data.governorateId)
+                : null,
+          areaId:
+            data.areaId === undefined
+              ? undefined
+              : data.areaId
+                ? oid(data.areaId)
+                : null,
+        },
+      },
+      {
+        returnDocument: "after",
+        runValidators: true,
+      },
+    ).select(
+      "_id fullName phone email role status governorateId areaId",
+    );
+
+  if (!user) {
+    return res.status(404).json({
+      message: "الأدمن غير موجود.",
+    });
+  }
+
+  return res.json({
+    message: "تم تحديث الأدمن.",
+    user,
+  });
+}
+
+// keep imports used by generated compilation
+void CaptainCashTransactionModel;
+void AuditLogModel;

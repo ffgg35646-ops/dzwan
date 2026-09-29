@@ -1,0 +1,80 @@
+import { Types } from "mongoose";
+import CaptainCashTransactionModel from "../models/CaptainCashTransaction.js";
+
+export async function recordCaptainCash(
+  input: {
+    captainId: Types.ObjectId;
+    orderId?: Types.ObjectId | null;
+    type:
+      | "paid_to_establishment"
+      | "collected_from_customer"
+      | "delivery_fee"
+      | "adjustment";
+    amount: number;
+    description?: string | null;
+  },
+) {
+  if (input.amount < 0) {
+    throw new Error("قيمة الحركة النقدية لا يمكن أن تكون سالبة.");
+  }
+
+  return CaptainCashTransactionModel.create(input);
+}
+
+export async function getCaptainCashStatement(
+  captainId: Types.ObjectId,
+  from: Date,
+  to: Date,
+) {
+  const rows =
+    await CaptainCashTransactionModel.find({
+      captainId,
+      createdAt: {
+        $gte: from,
+        $lte: to,
+      },
+    })
+      .sort({ createdAt: 1 })
+      .lean();
+
+  let paidToEstablishments = 0;
+  let collectedFromCustomers = 0;
+  let deliveryFees = 0;
+  let adjustments = 0;
+
+  for (const row of rows) {
+    if (
+      row.type === "paid_to_establishment"
+    ) {
+      paidToEstablishments += row.amount;
+    }
+
+    if (
+      row.type === "collected_from_customer"
+    ) {
+      collectedFromCustomers += row.amount;
+    }
+
+    if (row.type === "delivery_fee") {
+      deliveryFees += row.amount;
+    }
+
+    if (row.type === "adjustment") {
+      adjustments += row.amount;
+    }
+  }
+
+  return {
+    totalTransactions: rows.length,
+    paidToEstablishments,
+    collectedFromCustomers,
+    deliveryFees,
+    adjustments,
+
+    cashDifference:
+      collectedFromCustomers -
+      paidToEstablishments,
+
+    transactions: rows,
+  };
+}

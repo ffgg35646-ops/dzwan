@@ -1,0 +1,174 @@
+import { useAppTheme } from "../../theme/useAppTheme";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+
+import Screen from "../../components/Screen";
+import LoadingState from "../../components/LoadingState";
+import { useAuthStore } from "../../store/authStore";
+import {
+  getCaptainCashStatement,
+} from "../../api/captainRuntime";
+
+export default function CashStatementScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const user = useAuthStore((s) => s.user);
+
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      const result =
+        await getCaptainCashStatement(
+          user.id
+        );
+
+      setData(result);
+    } catch (e: any) {
+      Alert.alert(
+        "تعذر تحميل الكشف",
+        e?.response?.data?.message ||
+          "تعذر تحميل البيانات."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (loading) {
+    return (
+      <Screen>
+        <LoadingState message="جاري تحميل كشف الحساب..." />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <ScrollView
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={load}
+          />
+        }
+        contentContainerStyle={styles.container}
+      >
+        <Text style={styles.title}>
+          كشف حساب الكابتن
+        </Text>
+
+        <Text style={styles.subtitle}>
+          تقرير محاسبي للحركات النقدية، وليس محفظة إلكترونية.
+        </Text>
+
+        <Stat
+          title="عدد الطلبات"
+          value={
+            data?.orders ??
+            data?.ordersCount ??
+            data?.totalOrders ??
+            0
+          }
+        />
+
+        <Stat
+          title="المدفوع للمحلات"
+          value={`${data?.paidToEstablishments ?? data?.totalPaidShops ?? 0} د.ع`}
+        />
+
+        <Stat
+          title="المستلم من الزبائن"
+          value={`${data?.collectedFromCustomers ?? data?.totalCollectedCustomers ?? 0} د.ع`}
+        />
+
+        <Stat
+          title="أجور التوصيل"
+          value={`${data?.deliveryFees ?? data?.totalDeliveryFees ?? 0} د.ع`}
+        />
+
+        <Text style={styles.note}>
+          هذا كشف محاسبي للحركات النقدية وليس محفظة إلكترونية.
+        </Text>
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function Stat({
+  title,
+  value,
+}: {
+  title: string;
+  value: string | number;
+}) {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+
+  return (
+    <View style={styles.card}>
+      <Text style={styles.label}>{title}</Text>
+      <Text style={styles.value}>{value}</Text>
+    </View>
+  );
+}
+
+const createStyles = (appTheme: ReturnType<typeof useAppTheme>) => StyleSheet.create({
+  container: {
+    padding: 20,
+    gap: 12,
+  },
+  title: {
+    color: appTheme.textColor,
+    fontSize: 29,
+    fontWeight: "900",
+    textAlign: "right",
+    marginBottom: 4,
+  },
+  subtitle: {
+    color: appTheme.secondaryTextColor,
+    fontSize: 13,
+    lineHeight: 22,
+    textAlign: "right",
+    marginBottom: 8,
+  },
+  card: {
+    padding: 18,
+    borderRadius: 18,
+    backgroundColor: appTheme.cardColor,
+    borderWidth: 1,
+    borderColor: appTheme.borderColor,
+  },
+  label: {
+    color: appTheme.secondaryTextColor,
+    fontSize: 13,
+    textAlign: "right",
+  },
+  value: {
+    marginTop: 7,
+    color: appTheme.primaryDarkColor,
+    fontSize: 21,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+  note: {
+    marginTop: 8,
+    color: appTheme.secondaryTextColor,
+    textAlign: "right",
+    lineHeight: 23,
+  },
+});

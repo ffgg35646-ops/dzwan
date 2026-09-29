@@ -1,0 +1,476 @@
+import React, { useState } from "react";
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import Screen from "../../components/Screen";
+import AppInput from "../../components/AppInput";
+import AppButton from "../../components/AppButton";
+import LocationSelector from "../../components/LocationSelector";
+import { api } from "../../api/client";
+import { useNavigation } from "@react-navigation/native";
+import { useAppTheme } from "../../theme/useAppTheme";
+
+type ImageValue = {
+  uri: string;
+  name?: string;
+  type?: string;
+  file?: any;
+} | null;
+
+export default function CaptainRegisterScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const navigation = useNavigation<any>();
+
+  const [fullName, setFullName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [gmail, setGmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [governorateId, setGovernorateId] = useState("");
+  const [areaId, setAreaId] = useState("");
+
+  const [idFront, setIdFront] = useState<ImageValue>(null);
+  const [idBack, setIdBack] = useState<ImageValue>(null);
+  const [resFront, setResFront] = useState<ImageValue>(null);
+  const [resBack, setResBack] = useState<ImageValue>(null);
+
+  const [loading, setLoading] = useState(false);
+  const [formMessage, setFormMessage] = useState("");
+  const [formMessageType, setFormMessageType] = useState<
+    "error" | "success"
+  >("error");
+  const [formError, setFormError] = useState("");
+
+  async function pickImage(
+    setter: React.Dispatch<React.SetStateAction<ImageValue>>,
+  ) {
+    const permission =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "صلاحية مطلوبة",
+        "يجب السماح للتطبيق باختيار الصور.",
+      );
+      return;
+    }
+
+    const result =
+      await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ["images"],
+        quality: 0.8,
+        allowsEditing: true,
+      });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const asset = result.assets[0];
+
+    setter({
+      uri: asset.uri,
+      name: asset.fileName || "document.jpg",
+      type: asset.mimeType || "image/jpeg",
+      file: (asset as any).file,
+    });
+  }
+
+  function showMessage(title: string, message: string) {
+    setFormError(`${title}: ${message}`);
+
+    if (Platform.OS !== "web") {
+      Alert.alert(title, message);
+    }
+  }
+
+  function validate() {
+    const name = fullName.trim();
+    const phoneValue = phone.trim();
+    const gmailValue = gmail.trim().toLowerCase();
+
+    if (!name) return "أدخل الاسم الثلاثي.";
+
+    if (!phoneValue) {
+      return "أدخل رقم الهاتف.";
+    }
+
+    if (!/^07\d{9}$/.test(phoneValue)) {
+      return "رقم الهاتف غير صحيح. يجب أن يكون رقمًا عراقيًا مكونًا من 11 رقمًا ويبدأ بـ 07.";
+    }
+
+    if (!gmailValue) {
+      return "أدخل حساب Gmail.";
+    }
+
+    if (!/^[^\s@]+@gmail\.com$/.test(gmailValue)) {
+      return "أدخل عنوان Gmail صحيحًا.";
+    }
+
+    if (!password.trim()) {
+      return "أدخل كلمة المرور.";
+    }
+
+    if (password.length < 6) {
+      return "كلمة المرور يجب أن تكون 6 أحرف أو أكثر.";
+    }
+
+    if (!governorateId) {
+      return "اختر المحافظة.";
+    }
+
+    if (!areaId) {
+      return "اختر المنطقة.";
+    }
+
+    if (!idFront || !idBack || !resFront || !resBack) {
+      return "يجب رفع صور الهوية وبطاقة السكن كاملة.";
+    }
+
+    return null;
+  }
+
+  async function submit() {
+    setFormMessage("");
+
+    const error = validate();
+
+    if (error) {
+      setFormMessageType("error");
+      setFormMessage(error);
+      return;
+    }
+
+    const form = new FormData();
+
+    form.append("fullName", fullName.trim());
+    form.append("phone", phone.trim());
+    form.append("gmail", gmail.trim().toLowerCase());
+    form.append("password", password);
+    form.append("governorateId", governorateId);
+    form.append("areaId", areaId);
+
+    const appendFile = (
+      field: string,
+      file: ImageValue,
+    ) => {
+      if (!file) return;
+
+      if (
+        Platform.OS === "web" &&
+        file.file
+      ) {
+        form.append(field, file.file);
+        return;
+      }
+
+      form.append(field, {
+        uri: file.uri,
+        name: file.name || `${field}.jpg`,
+        type: file.type || "image/jpeg",
+      } as any);
+    };
+
+    appendFile("idFront", idFront);
+    appendFile("idBack", idBack);
+    appendFile("residenceFront", resFront);
+    appendFile("residenceBack", resBack);
+
+    setLoading(true);
+
+    try {
+      const response = await api.post(
+        "/captain-registration",
+        form,
+      );
+
+      setFormMessageType("success");
+      setFormMessage(
+        response?.data?.message ||
+          "تم إرسال طلب التسجيل بنجاح.",
+      );
+
+      // لاحقًا سنضيف هنا شاشة OTP.
+    } catch (error: any) {
+      console.error("Captain registration error:", error);
+
+      setFormMessageType("error");
+
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "حدث خطأ أثناء إرسال طلب التسجيل.";
+
+      setFormMessage(message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const docButton = (
+    title: string,
+    value: ImageValue,
+    setter: React.Dispatch<React.SetStateAction<ImageValue>>,
+  ) => (
+    <View style={styles.document}>
+      <Text style={styles.documentTitle}>{title}</Text>
+
+      <AppButton
+        title={value ? "تم اختيار الصورة ✓" : "اختيار صورة"}
+        secondary
+        onPress={() => pickImage(setter)}
+      />
+    </View>
+  );
+
+  return (
+    <Screen>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={
+          Platform.OS === "ios"
+            ? "padding"
+            : undefined
+        }
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={styles.title}>
+            تسجيل الكابتن
+          </Text>
+
+          <Text style={styles.subtitle}>
+            أدخل بياناتك واختر المحافظة والمنطقة وارفع
+            الوثائق المطلوبة لإرسال طلب التسجيل إلى الإدارة.
+          </Text>
+
+          {formError ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>
+                {formError}
+              </Text>
+            </View>
+          ) : null}
+
+          <AppInput
+            placeholder="الاسم الثلاثي"
+            value={fullName}
+            onChangeText={(value) => {
+              setFormError("");
+              setFullName(value);
+            }}
+          />
+
+          <AppInput
+            placeholder="رقم الهاتف"
+            value={phone}
+            onChangeText={(value) => {
+              setFormError("");
+              setPhone(value);
+            }}
+            keyboardType="phone-pad"
+          />
+
+          <AppInput
+            placeholder="حساب Gmail"
+            value={gmail}
+            onChangeText={(value) => {
+              setFormError("");
+              setGmail(value);
+            }}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <AppInput
+            placeholder="كلمة المرور"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+
+          <LocationSelector
+            type="captain"
+            governorateId={governorateId}
+            areaId={areaId}
+            onGovernorateChange={setGovernorateId}
+            onAreaChange={setAreaId}
+          />
+
+          {docButton(
+            "الهوية — الوجه",
+            idFront,
+            setIdFront,
+          )}
+
+          {docButton(
+            "الهوية — الظهر",
+            idBack,
+            setIdBack,
+          )}
+
+          {docButton(
+            "بطاقة السكن — الوجه",
+            resFront,
+            setResFront,
+          )}
+
+          {docButton(
+            "بطاقة السكن — الظهر",
+            resBack,
+            setResBack,
+          )}
+
+          {formError ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>
+                {formError}
+              </Text>
+            </View>
+          ) : null}
+
+          {formMessage ? (
+            <View
+              style={[
+                styles.messageBox,
+                formMessageType === "success"
+                  ? styles.successBox
+                  : styles.errorBox,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.messageText,
+                  formMessageType === "success"
+                    ? styles.successText
+                    : styles.errorText,
+                ]}
+              >
+                {formMessage}
+              </Text>
+            </View>
+          ) : null}
+
+          <AppButton
+            title="إرسال طلب التسجيل"
+            onPress={submit}
+            loading={loading}
+          />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </Screen>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>,
+) =>
+  StyleSheet.create({
+    flex: {
+      flex: 1,
+    },
+    container: {
+      padding: 20,
+      gap: 12,
+    },
+    title: {
+      fontSize: 29,
+      fontWeight: "900",
+      color: appTheme.textColor,
+      textAlign: "right",
+    },
+    subtitle: {
+      color: appTheme.secondaryTextColor,
+      lineHeight: 23,
+      textAlign: "right",
+      marginBottom: 8,
+    },
+
+    errorBox: {
+      backgroundColor: "#FFF0F0",
+      borderWidth: 1,
+      borderColor: "#F3B4B4",
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+
+    errorText: {
+      color: "#B42318",
+      fontSize: 13,
+      fontWeight: "800",
+      lineHeight: 21,
+      textAlign: "right",
+    },
+    messageBox: {
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      borderRadius: 14,
+      borderWidth: 1,
+    },
+
+    errorBox: {
+      backgroundColor: "#FFF1F1",
+      borderColor: "#F3B4B4",
+    },
+
+    successBox: {
+      backgroundColor: "#EFFAF2",
+      borderColor: "#A8DDB4",
+    },
+
+    messageText: {
+      textAlign: "right",
+      fontSize: 13,
+      fontWeight: "800",
+      lineHeight: 21,
+    },
+
+    errorText: {
+      color: "#B42318",
+    },
+
+    successText: {
+      color: "#087443",
+    },
+
+    document: {
+      gap: 7,
+      padding: 14,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      borderRadius: 16,
+      backgroundColor: appTheme.surfaceColor,
+    },
+    documentTitle: {
+      color: appTheme.textColor,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    errorBox: {
+      backgroundColor: "#FEE2E2",
+      borderWidth: 1,
+      borderColor: "#FCA5A5",
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+
+    errorText: {
+      color: "#B91C1C",
+      fontSize: 14,
+      fontWeight: "800",
+      textAlign: "right",
+      lineHeight: 22,
+    },
+  });

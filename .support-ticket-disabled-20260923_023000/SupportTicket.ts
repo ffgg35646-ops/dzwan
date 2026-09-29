@@ -1,0 +1,121 @@
+
+import mongoose, { Schema, Types } from "mongoose";
+
+const SupportMessageSchema = new Schema(
+  {
+    senderId: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    senderRole: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    body: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  {
+    _id: true,
+  },
+);
+
+const SupportTicketSchema = new Schema(
+  {
+    ticketNumber: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+
+    openedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
+
+    source: {
+      type: String,
+      enum: ["captain", "shop"],
+      required: true,
+      index: true,
+    },
+
+    type: {
+      type: String,
+      enum: ["complaint", "emergency"],
+      required: true,
+      index: true,
+    },
+
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 200,
+    },
+
+    orderId: {
+      type: Schema.Types.ObjectId,
+      ref: "Order",
+      default: null,
+      index: true,
+    },
+
+    status: {
+      type: String,
+      enum: ["open", "in_progress", "closed"],
+      default: "open",
+      index: true,
+    },
+
+    messages: {
+      type: [SupportMessageSchema],
+      default: [],
+    },
+
+    lastMessageAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+
+    readByUserAt: {
+      type: Date,
+      default: null,
+    },
+
+    readByAdminAt: {
+      type: Date,
+      default: null,
+    },
+
+    closedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    timestamps: true,
+  },
+);
+
+export const SupportTicketModel =
+  mongoose.models.SupportTicket ||
+  mongoose.model(
+    "SupportTicket",
+    SupportTicketSchema,
+  );

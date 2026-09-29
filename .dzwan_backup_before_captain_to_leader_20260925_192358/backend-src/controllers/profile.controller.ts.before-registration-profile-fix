@@ -1,0 +1,425 @@
+import type { Request, Response } from "express";
+import { Types } from "mongoose";
+
+import { UserModel } from "../models/User.js";
+import { LocationModel } from "../models/Location.js";
+import { EmailChangeVerificationModel } from "../models/EmailChangeVerification.js";
+import { comparePassword, hashPassword } from "../utils/password.js";
+import {
+  createOtp,
+  hashOtp,
+  sendEmailChangeOtp,
+} from "../services/email.service.js";
+
+function getUserId(req: Request): string {
+  return String((req as any).user?.sub || "").trim();
+}
+
+async function getProfileUser(userId: string) {
+  if (!Types.ObjectId.isValid(userId)) {
+    return null;
+  }
+
+  return UserModel.findOne({
+    _id: userId,
+    status: "active",
+  }).select(
+    "_id fullName phone email role status avatarUrl governorateId areaId",
+  );
+}
+
+async function locationNames(
+  governorateId?: unknown,
+  areaId?: unknown,
+) {
+  const ids = [governorateId, areaId]
+    .filter(Boolean)
+    .map((id) => String(id))
+    .filter((id) => Types.ObjectId.isValid(id));
+
+  if (!ids.length) {
+    return { governorateName: null, areaName: null };
+  }
+
+  const locations = await LocationModel
+    .find({ _id: { $in: ids } })
+    .select("_id name")
+    .lean();
+
+  const map = new Map(
+    locations.map((item: any) => [
+      String(item._id),
+      String(item.name || ""),
+    ]),
+  );
+
+  return {
+    governorateName: governorateId
+      ? map.get(String(governorateId)) || null
+      : null,
+    areaName: areaId
+      ? map.get(String(areaId)) || null
+      : null,
+  };
+}
+
+export async function myProfile(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const userId = getUserId(req);
+    const user = await getProfileUser(userId);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "الحساب غير موجود أو غير نشط.",
+      });
+      return;
+    }
+
+    const locations = await locationNames(
+      user.governorateId,
+      user.areaId,
+    );
+
+    res.status(200).json({
+      success: true,
+      user: {
+        id: user._id.toString(),
+        fullName: user.fullName,
+        phone: user.phone,
+        email: user.email ?? null,
+        role: user.role,
+        status: user.status,
+        avatarUrl: user.avatarUrl ?? null,
+        governorateId: user.governorateId?.toString() ?? null,
+        areaId: user.areaId?.toString() ?? null,
+        ...locations,
+      },
+    });
+  } catch (error) {
+    console.error("myProfile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "تعذر تحميل بيانات الحساب.",
+    });
+  }
+}
+
+export async function requestEmailChange(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const userId = getUserId(req);
+    const newEmail = String(req.body?.email || "").trim().toLowerCase();
+
+    if (!Types.ObjectId.isValid(userId)) {
+      res.status(401).json({
+        success: false,
+        message: "جلسة الدخول غير صالحة.",
+      });
+      return;
+    }
+
+    if (!newEmail || !/^\S+@\S+\.\S+$/.test(newEmail)) {
+      res.status(400).json({
+        success: false,
+        message: "البريد الإلكتروني غير صحيح.",
+      });
+      return;
+    }
+
+    const user = await UserModel.findById(userId).select(
+      "_id email status",
+    );
+
+    if (!user || user.status !== "active") {
+      res.status(404).json({
+        success: false,
+        message: "الحساب غير موجود أو غير نشط.",
+      });
+      return;
+    }
+
+    if ((user.email || "").toLowerCase() === newEmail) {
+      res.status(400).json({
+        success: false,
+        message: "هذا هو بريدك الإلكتروني الحالي بالفعل.",
+      });
+      return;
+    }
+
+    const existing = await UserModel.findOne({
+      email: newEmail,
+      _id: { $ne: user._id },
+    }).select("_id");
+
+    if (existing) {
+      res.status(409).json({
+        success: false,
+        message: "هذا البريد الإلكتروني مستخدم بالفعل.",
+      });
+      return;
+    }
+
+    const otp = createOtp();
+
+    await EmailChangeVerificationModel.deleteMany({
+      userId: user._id,
+      verifiedAt: null,
+    });
+
+    const verification =
+      await EmailChangeVerificationModel.create({
+        userId: user._id,
+        email: newEmail,
+        otpHash: hashOtp(otp),
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        verifiedAt: null,
+      });
+
+    try {
+      await sendEmailChangeOtp(newEmail, otp);
+    } catch (error) {
+      await EmailChangeVerificationModel.findByIdAndDelete(
+        verification._id,
+      );
+      throw error;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "تم إرسال كود التحقق إلى البريد الإلكتروني الجديد.",
+      verificationId: verification._id.toString(),
+    });
+  } catch (error) {
+    console.error("requestEmailChange error:", error);
+    res.status(500).json({
+      success: false,
+      message: "تعذر إرسال كود التحقق.",
+    });
+  }
+}
+
+export async function verifyEmailChange(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const userId = getUserId(req);
+    const verificationId = String(
+      req.body?.verificationId || "",
+    ).trim();
+    const otp = String(req.body?.otp || "").trim();
+
+    if (
+      !Types.ObjectId.isValid(userId) ||
+      !Types.ObjectId.isValid(verificationId) ||
+      !otp
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "بيانات التحقق ناقصة.",
+      });
+      return;
+    }
+
+    const verification =
+      await EmailChangeVerificationModel.findOne({
+        _id: verificationId,
+        userId,
+      });
+
+    if (!verification) {
+      res.status(404).json({
+        success: false,
+        message: "طلب التحقق غير موجود.",
+      });
+      return;
+    }
+
+    if (verification.expiresAt.getTime() < Date.now()) {
+      res.status(400).json({
+        success: false,
+        message: "انتهت صلاحية كود التحقق.",
+      });
+      return;
+    }
+
+    if (verification.verifiedAt) {
+      res.status(400).json({
+        success: false,
+        message: "تم استخدام هذا الكود مسبقًا.",
+      });
+      return;
+    }
+
+    if (verification.attempts >= 5) {
+      res.status(429).json({
+        success: false,
+        message: "تم تجاوز عدد محاولات التحقق المسموح بها.",
+      });
+      return;
+    }
+
+    verification.attempts += 1;
+
+    if (hashOtp(otp) !== verification.otpHash) {
+      await verification.save();
+
+      res.status(400).json({
+        success: false,
+        message: "كود التحقق غير صحيح.",
+      });
+      return;
+    }
+
+    const conflict = await UserModel.findOne({
+      email: verification.email,
+      _id: { $ne: userId },
+    }).select("_id");
+
+    if (conflict) {
+      res.status(409).json({
+        success: false,
+        message: "هذا البريد الإلكتروني أصبح مستخدمًا بالفعل.",
+      });
+      return;
+    }
+
+    const user = await UserModel.findById(userId).select(
+      "_id email status",
+    );
+
+    if (!user || user.status !== "active") {
+      res.status(404).json({
+        success: false,
+        message: "الحساب غير موجود أو غير نشط.",
+      });
+      return;
+    }
+
+    user.email = verification.email;
+    await user.save();
+
+    verification.verifiedAt = new Date();
+    await verification.save();
+
+    res.status(200).json({
+      success: true,
+      message: "تم تغيير البريد الإلكتروني بنجاح.",
+      email: user.email,
+    });
+  } catch (error) {
+    console.error("verifyEmailChange error:", error);
+    res.status(500).json({
+      success: false,
+      message: "تعذر تغيير البريد الإلكتروني.",
+    });
+  }
+}
+
+export async function changePassword(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  try {
+    const userId = getUserId(req);
+
+    const currentPassword = String(
+      req.body?.currentPassword || "",
+    );
+
+    const newPassword = String(
+      req.body?.newPassword || "",
+    );
+
+    const confirmPassword = String(
+      req.body?.confirmPassword || "",
+    );
+
+    if (!Types.ObjectId.isValid(userId)) {
+      res.status(401).json({
+        success: false,
+        message: "جلسة الدخول غير صالحة.",
+      });
+      return;
+    }
+
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      res.status(400).json({
+        success: false,
+        message: "جميع خانات كلمة المرور مطلوبة.",
+      });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      res.status(400).json({
+        success: false,
+        message: "كلمة المرور الجديدة يجب ألا تقل عن 6 أحرف.",
+      });
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      res.status(400).json({
+        success: false,
+        message: "تأكيد كلمة المرور غير مطابق.",
+      });
+      return;
+    }
+
+    const user = await UserModel.findOne({
+      _id: userId,
+      status: "active",
+    }).select("+passwordHash");
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "الحساب غير موجود أو غير نشط.",
+      });
+      return;
+    }
+
+    const currentValid = await comparePassword(
+      currentPassword,
+      user.passwordHash,
+    );
+
+    if (!currentValid) {
+      res.status(400).json({
+        success: false,
+        message: "كلمة المرور الحالية غير صحيحة.",
+      });
+      return;
+    }
+
+    if (await comparePassword(newPassword, user.passwordHash)) {
+      res.status(400).json({
+        success: false,
+        message: "كلمة المرور الجديدة يجب أن تختلف عن الحالية.",
+      });
+      return;
+    }
+
+    user.passwordHash = await hashPassword(newPassword);
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "تم تغيير كلمة المرور بنجاح.",
+    });
+  } catch (error) {
+    console.error("changePassword error:", error);
+    res.status(500).json({
+      success: false,
+      message: "تعذر تغيير كلمة المرور.",
+    });
+  }
+}

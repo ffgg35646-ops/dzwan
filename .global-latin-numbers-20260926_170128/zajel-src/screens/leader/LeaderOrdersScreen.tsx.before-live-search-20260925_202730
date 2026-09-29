@@ -1,0 +1,963 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { apiGet } from "../../api/request";
+
+type OrderRow = Record<string, any>;
+
+type FilterKey = "all" | "active" | "completed" | "other";
+
+function unwrap(payload: any): any {
+  return payload?.data ?? payload?.result ?? payload;
+}
+
+function toOrders(payload: any): OrderRow[] {
+  const root = unwrap(payload);
+
+  if (Array.isArray(root)) return root;
+  if (Array.isArray(root?.orders)) return root.orders;
+  if (Array.isArray(root?.items)) return root.items;
+  if (Array.isArray(root?.rows)) return root.rows;
+  if (Array.isArray(root?.data)) return root.data;
+
+  return [];
+}
+
+function textOf(value: any): string {
+  if (value == null) return "";
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number"
+  ) {
+    return String(value);
+  }
+
+  return String(
+    value?.name ??
+      value?.fullName ??
+      value?.title ??
+      value?.label ??
+      ""
+  );
+}
+
+function orderNumber(order: OrderRow): string {
+  return String(
+    order?.orderNumber ??
+      order?.number ??
+      order?.orderNo ??
+      order?.code ??
+      ""
+  );
+}
+
+function orderId(order: OrderRow): string {
+  return String(
+    order?._id ??
+      order?.id ??
+      ""
+  );
+}
+
+function statusOf(order: OrderRow): string {
+  return String(
+    order?.status ??
+      order?.stage ??
+      order?.state ??
+      ""
+  );
+}
+
+function customerName(order: OrderRow): string {
+  return (
+    textOf(order?.customer) ||
+    textOf(order?.customerName) ||
+    textOf(order?.customerSnapshot) ||
+    "العميل"
+  );
+}
+
+function restaurantName(order: OrderRow): string {
+  return (
+    textOf(order?.establishment) ||
+    textOf(order?.restaurant) ||
+    textOf(order?.shop) ||
+    textOf(order?.establishmentName) ||
+    "المطعم / المحل"
+  );
+}
+
+function areaName(order: OrderRow): string {
+  return (
+    textOf(order?.area) ||
+    textOf(order?.deliveryArea) ||
+    textOf(order?.serviceArea) ||
+    textOf(order?.areaName) ||
+    textOf(order?.establishment?.area) ||
+    textOf(order?.restaurant?.area) ||
+    textOf(order?.shop?.area) ||
+    "منطقة غير محددة"
+  );
+}
+
+function classify(order: OrderRow): FilterKey {
+  const status = statusOf(order).toLowerCase();
+
+  if (
+    status.includes("completed") ||
+    status.includes("complete") ||
+    status.includes("delivered") ||
+    status.includes("finished") ||
+    status.includes("مكتمل") ||
+    status.includes("تم التسليم")
+  ) {
+    return "completed";
+  }
+
+  if (
+    status.includes("cancel") ||
+    status.includes("reject") ||
+    status.includes("rejected") ||
+    status.includes("مرفوض") ||
+    status.includes("ملغي")
+  ) {
+    return "other";
+  }
+
+  if (
+    status.includes("stuck") ||
+    status.includes("emergency") ||
+    status.includes("عالق") ||
+    status.includes("طوارئ")
+  ) {
+    return "other";
+  }
+
+  return "active";
+}
+
+function statusLabel(order: OrderRow): string {
+  const group = classify(order);
+
+  if (group === "completed") return "مكتمل";
+  if (group === "active") return "نشط";
+  return statusOf(order) || "غير محدد";
+}
+
+export default function LeaderOrdersScreen() {
+  const [orders, setOrders] = useState<OrderRow[]>([]);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<FilterKey>("all");
+  const [selectedOrder, setSelectedOrder] =
+    useState<OrderRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setError("");
+
+      const response = await apiGet(
+        "/leaders/me/orders?limit=5000"
+      );
+
+      setOrders(toOrders(response));
+    } catch (err) {
+      console.warn("Leader orders load failed:", err);
+      setError("تعذر تحميل الطلبات.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+
+    const timer = setInterval(() => {
+      load();
+    }, 30000);
+
+    return () => clearInterval(timer);
+  }, [load]);
+
+  const normalizedQuery = query.trim().toLowerCase();
+
+  const results = useMemo(() => {
+    return orders.filter((order) => {
+      if (
+        filter !== "all" &&
+        classify(order) !== filter
+      ) {
+        return false;
+      }
+
+      if (!normalizedQuery) return true;
+
+      const haystack = [
+        orderNumber(order),
+        orderId(order),
+        customerName(order),
+        restaurantName(order),
+        areaName(order),
+        statusOf(order),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(normalizedQuery);
+    });
+  }, [orders, filter, normalizedQuery]);
+
+  const grouped = useMemo(() => {
+    return {
+      active: results.filter(
+        (row) => classify(row) === "active"
+      ),
+      completed: results.filter(
+        (row) => classify(row) === "completed"
+      ),
+      other: results.filter(
+        (row) => classify(row) === "other"
+      ),
+    };
+  }, [results]);
+
+  function openOrder(order: OrderRow) {
+    // عند الضغط على نتيجة البحث:
+    // نحول الشاشة للقسم الصحيح حسب حالة الطلب.
+    const group = classify(order);
+
+    setFilter(group);
+    setQuery("");
+    setSelectedOrder(order);
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" />
+        <Text style={styles.centerText}>
+          جاري تحميل الطلبات...
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>
+            الطلبات
+          </Text>
+          <Text style={styles.subtitle}>
+            ابحث عن أي طلب داخل نطاقك فورًا
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => {
+            setRefreshing(true);
+            load();
+          }}
+          style={styles.refreshButton}
+        >
+          <Text style={styles.refreshText}>
+            تحديث
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.searchBox}>
+        <Text style={styles.searchIcon}>
+          🔎
+        </Text>
+
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="اكتب رقم الطلب مثل 15..."
+          placeholderTextColor="#98A2B3"
+          style={styles.searchInput}
+          textAlign="right"
+          autoCorrect={false}
+          autoCapitalize="none"
+          keyboardType="default"
+        />
+
+        {query ? (
+          <Pressable
+            onPress={() => setQuery("")}
+            style={styles.clearButton}
+          >
+            <Text style={styles.clearText}>×</Text>
+          </Pressable>
+        ) : null}
+      </View>
+
+      {error ? (
+        <Text style={styles.errorText}>
+          {error}
+        </Text>
+      ) : null}
+
+      {query ? (
+        <View style={styles.searchResultsCard}>
+          <View style={styles.resultHeader}>
+            <Text style={styles.resultTitle}>
+              نتائج البحث
+            </Text>
+
+            <Text style={styles.resultCount}>
+              {results.length}
+            </Text>
+          </View>
+
+          {results.length === 0 ? (
+            <Text style={styles.emptyText}>
+              لا يوجد طلب مطابق لـ "{query}"
+            </Text>
+          ) : (
+            results.slice(0, 30).map((order) => (
+              <Pressable
+                key={orderId(order) || orderNumber(order)}
+                onPress={() => openOrder(order)}
+                style={styles.searchResultRow}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.orderNumber}>
+                    #{orderNumber(order) || orderId(order)}
+                  </Text>
+
+                  <Text style={styles.orderSecondary}>
+                    {restaurantName(order)}
+                  </Text>
+
+                  <Text style={styles.orderSecondary}>
+                    {areaName(order)}
+                  </Text>
+                </View>
+
+                <View style={styles.statusPill}>
+                  <Text style={styles.statusText}>
+                    {statusLabel(order)}
+                  </Text>
+                </View>
+              </Pressable>
+            ))
+          )}
+
+          {results.length > 30 ? (
+            <Text style={styles.moreText}>
+              يتم عرض أول 30 نتيجة فقط.
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View style={styles.filters}>
+        {[
+          ["all", "الكل"],
+          ["active", "نشط"],
+          ["completed", "مكتمل"],
+          ["other", "أخرى"],
+        ].map(([key, label]) => {
+          const active = filter === key;
+
+          return (
+            <Pressable
+              key={key}
+              onPress={() =>
+                setFilter(key as FilterKey)
+              }
+              style={[
+                styles.filterButton,
+                active && styles.filterButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.filterText,
+                  active && styles.filterTextActive,
+                ]}
+              >
+                {label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={load}
+          />
+        }
+      >
+        <Section
+          title="الطلبات النشطة"
+          rows={grouped.active}
+          onPress={openOrder}
+        />
+
+        <Section
+          title="الطلبات المكتملة"
+          rows={grouped.completed}
+          onPress={openOrder}
+        />
+
+        <Section
+          title="طلبات أخرى"
+          rows={grouped.other}
+          onPress={openOrder}
+        />
+
+        {results.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>
+              لا توجد طلبات
+            </Text>
+            <Text style={styles.emptyText}>
+              جرّب تغيير البحث أو القسم.
+            </Text>
+          </View>
+        ) : null}
+      </ScrollView>
+
+      <Modal
+        visible={Boolean(selectedOrder)}
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setSelectedOrder(null)
+        }
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            {selectedOrder ? (
+              <>
+                <View style={styles.modalHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.modalTitle}>
+                      الطلب #
+                      {orderNumber(selectedOrder) ||
+                        orderId(selectedOrder)}
+                    </Text>
+
+                    <Text style={styles.modalStatus}>
+                      {statusLabel(selectedOrder)}
+                    </Text>
+                  </View>
+
+                  <Pressable
+                    onPress={() =>
+                      setSelectedOrder(null)
+                    }
+                  >
+                    <Text style={styles.modalClose}>
+                      ×
+                    </Text>
+                  </Pressable>
+                </View>
+
+                <InfoRow
+                  label="المطعم / المحل"
+                  value={restaurantName(selectedOrder)}
+                />
+
+                <InfoRow
+                  label="المنطقة"
+                  value={areaName(selectedOrder)}
+                />
+
+                <InfoRow
+                  label="العميل"
+                  value={customerName(selectedOrder)}
+                />
+
+                <InfoRow
+                  label="الحالة"
+                  value={statusLabel(selectedOrder)}
+                />
+
+                <InfoRow
+                  label="المعرف"
+                  value={orderId(selectedOrder)}
+                />
+
+                <Text style={styles.modalHint}>
+                  تم تحويل الطلب تلقائيًا إلى قسم حالته
+                  المناسبة.
+                </Text>
+              </>
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function Section({
+  title,
+  rows,
+  onPress,
+}: {
+  title: string;
+  rows: OrderRow[];
+  onPress: (order: OrderRow) => void;
+}) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>
+          {title}
+        </Text>
+
+        <Text style={styles.sectionCount}>
+          {rows.length}
+        </Text>
+      </View>
+
+      {rows.length === 0 ? (
+        <View style={styles.smallEmpty}>
+          <Text style={styles.smallEmptyText}>
+            لا توجد طلبات في هذا القسم.
+          </Text>
+        </View>
+      ) : (
+        rows.map((order) => (
+          <Pressable
+            key={orderId(order) || orderNumber(order)}
+            onPress={() => onPress(order)}
+            style={styles.orderCard}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={styles.orderNumber}>
+                #{orderNumber(order) || orderId(order)}
+              </Text>
+
+              <Text style={styles.orderSecondary}>
+                {restaurantName(order)}
+              </Text>
+
+              <Text style={styles.orderSecondary}>
+                {areaName(order)}
+              </Text>
+            </View>
+
+            <View style={styles.statusPill}>
+              <Text style={styles.statusText}>
+                {statusLabel(order)}
+              </Text>
+            </View>
+          </Pressable>
+        ))
+      )}
+    </View>
+  );
+}
+
+function InfoRow({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <View style={styles.infoRow}>
+      <Text style={styles.infoValue}>
+        {value || "-"}
+      </Text>
+
+      <Text style={styles.infoLabel}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+    padding: 16,
+  },
+
+  center: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+
+  centerText: {
+    marginTop: 10,
+    color: "#667085",
+    fontSize: 13,
+  },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+
+  title: {
+    fontSize: 23,
+    fontWeight: "900",
+    color: "#101828",
+    textAlign: "right",
+  },
+
+  subtitle: {
+    marginTop: 3,
+    color: "#667085",
+    fontSize: 12,
+    textAlign: "right",
+  },
+
+  refreshButton: {
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#EFF6FF",
+  },
+
+  refreshText: {
+    color: "#2563EB",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  searchBox: {
+    minHeight: 52,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#D0D5DD",
+    borderRadius: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+  },
+
+  searchIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+
+  searchInput: {
+    flex: 1,
+    minHeight: 50,
+    fontSize: 14,
+    color: "#101828",
+  },
+
+  clearButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#F2F4F7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  clearText: {
+    fontSize: 19,
+    color: "#475467",
+    lineHeight: 22,
+  },
+
+  errorText: {
+    marginTop: 10,
+    color: "#B42318",
+    fontSize: 12,
+    textAlign: "right",
+  },
+
+  searchResultsCard: {
+    marginTop: 12,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+    padding: 12,
+  },
+
+  resultHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 4,
+  },
+
+  resultTitle: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#101828",
+    textAlign: "right",
+  },
+
+  resultCount: {
+    minWidth: 28,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    backgroundColor: "#EFF6FF",
+    color: "#2563EB",
+    textAlign: "center",
+    fontWeight: "900",
+    fontSize: 11,
+  },
+
+  searchResultRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F2F4F7",
+  },
+
+  orderCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+    marginTop: 9,
+  },
+
+  orderNumber: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#101828",
+    textAlign: "right",
+  },
+
+  orderSecondary: {
+    marginTop: 2,
+    color: "#667085",
+    fontSize: 11,
+    textAlign: "right",
+  },
+
+  statusPill: {
+    minWidth: 68,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 11,
+    backgroundColor: "#F2F4F7",
+    alignItems: "center",
+  },
+
+  statusText: {
+    color: "#344054",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  moreText: {
+    marginTop: 8,
+    color: "#98A2B3",
+    fontSize: 10,
+    textAlign: "center",
+  },
+
+  filters: {
+    flexDirection: "row",
+    gap: 7,
+    marginTop: 12,
+    marginBottom: 5,
+  },
+
+  filterButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+    alignItems: "center",
+  },
+
+  filterButtonActive: {
+    backgroundColor: "#2563EB",
+    borderColor: "#2563EB",
+  },
+
+  filterText: {
+    color: "#475467",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  filterTextActive: {
+    color: "#FFFFFF",
+  },
+
+  scrollContent: {
+    paddingTop: 8,
+    paddingBottom: 30,
+  },
+
+  section: {
+    marginBottom: 18,
+  },
+
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 7,
+    paddingHorizontal: 2,
+  },
+
+  sectionTitle: {
+    color: "#101828",
+    fontSize: 16,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  sectionCount: {
+    color: "#2563EB",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  smallEmpty: {
+    padding: 16,
+    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+  },
+
+  smallEmptyText: {
+    color: "#98A2B3",
+    fontSize: 11,
+    textAlign: "right",
+  },
+
+  emptyCard: {
+    marginTop: 12,
+    padding: 20,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+  },
+
+  emptyTitle: {
+    color: "#101828",
+    fontWeight: "900",
+    textAlign: "right",
+    fontSize: 14,
+  },
+
+  emptyText: {
+    color: "#667085",
+    fontSize: 12,
+    textAlign: "right",
+    marginTop: 6,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.42)",
+    justifyContent: "center",
+    padding: 18,
+  },
+
+  modalCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 22,
+    padding: 18,
+    maxHeight: "85%",
+  },
+
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 16,
+  },
+
+  modalTitle: {
+    color: "#101828",
+    fontSize: 18,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  modalStatus: {
+    marginTop: 3,
+    color: "#2563EB",
+    fontSize: 11,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  modalClose: {
+    fontSize: 26,
+    color: "#667085",
+    fontWeight: "300",
+  },
+
+  infoRow: {
+    paddingVertical: 11,
+    borderTopWidth: 1,
+    borderTopColor: "#F2F4F7",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+  infoLabel: {
+    color: "#667085",
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  infoValue: {
+    flex: 1,
+    color: "#101828",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "left",
+  },
+
+  modalHint: {
+    marginTop: 14,
+    padding: 12,
+    borderRadius: 13,
+    backgroundColor: "#EFF6FF",
+    color: "#1D4ED8",
+    fontSize: 11,
+    lineHeight: 18,
+    textAlign: "right",
+  },
+});

@@ -1,0 +1,41 @@
+
+import { apiGet, apiPost } from "./request";
+
+export async function rateCaptain(payload: {
+  orderId: string;
+  captainId: string;
+  stars: number;
+  text?: string;
+}) {
+  const stars = Number(payload.stars);
+
+  if (
+    !Number.isInteger(stars) ||
+    stars < 1 ||
+    stars > 5
+  ) {
+    throw new Error("التقييم يجب أن يكون من 1 إلى 5 نجوم.");
+  }
+
+  return apiPost("/captain-ratings", {
+    orderId: payload.orderId,
+    captainId: payload.captainId,
+    stars,
+    text: payload.text?.trim() || undefined,
+  });
+}
+
+export async function getCaptainRating(captainId: string) {
+  const candidates = [
+    `/captain-ratings/captain/${captainId}`,
+    `/captains/${captainId}/ratings`,
+  ];
+
+  for (const path of candidates) {
+    try {
+      return await apiGet(path);
+    } catch {}
+  }
+
+  return null;
+}

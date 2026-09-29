@@ -1,0 +1,414 @@
+import React, { useState } from "react";
+import {
+  Alert,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import {
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+
+import Screen from "../../components/Screen";
+import AppButton from "../../components/AppButton";
+import PhotoPickerButton from "../../components/PhotoPickerButton";
+import { useAppTheme } from "../../theme/useAppTheme";
+import { submitPickupPhoto } from "../../api/captainOrder";
+import { updateOrderStatus } from "../../api/orders";
+
+export default function PickupScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+
+  const orderId = String(route.params?.orderId || "");
+
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    if (!orderId) {
+      Alert.alert("طلب غير صالح", "تعذر تحديد رقم الطلب.");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      if (photo) {
+        await submitPickupPhoto(orderId, photo);
+      }
+
+      await updateOrderStatus(orderId, "picked_up");
+
+      Alert.alert(
+        "تم استلام الطلب",
+        "تم تسجيل استلام الطلب بنجاح."
+      );
+
+      navigation.goBack();
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر الاستلام",
+        error?.response?.data?.message ||
+          "تعذر تسجيل استلام الطلب."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Screen>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View
+            style={[
+              styles.headerIcon,
+              {
+                backgroundColor: `${appTheme.primaryColor}12`,
+              },
+            ]}
+          >
+            <Ionicons
+              name="cube-outline"
+              size={28}
+              color={appTheme.primaryColor}
+            />
+          </View>
+
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>المرحلة الحالية</Text>
+            <Text style={styles.title}>استلام الطلب</Text>
+          </View>
+        </View>
+
+        <View style={styles.progress}>
+          <View style={styles.progressStep}>
+            <View
+              style={[
+                styles.progressDot,
+                {
+                  backgroundColor: appTheme.primaryColor,
+                },
+              ]}
+            >
+              <Ionicons
+                name="checkmark"
+                size={14}
+                color={appTheme.surfaceColor}
+              />
+            </View>
+            <Text style={styles.progressText}>تم التعيين</Text>
+          </View>
+
+          <View
+            style={[
+              styles.progressLine,
+              {
+                backgroundColor: appTheme.primaryColor,
+              },
+            ]}
+          />
+
+          <View style={styles.progressStep}>
+            <View
+              style={[
+                styles.progressDot,
+                {
+                  backgroundColor: appTheme.primaryColor,
+                },
+              ]}
+            >
+              <Ionicons
+                name="cube"
+                size={14}
+                color={appTheme.surfaceColor}
+              />
+            </View>
+            <Text style={styles.progressText}>الاستلام</Text>
+          </View>
+
+          <View
+            style={[
+              styles.progressLine,
+              {
+                backgroundColor: appTheme.borderColor,
+              },
+            ]}
+          />
+
+          <View style={styles.progressStep}>
+            <View
+              style={[
+                styles.progressDot,
+                {
+                  backgroundColor: appTheme.borderColor,
+                },
+              ]}
+            >
+              <Ionicons
+                name="navigate-outline"
+                size={14}
+                color={appTheme.secondaryTextColor}
+              />
+            </View>
+            <Text style={styles.progressTextMuted}>التوصيل</Text>
+          </View>
+        </View>
+
+        <View style={styles.infoCard}>
+          <View
+            style={[
+              styles.infoIcon,
+              {
+                backgroundColor: `${appTheme.infoColor}12`,
+              },
+            ]}
+          >
+            <Ionicons
+              name="information-circle-outline"
+              size={24}
+              color={appTheme.infoColor}
+            />
+          </View>
+
+          <View style={styles.infoContent}>
+            <Text style={styles.infoTitle}>
+              قبل تأكيد الاستلام
+            </Text>
+            <Text style={styles.infoText}>
+              تأكد من استلام الطلب من المحل. يمكنك إضافة صورة
+              للطلب كإثبات للاستلام قبل التأكيد.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.photoCard}>
+          <View style={styles.cardHeader}>
+            <View
+              style={[
+                styles.cardIcon,
+                {
+                  backgroundColor: `${appTheme.primaryColor}12`,
+                },
+              ]}
+            >
+              <Ionicons
+                name="camera-outline"
+                size={22}
+                color={appTheme.primaryColor}
+              />
+            </View>
+
+            <View style={styles.cardHeaderText}>
+              <Text style={styles.cardTitle}>صورة الاستلام</Text>
+              <Text style={styles.cardSubtitle}>
+                اختياري حسب حالة الطلب
+              </Text>
+            </View>
+          </View>
+
+          <PhotoPickerButton
+            title={
+              photo
+                ? "إعادة تصوير الطلب"
+                : "تصوير الطلب"
+            }
+            onSelected={setPhoto}
+            secondary
+          />
+
+          {photo && (
+            <View style={styles.selected}>
+              <Ionicons
+                name="checkmark-circle"
+                size={18}
+                color={appTheme.successColor}
+              />
+              <Text style={styles.selectedText}>
+                تم اختيار صورة الاستلام
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.footer}>
+          <AppButton
+            title="تأكيد استلام الطلب"
+            onPress={submit}
+            loading={busy}
+          />
+
+          <Text style={styles.footerHint}>
+            بعد التأكيد سينتقل الطلب إلى مرحلة التوصيل.
+          </Text>
+        </View>
+      </View>
+    </Screen>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>
+) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      padding: 20,
+      gap: 17,
+    },
+    header: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 13,
+    },
+    headerIcon: {
+      width: 58,
+      height: 58,
+      borderRadius: 19,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+    eyebrow: {
+      color: appTheme.primaryColor,
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    title: {
+      color: appTheme.textColor,
+      fontSize: 28,
+      fontWeight: "900",
+      marginTop: 2,
+      textAlign: "right",
+    },
+    progress: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      paddingVertical: 5,
+    },
+    progressStep: {
+      alignItems: "center",
+      gap: 5,
+    },
+    progressDot: {
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    progressLine: {
+      flex: 1,
+      height: 2,
+      marginHorizontal: 5,
+    },
+    progressText: {
+      color: appTheme.textColor,
+      fontSize: 10,
+      fontWeight: "800",
+    },
+    progressTextMuted: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "700",
+    },
+    infoCard: {
+      flexDirection: "row-reverse",
+      alignItems: "flex-start",
+      gap: 11,
+      padding: 16,
+      borderRadius: 20,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+    },
+    infoIcon: {
+      width: 43,
+      height: 43,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    infoContent: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+    infoTitle: {
+      color: appTheme.textColor,
+      fontSize: 15,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+    infoText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      lineHeight: 20,
+      marginTop: 4,
+      textAlign: "right",
+    },
+    photoCard: {
+      padding: 17,
+      borderRadius: 22,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      gap: 15,
+    },
+    cardHeader: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 11,
+    },
+    cardIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    cardHeaderText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+    cardTitle: {
+      color: appTheme.textColor,
+      fontSize: 16,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+    cardSubtitle: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      marginTop: 2,
+      textAlign: "right",
+    },
+    selected: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      gap: 6,
+    },
+    selectedText: {
+      color: appTheme.successColor,
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    footer: {
+      marginTop: "auto",
+      gap: 9,
+    },
+    footerHint: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      textAlign: "center",
+      lineHeight: 18,
+    },
+  });

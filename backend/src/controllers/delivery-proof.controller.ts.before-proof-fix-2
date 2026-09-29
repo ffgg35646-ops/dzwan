@@ -1,0 +1,125 @@
+import { Response } from "express";
+import { Types } from "mongoose";
+import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import {
+  createDeliveryOtp,
+  verifyDeliveryOtp,
+  setDeliveryPhoto,
+  getDeliveryProof,
+} from "../services/delivery-proof.service.js";
+
+export async function createOtp(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const captainId = new Types.ObjectId(String(req.user?.sub));
+
+    if (!captainId) {
+      return res.status(401).json({
+        message: "غير مصرح.",
+      });
+    }
+
+    const result = await createDeliveryOtp(
+      new Types.ObjectId(String(req.params.orderId)),
+      captainId,
+    );
+
+    return res.json({
+      message: "تم إنشاء رمز التسليم.",
+      proof: result,
+    });
+  } catch (error) {
+    console.error("createOtp error:", error);
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر إنشاء رمز التسليم.",
+    });
+  }
+}
+
+export async function verifyOtp(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const captainId = new Types.ObjectId(String(req.user?.sub));
+
+    if (!captainId) {
+      return res.status(401).json({
+        message: "غير مصرح.",
+      });
+    }
+
+    const result = await verifyDeliveryOtp(
+      new Types.ObjectId(String(req.params.orderId)),
+      captainId,
+      String(req.body.otp || ""),
+    );
+
+    return res.json({
+      message: "تم التحقق من رمز التسليم.",
+      proof: result,
+    });
+  } catch (error) {
+    console.error("verifyOtp error:", error);
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر التحقق من رمز التسليم.",
+    });
+  }
+}
+
+export async function uploadPhoto(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const captainId = new Types.ObjectId(String(req.user?.sub));
+
+    if (!captainId) {
+      return res.status(401).json({
+        message: "غير مصرح.",
+      });
+    }
+
+    const result = await setDeliveryPhoto(
+      new Types.ObjectId(String(req.params.orderId)),
+      captainId,
+      String(req.body.photoUrl || ""),
+    );
+
+    return res.json({
+      message: "تم حفظ صورة إثبات التسليم.",
+      proof: result,
+    });
+  } catch (error) {
+    console.error("uploadPhoto error:", error);
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر حفظ الصورة.",
+    });
+  }
+}
+
+export async function proofDetails(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const proof = await getDeliveryProof(new Types.ObjectId(String(req.params.orderId)));
+
+  if (!proof) {
+    return res.status(404).json({
+      message: "لا يوجد إثبات تسليم لهذا الطلب.",
+    });
+  }
+
+  return res.json({ proof });
+}

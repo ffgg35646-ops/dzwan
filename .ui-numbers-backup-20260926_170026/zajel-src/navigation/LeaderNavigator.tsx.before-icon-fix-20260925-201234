@@ -1,0 +1,64 @@
+import React from "react";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import {
+  LayoutDashboard,
+  UserRound,
+} from "lucide-react-native";
+
+import LeaderHomeScreen from "../screens/leader/LeaderHomeScreen";
+import ProfileScreen from "../screens/captain/ProfileScreen";
+
+const Tab =
+  createBottomTabNavigator();
+
+export default function LeaderNavigator() {
+  return (
+    <Tab.Navigator
+      initialRouteName="الرئيسية"
+      screenOptions={{
+        headerShown: false,
+        tabBarHideOnKeyboard: true,
+        tabBarActiveTintColor: "#EA580C",
+        tabBarInactiveTintColor: "#9CA3AF",
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: "800",
+        },
+        tabBarStyle: {
+          height: 66,
+          paddingBottom: 8,
+          paddingTop: 6,
+          borderTopWidth: 1,
+          borderTopColor: "#E5E7EB",
+          backgroundColor: "#FFFFFF",
+        },
+      }}
+    >
+      <Tab.Screen
+        name="الرئيسية"
+        component={LeaderHomeScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <LayoutDashboard
+              color={color}
+              size={size}
+            />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="حسابي"
+        component={ProfileScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => (
+            <UserRound
+              color={color}
+              size={size}
+            />
+          ),
+        }}
+      />
+    </Tab.Navigator>
+  );
+}

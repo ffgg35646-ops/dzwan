@@ -1,0 +1,102 @@
+import type { Response } from "express";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { Types } from "mongoose";
+import ComplaintModel from "../models/Complaint.js";
+import { z } from "zod";
+
+const createSchema = z.object({
+  type: z.enum(["shop", "captain", "order", "delivery", "money", "proof"]),
+  orderId: z.string().trim().optional().nullable(),
+  title: z.string().trim().min(2).max(180),
+  description: z.string().trim().min(2).max(3000),
+});
+
+function userId(req: AuthenticatedRequest) {
+  const id = String(req.user?.sub ?? "");
+  return Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null;
+}
+
+export async function createUserComplaint(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const openedBy = userId(req);
+
+    if (!openedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "المستخدم غير صالح.",
+      });
+    }
+
+    const data = createSchema.parse(req.body);
+
+    if (
+      data.orderId &&
+      !Types.ObjectId.isValid(data.orderId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "معرّف الطلب غير صالح.",
+      });
+    }
+
+    const complaint = await ComplaintModel.create({
+      openedBy,
+      orderId: data.orderId
+        ? new Types.ObjectId(data.orderId)
+        : null,
+      category: data.type,
+      title: data.title,
+      description: data.description,
+      status: "open",
+    });
+
+    return res.status(201).json({
+      success: true,
+      complaint,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر إنشاء الشكوى.",
+    });
+  }
+}
+
+export async function listMyComplaints(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const openedBy = userId(req);
+
+    if (!openedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "المستخدم غير صالح.",
+      });
+    }
+
+    const complaints = await ComplaintModel.find({
+      openedBy,
+    })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    return res.json({
+      success: true,
+      complaints,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "تعذر تحميل الشكاوى.",
+    });
+  }
+}

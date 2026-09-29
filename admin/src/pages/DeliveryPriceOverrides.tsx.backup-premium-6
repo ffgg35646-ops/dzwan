@@ -1,0 +1,91 @@
+
+import { useEffect, useState } from "react";
+
+export default function DeliveryPriceOverrides() {
+  const [items, setItems] = useState<any[]>([]);
+  const [price, setPrice] = useState("");
+  const [scope, setScope] = useState("global");
+  const [priority, setPriority] = useState("0");
+
+  async function load() {
+    const res = await fetch(
+      "/api/delivery-price-overrides",
+    );
+
+    const json = await res.json();
+
+    setItems(json.data ?? []);
+  }
+
+  async function create() {
+    await fetch(
+      "/api/delivery-price-overrides",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          scope,
+          price: Number(price),
+          priority: Number(priority),
+          isActive: true,
+        }),
+      },
+    );
+
+    setPrice("");
+    load();
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  return (
+    <div dir="rtl">
+      <h1>أسعار التوصيل المخصصة</h1>
+
+      <select
+        value={scope}
+        onChange={(e) =>
+          setScope(e.target.value)
+        }
+      >
+        <option value="global">عام</option>
+        <option value="governorate">محافظة</option>
+        <option value="area">منطقة</option>
+        <option value="establishment">محل / مطعم</option>
+        <option value="establishment_group">
+          مجموعة محلات / مطاعم
+        </option>
+      </select>
+
+      <input
+        value={price}
+        onChange={(e) =>
+          setPrice(e.target.value)
+        }
+        placeholder="السعر"
+      />
+
+      <input
+        value={priority}
+        onChange={(e) =>
+          setPriority(e.target.value)
+        }
+        placeholder="الأولوية"
+      />
+
+      <button onClick={create}>
+        إضافة قاعدة
+      </button>
+
+      {items.map((item) => (
+        <div key={item._id}>
+          {item.scope} — {item.price} — أولوية {item.priority}
+        </div>
+      ))}
+    </div>
+  );
+}

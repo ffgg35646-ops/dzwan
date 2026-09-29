@@ -1,0 +1,820 @@
+import type { Response } from "express";
+import { z } from "zod";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { LocationModel } from "../models/Location.js";
+import { StaffPermissionModel } from "../models/StaffPermission.js";
+import { createAuditLog } from "../services/audit-log.service.js";
+import { Types } from "mongoose";
+
+const locationSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+});
+
+const updateSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  isActive: z.boolean().optional(),
+  captainsEnabled: z.boolean().optional(),
+  establishmentsEnabled: z.boolean().optional(),
+});
+
+const areaSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+});
+
+const areaUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  isActive: z.boolean().optional(),
+  captainsEnabled: z.boolean().optional(),
+  establishmentsEnabled: z.boolean().optional(),
+});
+
+async function canManageLocation(
+  req: AuthenticatedRequest,
+  governorateId: string,
+  areaId?: string,
+): Promise<boolean> {
+  const role = req.user?.role;
+
+  if (role === "super_admin") {
+    return true;
+  }
+
+  if (role !== "admin") {
+    return false;
+  }
+
+  if (!Types.ObjectId.isValid(String(req.user?.sub))) {
+    return false;
+  }
+
+  const permission =
+    await StaffPermissionModel.findOne({
+      userId: new Types.ObjectId(
+        String(req.user?.sub),
+      ),
+    })
+      .select("permissions governorateIds areaIds")
+      .lean();
+
+  if (!permission) return false;
+
+  const permissions =
+    permission.permissions ?? [];
+
+  if (
+    !permissions.includes("locations.read") &&
+    !permissions.includes("locations.create") &&
+    !permissions.includes("locations.update") &&
+    !permissions.includes("locations.delete") &&
+    !permissions.includes("areas.create") &&
+    !permissions.includes("areas.update") &&
+    !permissions.includes("areas.delete") &&
+    !permissions.includes("admin.all")
+  ) {
+    return false;
+  }
+
+  const governorates =
+    (permission.governorateIds ?? []).map((x) =>
+      x.toString(),
+    );
+
+  const areas =
+    (permission.areaIds ?? []).map((x) =>
+      x.toString(),
+    );
+
+  if (
+    governorates.length > 0 &&
+    !governorates.includes(governorateId)
+  ) {
+    return false;
+  }
+
+  if (
+    areaId &&
+    areas.length > 0 &&
+    !areas.includes(areaId)
+  ) {
+    return false;
+  }
+
+  return (
+    governorates.length > 0 ||
+    areas.length > 0
+  );
+}
+
+function handleError(res: Response, error: unknown): void {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === 11000
+  ) {
+    res.status(409).json({
+      success: false,
+      message: "المحافظة موجودة بالفعل.",
+    });
+    return;
+  }
+
+  console.error("Location error:", error);
+
+  res.status(500).json({
+    success: false,
+    message: "حدث خطأ داخلي في الخادم.",
+  });
+}
+
+export async function listLocations(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    if (req.user?.role === "admin") {
+      const permission =
+        await StaffPermissionModel.findOne({
+          userId: new Types.ObjectId(
+            String(req.user.sub),
+          ),
+        })
+          .select("permissions governorateIds")
+          .lean();
+
+      const allowed =
+        permission?.permissions?.includes(
+          "locations.read",
+        ) ?? false;
+
+      if (!allowed) {
+        res.status(403).json({
+          success: false,
+          message:
+            "ليس لديك صلاحية مشاهدة المحافظات.",
+          requiredPermission: "locations.read",
+        });
+        return;
+      }
+
+      const ids =
+        (permission?.governorateIds ?? []).map(
+          (x) => new Types.ObjectId(x),
+        );
+
+      const locations =
+        await LocationModel.find({
+          _id: { $in: ids },
+        })
+          .sort({ name: 1 })
+          .lean();
+
+      res.status(200).json({
+        success: true,
+        locations,
+      });
+      return;
+    }
+
+    const locations = await LocationModel.find()
+      .sort({ name: 1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      locations,
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+export async function listOrderDestinations(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const locations = await LocationModel.find({})
+      .select("_id name isActive captainsEnabled establishmentsEnabled areas")
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      locations,
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+export async function listAvailableLocations(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const type = String(req.query.type || "").trim();
+
+    if (type !== "captain" && type !== "establishment" && type !== "order") {
+      res.status(400).json({
+        success: false,
+        message: "نوع التسجيل غير صحيح.",
+      });
+      return;
+    }
+
+    const search = String(req.query.search || "").trim();
+    const searchRegex = search
+      ? new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i")
+      : null;
+
+    const locations = await LocationModel.find({
+      isActive: true,
+      ...(type === "captain"
+        ? { captainsEnabled: true }
+        : { establishmentsEnabled: true }),
+      ...(searchRegex
+        ? {
+            $or: [
+              { name: searchRegex },
+              { "areas.name": searchRegex },
+            ],
+          }
+        : {}),
+    })
+      .select("_id name isActive captainsEnabled establishmentsEnabled areas")
+      .lean();
+
+    const filtered = locations
+      .map((location) => {
+        const governorateMatches =
+          !searchRegex || searchRegex.test(location.name);
+
+        const areas = location.areas.filter(
+          (area) =>
+            area.isActive &&
+            (type === "captain"
+              ? area.captainsEnabled !== false
+              : area.establishmentsEnabled !== false) &&
+            (!searchRegex ||
+              governorateMatches ||
+              searchRegex.test(area.name)),
+        );
+
+        return {
+          ...location,
+          areas,
+        };
+      })
+      .filter(
+        (location) =>
+          !searchRegex ||
+          searchRegex.test(location.name) ||
+          location.areas.length > 0,
+      );
+
+    res.status(200).json({
+      success: true,
+      locations: filtered,
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+export async function createLocation(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = locationSchema.parse(req.body);
+
+    const location = await LocationModel.create({
+      name: data.name,
+      isActive: true,
+      captainsEnabled: true,
+      establishmentsEnabled: true,
+      areas: [],
+    });
+
+    await createAuditLog({
+      actorId:
+        Types.ObjectId.isValid(String(req.user?.sub ?? ""))
+          ? new Types.ObjectId(String(req.user?.sub))
+          : null,
+      actorRole: req.user?.role ?? null,
+      action: "location.create",
+      entityType: "Location",
+      entityId: location._id,
+      before: null,
+      after:
+        location.toObject() as unknown as Record<string, unknown>,
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+      description:
+        `تم إنشاء المحافظة ${location.name}.`,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "تمت إضافة المحافظة بنجاح.",
+      location,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "اسم المحافظة غير صحيح.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    handleError(res, error);
+  }
+}
+
+export async function updateLocation(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const beforeLocation =
+      await LocationModel.findById(req.params.id);
+
+    if (!beforeLocation) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    const allowed =
+      await canManageLocation(
+        req,
+        beforeLocation._id.toString(),
+      );
+
+    if (!allowed) {
+      res.status(403).json({
+        success: false,
+        message:
+          "لا يمكنك تعديل محافظة خارج نطاقك.",
+      });
+      return;
+    }
+
+    const data = updateSchema.parse(req.body);
+
+      await LocationModel.findById(req.params.id);
+
+    if (!beforeLocation) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    const before =
+      beforeLocation.toObject();
+
+    const location = await LocationModel.findByIdAndUpdate(
+      req.params.id,
+      { $set: data },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    await createAuditLog({
+      actorId:
+        Types.ObjectId.isValid(String(req.user?.sub ?? ""))
+          ? new Types.ObjectId(String(req.user?.sub))
+          : null,
+      actorRole: req.user?.role ?? null,
+      action: "location.update",
+      entityType: "Location",
+      entityId: location._id,
+      before:
+        before as unknown as Record<string, unknown>,
+      after:
+        location.toObject() as unknown as Record<string, unknown>,
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+      description:
+        `تم تعديل المحافظة ${location.name}.`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "تم تحديث المحافظة بنجاح.",
+      location,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "البيانات المرسلة غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    handleError(res, error);
+  }
+}
+
+export async function deleteLocation(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const location =
+      await LocationModel.findById(req.params.id);
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    if (
+      !(await canManageLocation(
+        req,
+        location._id.toString(),
+      ))
+    ) {
+      res.status(403).json({
+        success: false,
+        message:
+          "لا يمكنك حذف محافظة خارج نطاقك.",
+      });
+      return;
+    }
+
+    const before =
+      location.toObject();
+
+    await LocationModel.findByIdAndDelete(
+      req.params.id,
+    );
+
+    await createAuditLog({
+      actorId:
+        Types.ObjectId.isValid(String(req.user?.sub ?? ""))
+          ? new Types.ObjectId(String(req.user?.sub))
+          : null,
+      actorRole: req.user?.role ?? null,
+      action: "location.delete",
+      entityType: "Location",
+      entityId: location._id,
+      before:
+        before as unknown as Record<string, unknown>,
+      after: null,
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+      description:
+        `تم حذف المحافظة ${location.name}.`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "تم حذف المحافظة بنجاح.",
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+export async function addArea(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = areaSchema.parse(req.body);
+
+    const location = await LocationModel.findById(
+      req.params.id,
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    if (
+      !(await canManageLocation(
+        req,
+        location._id.toString(),
+      ))
+    ) {
+      res.status(403).json({
+        success: false,
+        message:
+          "لا يمكنك إضافة منطقة داخل محافظة خارج نطاقك.",
+      });
+      return;
+    }
+
+    const exists = location.areas.some(
+      (area) =>
+        area.name.trim().toLowerCase() ===
+        data.name.trim().toLowerCase(),
+    );
+
+    if (exists) {
+      res.status(409).json({
+        success: false,
+        message: "المنطقة موجودة بالفعل داخل هذه المحافظة.",
+      });
+      return;
+    }
+
+    location.areas.push({
+      name: data.name,
+      isActive: true,
+      captainsEnabled: true,
+      establishmentsEnabled: true,
+    } as never);
+
+    await location.save();
+
+    await createAuditLog({
+      actorId:
+        Types.ObjectId.isValid(String(req.user?.sub ?? ""))
+          ? new Types.ObjectId(String(req.user?.sub))
+          : null,
+      actorRole: req.user?.role ?? null,
+      action: "area.create",
+      entityType: "LocationArea",
+      entityId: location.areas[location.areas.length - 1]?._id ?? null,
+      before: null,
+      after: {
+        governorateId: location._id.toString(),
+        name: data.name,
+        isActive: true,
+        captainsEnabled: true,
+        establishmentsEnabled: true,
+      },
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+      description:
+        `تمت إضافة المنطقة ${data.name} داخل ${location.name}.`,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "تمت إضافة المنطقة بنجاح.",
+      location,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "اسم المنطقة غير صحيح.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    handleError(res, error);
+  }
+}
+
+export async function updateArea(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = areaUpdateSchema.parse(req.body);
+
+    const location = await LocationModel.findById(
+      req.params.id,
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    if (
+      !(await canManageLocation(
+        req,
+        location._id.toString(),
+        String(req.params.areaId),
+      ))
+    ) {
+      res.status(403).json({
+        success: false,
+        message:
+          "لا يمكنك تعديل منطقة خارج نطاقك.",
+      });
+      return;
+    }
+
+    const area = location.areas.find(
+      (item) =>
+        item._id?.toString() === req.params.areaId,
+    );
+
+    if (!area) {
+      res.status(404).json({
+        success: false,
+        message: "المنطقة غير موجودة.",
+      });
+      return;
+    }
+
+    if (data.name) {
+      const duplicate = location.areas.some(
+        (item) =>
+          item._id.toString() !== req.params.areaId &&
+          item.name.trim().toLowerCase() ===
+            data.name!.trim().toLowerCase(),
+      );
+
+      if (duplicate) {
+        res.status(409).json({
+          success: false,
+          message: "اسم المنطقة موجود بالفعل.",
+        });
+        return;
+      }
+
+      area.name = data.name;
+    }
+
+    if (typeof data.isActive === "boolean") {
+      area.isActive = data.isActive;
+    }
+
+    if (typeof data.captainsEnabled === "boolean") {
+      area.captainsEnabled = data.captainsEnabled;
+    }
+
+    if (typeof data.establishmentsEnabled === "boolean") {
+      area.establishmentsEnabled = data.establishmentsEnabled;
+    }
+
+    const after = {
+      governorateId: location._id.toString(),
+      areaId: area._id.toString(),
+      name: area.name,
+      isActive: area.isActive,
+      captainsEnabled: area.captainsEnabled,
+      establishmentsEnabled:
+        area.establishmentsEnabled,
+    };
+
+    await location.save();
+
+    await createAuditLog({
+      actorId:
+        Types.ObjectId.isValid(String(req.user?.sub ?? ""))
+          ? new Types.ObjectId(String(req.user?.sub))
+          : null,
+      actorRole: req.user?.role ?? null,
+      action: "area.update",
+      entityType: "LocationArea",
+      entityId: area._id,
+      before: null,
+      after,
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+      description:
+        `تم تعديل المنطقة ${area.name}.`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "تم تحديث المنطقة بنجاح.",
+      location,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "البيانات المرسلة غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    handleError(res, error);
+  }
+}
+
+export async function deleteArea(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const location = await LocationModel.findById(
+      req.params.id,
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    if (
+      !(await canManageLocation(
+        req,
+        location._id.toString(),
+        String(req.params.areaId),
+      ))
+    ) {
+      res.status(403).json({
+        success: false,
+        message:
+          "لا يمكنك حذف منطقة خارج نطاقك.",
+      });
+      return;
+    }
+
+    const areaExists = location.areas.some(
+      (item) =>
+        item._id?.toString() === req.params.areaId,
+    );
+
+    if (!areaExists) {
+      res.status(404).json({
+        success: false,
+        message: "المنطقة غير موجودة.",
+      });
+      return;
+    }
+
+    const deletedArea =
+      location.areas.find(
+        (item) =>
+          item._id?.toString() === req.params.areaId,
+      );
+
+    location.areas = location.areas.filter(
+      (item) =>
+        item._id?.toString() !== req.params.areaId,
+    );
+
+    await location.save();
+
+    await createAuditLog({
+      actorId:
+        Types.ObjectId.isValid(String(req.user?.sub ?? ""))
+          ? new Types.ObjectId(String(req.user?.sub))
+          : null,
+      actorRole: req.user?.role ?? null,
+      action: "area.delete",
+      entityType: "LocationArea",
+      entityId: deletedArea?._id ?? null,
+      before: deletedArea
+        ? {
+            governorateId:
+              location._id.toString(),
+            areaId:
+              deletedArea._id.toString(),
+            name: deletedArea.name,
+            isActive: deletedArea.isActive,
+            captainsEnabled:
+              deletedArea.captainsEnabled,
+            establishmentsEnabled:
+              deletedArea.establishmentsEnabled,
+          }
+        : null,
+      after: null,
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+      description:
+        `تم حذف المنطقة ${deletedArea?.name ?? ""} من ${location.name}.`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "تم حذف المنطقة بنجاح.",
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}

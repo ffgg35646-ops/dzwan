@@ -1,0 +1,396 @@
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { apiGet } from "../../api/request";
+
+function unwrap(payload: any): any {
+  return payload?.data ?? payload?.result ?? payload;
+}
+
+function toOrders(payload: any): any[] {
+  const root = unwrap(payload);
+
+  if (Array.isArray(root)) return root;
+  if (Array.isArray(root?.orders)) return root.orders;
+  if (Array.isArray(root?.items)) return root.items;
+  if (Array.isArray(root?.rows)) return root.rows;
+  if (Array.isArray(root?.data)) return root.data;
+
+  return [];
+}
+
+function numberFrom(
+  root: any,
+  keys: string[]
+): number | null {
+  for (const key of keys) {
+    const parts = key.split(".");
+    let value = root;
+
+    for (const part of parts) {
+      value = value?.[part];
+    }
+
+    const n = Number(value);
+
+    if (Number.isFinite(n)) {
+      return n;
+    }
+  }
+
+  return null;
+}
+
+function statusOf(order: any): string {
+  return String(
+    order?.status ??
+      order?.stage ??
+      order?.state ??
+      ""
+  ).toLowerCase();
+}
+
+function completed(order: any): boolean {
+  const s = statusOf(order);
+
+  return (
+    s.includes("completed") ||
+    s.includes("complete") ||
+    s.includes("delivered") ||
+    s.includes("finished") ||
+    s.includes("مكتمل") ||
+    s.includes("تم التسليم")
+  );
+}
+
+function rejected(order: any): boolean {
+  const s = statusOf(order);
+
+  return (
+    s.includes("rejected") ||
+    s.includes("reject") ||
+    s.includes("مرفوض")
+  );
+}
+
+function cancelled(order: any): boolean {
+  const s = statusOf(order);
+
+  return (
+    s.includes("cancel") ||
+    s.includes("ملغي")
+  );
+}
+
+function active(order: any): boolean {
+  return (
+    !completed(order) &&
+    !rejected(order) &&
+    !cancelled(order)
+  );
+}
+
+export default function LeaderOrdersTotalCard() {
+  const navigation = useNavigation<any>();
+
+  const [total, setTotal] = useState(0);
+  const [activeCount, setActiveCount] = useState(0);
+  const [completedCount, setCompletedCount] =
+    useState(0);
+  const [rejectedCount, setRejectedCount] =
+    useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const [ordersResult, dashboardResult] =
+        await Promise.all([
+          apiGet(
+            "/leaders/me/orders?limit=10000"
+          ),
+          apiGet("/leaders/me/dashboard"),
+        ]);
+
+      const orders = toOrders(ordersResult);
+
+      const ordersRoot =
+        unwrap(ordersResult);
+
+      const dashboardRoot =
+        unwrap(dashboardResult);
+
+      const backendTotal =
+        numberFrom(ordersRoot, [
+          "total",
+          "totalOrders",
+          "count",
+          "pagination.total",
+          "meta.total",
+        ]) ??
+        numberFrom(dashboardRoot, [
+          "totalOrders",
+          "orders.total",
+          "stats.totalOrders",
+          "stats.orders.total",
+        ]);
+
+      const backendActive =
+        numberFrom(dashboardRoot, [
+          "activeOrders",
+          "orders.active",
+          "stats.activeOrders",
+          "stats.orders.active",
+        ]);
+
+      const backendCompleted =
+        numberFrom(dashboardRoot, [
+          "completedOrders",
+          "orders.completed",
+          "stats.completedOrders",
+          "stats.orders.completed",
+        ]);
+
+      const backendRejected =
+        numberFrom(dashboardRoot, [
+          "rejectedOrders",
+          "orders.rejected",
+          "stats.rejectedOrders",
+          "stats.orders.rejected",
+        ]);
+
+      setTotal(
+        backendTotal ?? orders.length
+      );
+
+      setActiveCount(
+        backendActive ??
+          orders.filter(active).length
+      );
+
+      setCompletedCount(
+        backendCompleted ??
+          orders.filter(completed).length
+      );
+
+      setRejectedCount(
+        backendRejected ??
+          orders.filter(rejected).length
+      );
+    } catch (err) {
+      console.warn(
+        "Leader total card error:",
+        err
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+
+    const timer = setInterval(
+      load,
+      30000
+    );
+
+    return () => clearInterval(timer);
+  }, [load]);
+
+  return (
+    <Pressable
+      onPress={() =>
+        navigation.navigate("الطلبات")
+      }
+      style={({ pressed }) => [
+        styles.card,
+        pressed && styles.pressed,
+      ]}
+    >
+      <View style={styles.iconBox}>
+        <Text style={styles.icon}>
+          ▤
+        </Text>
+      </View>
+
+      <View style={styles.main}>
+        <Text style={styles.label}>
+          مجموع الطلبات
+        </Text>
+
+        {loading ? (
+          <ActivityIndicator
+            size="small"
+            style={styles.loader}
+          />
+        ) : (
+          <Text style={styles.total}>
+            {total}
+          </Text>
+        )}
+
+        <Text style={styles.subtitle}>
+          جميع الطلبات داخل نطاقك
+        </Text>
+
+        <View style={styles.breakdown}>
+          <View style={styles.item}>
+            <Text style={styles.number}>
+              {activeCount}
+            </Text>
+            <Text style={styles.itemLabel}>
+              نشط
+            </Text>
+          </View>
+
+          <View style={styles.line} />
+
+          <View style={styles.item}>
+            <Text style={styles.number}>
+              {completedCount}
+            </Text>
+            <Text style={styles.itemLabel}>
+              مكتمل
+            </Text>
+          </View>
+
+          <View style={styles.line} />
+
+          <View style={styles.item}>
+            <Text style={styles.number}>
+              {rejectedCount}
+            </Text>
+            <Text style={styles.itemLabel}>
+              مرفوض
+            </Text>
+          </View>
+        </View>
+
+        <Text style={styles.clickHint}>
+          اضغط لعرض كل الطلبات والبحث
+        </Text>
+      </View>
+
+      <Text style={styles.arrow}>
+        ‹
+      </Text>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    marginTop: 14,
+    borderRadius: 22,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#DCE5F2",
+  },
+
+  pressed: {
+    opacity: 0.84,
+  },
+
+  iconBox: {
+    width: 49,
+    height: 49,
+    borderRadius: 16,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  icon: {
+    color: "#2563EB",
+    fontSize: 22,
+    fontWeight: "900",
+  },
+
+  main: {
+    flex: 1,
+  },
+
+  label: {
+    color: "#667085",
+    fontSize: 12,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  total: {
+    color: "#101828",
+    fontSize: 31,
+    lineHeight: 36,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  loader: {
+    alignSelf: "flex-end",
+    marginVertical: 7,
+  },
+
+  subtitle: {
+    color: "#98A2B3",
+    fontSize: 10,
+    textAlign: "right",
+  },
+
+  breakdown: {
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  item: {
+    alignItems: "center",
+  },
+
+  number: {
+    color: "#344054",
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  itemLabel: {
+    color: "#98A2B3",
+    fontSize: 9,
+    fontWeight: "700",
+  },
+
+  line: {
+    width: 1,
+    height: 25,
+    backgroundColor: "#EAECF0",
+  },
+
+  clickHint: {
+    marginTop: 9,
+    color: "#2563EB",
+    fontSize: 10,
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  arrow: {
+    color: "#98A2B3",
+    fontSize: 28,
+  },
+});

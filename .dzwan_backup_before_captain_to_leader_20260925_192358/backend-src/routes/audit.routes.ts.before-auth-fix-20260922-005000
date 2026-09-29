@@ -1,0 +1,15 @@
+import { Router } from "express";
+import {
+  listAuditLogs,
+  getAuditLog,
+} from "../controllers/audit.controller.js";
+import { requireAdmin } from "../middleware/auth.middleware.js";
+
+const router = Router();
+
+router.use(requireAdmin);
+
+router.get("/", listAuditLogs);
+router.get("/:id", getAuditLog);
+
+export default router;

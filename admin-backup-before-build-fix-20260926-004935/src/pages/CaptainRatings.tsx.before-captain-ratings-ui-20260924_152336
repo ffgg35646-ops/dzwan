@@ -1,0 +1,325 @@
+import { useMemo, useState } from "react";
+import {
+  BarChart3,
+  Check,
+  Loader2,
+  MessageSquare,
+  RefreshCw,
+  Search,
+  Star,
+  Users,
+} from "lucide-react";
+import { api, getApiErrorMessage } from "../lib/api";
+
+interface Rating {
+  _id: string;
+  stars: number;
+  comment?: string | null;
+  createdAt?: string;
+  customerName?: string;
+}
+
+interface RatingsResponse {
+  average?: number;
+  ratings?: Rating[];
+}
+
+export default function CaptainRatings() {
+  const [captainId, setCaptainId] = useState("");
+  const [data, setData] =
+    useState<RatingsResponse | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function load() {
+    const id = captainId.trim();
+
+    if (!id) {
+      setError("أدخل معرف الكابتن أولًا.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await api.get(
+        `/completion/ratings/${encodeURIComponent(id)}`,
+      );
+
+      setData({
+        average: Number(response.data?.average || 0),
+        ratings: Array.isArray(response.data?.ratings)
+          ? response.data.ratings
+          : [],
+      });
+    } catch (err) {
+      setData(null);
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر تحميل تقييمات الكابتن.",
+        ),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const ratings = data?.ratings || [];
+
+  const distribution = useMemo(() => {
+    return [5, 4, 3, 2, 1].map((stars) => ({
+      stars,
+      count: ratings.filter(
+        (rating) => Number(rating.stars) === stars,
+      ).length,
+    }));
+  }, [ratings]);
+
+  const commentsCount = ratings.filter(
+    (rating) => rating.comment?.trim(),
+  ).length;
+
+  return (
+    <main className="premium-page" dir="rtl">
+      <div className="premium-page-shell">
+        <section className="premium-page-intro">
+          <div>
+            <span className="premium-page-kicker">
+              جودة الخدمة
+            </span>
+            <h1>تقييمات الكابتن</h1>
+            <p>
+              مراجعة تقييمات العملاء وأداء الكابتن من خلال
+              بيانات التقييم الحقيقية.
+            </p>
+          </div>
+
+          <div className="premium-page-icon">
+            <Star size={28} />
+          </div>
+        </section>
+
+        <section className="premium-panel">
+          <div className="premium-section-heading">
+            <div>
+              <span>البحث</span>
+              <h2>عرض تقييمات كابتن</h2>
+              <p>
+                أدخل معرف الكابتن لتحميل تقييماته.
+              </p>
+            </div>
+          </div>
+
+          <div className="premium-rating-search">
+            <div className="premium-input-with-icon">
+              <Search size={18} />
+              <input
+                value={captainId}
+                disabled={loading}
+                onChange={(event) =>
+                  setCaptainId(event.target.value)
+                }
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void load();
+                  }
+                }}
+                placeholder="معرف الكابتن"
+              />
+            </div>
+
+            <button
+              type="button"
+              className="premium-button primary"
+              disabled={loading}
+              onClick={() => void load()}
+            >
+              {loading ? (
+                <Loader2
+                  size={17}
+                  className="premium-spin"
+                />
+              ) : (
+                <BarChart3 size={17} />
+              )}
+              {loading ? "جارٍ التحميل..." : "عرض التقييمات"}
+            </button>
+
+            {data && (
+              <button
+                type="button"
+                className="premium-button ghost"
+                disabled={loading}
+                onClick={() => void load()}
+              >
+                <RefreshCw size={17} />
+                تحديث
+              </button>
+            )}
+          </div>
+        </section>
+
+        {error && (
+          <div className="premium-error">
+            {error}
+          </div>
+        )}
+
+        {loading ? (
+          <section className="premium-state-card">
+            <Loader2 size={30} className="premium-spin" />
+            <span>جارٍ تحميل تقييمات الكابتن...</span>
+          </section>
+        ) : !data ? (
+          <section className="premium-state-card muted">
+            <Users size={32} />
+            <h3>ابدأ بالبحث عن كابتن</h3>
+            <p>
+              أدخل معرف الكابتن أعلاه لعرض بيانات التقييم.
+            </p>
+          </section>
+        ) : (
+          <>
+            <section className="premium-rating-overview">
+              <div className="premium-rating-score">
+                <span>متوسط التقييم</span>
+                <strong>
+                  {Number(data.average || 0).toFixed(1)}
+                </strong>
+
+                <div className="premium-stars">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <Star
+                      key={star}
+                      size={19}
+                      fill={
+                        star <=
+                        Math.round(
+                          Number(data.average || 0),
+                        )
+                          ? "currentColor"
+                          : "none"
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="premium-rating-summary">
+                <div>
+                  <MessageSquare size={20} />
+                  <span>إجمالي التقييمات</span>
+                  <strong>{ratings.length}</strong>
+                </div>
+
+                <div>
+                  <Check size={20} />
+                  <span>التعليقات</span>
+                  <strong>{commentsCount}</strong>
+                </div>
+              </div>
+
+              <div className="premium-rating-distribution">
+                {distribution.map((item) => {
+                  const percentage =
+                    ratings.length > 0
+                      ? (item.count / ratings.length) * 100
+                      : 0;
+
+                  return (
+                    <div
+                      className="premium-rating-row"
+                      key={item.stars}
+                    >
+                      <span>{item.stars}</span>
+                      <Star size={15} fill="currentColor" />
+                      <div className="premium-rating-bar">
+                        <div
+                          style={{
+                            width: `${percentage}%`,
+                          }}
+                        />
+                      </div>
+                      <strong>{item.count}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            {ratings.length === 0 ? (
+              <section className="premium-state-card muted">
+                <Star size={30} />
+                <h3>لا توجد تقييمات</h3>
+                <p>
+                  لا توجد تقييمات مسجلة لهذا الكابتن حاليًا.
+                </p>
+              </section>
+            ) : (
+              <section className="premium-panel">
+                <div className="premium-section-heading">
+                  <div>
+                    <span>آراء العملاء</span>
+                    <h2>آخر التقييمات</h2>
+                    <p>
+                      التقييمات التي تم إرجاعها من الخادم.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="premium-ratings-list">
+                  {ratings.map((rating) => (
+                    <article
+                      className="premium-rating-card"
+                      key={rating._id}
+                    >
+                      <div className="premium-rating-card-top">
+                        <div className="premium-rating-stars">
+                          {[1, 2, 3, 4, 5].map(
+                            (star) => (
+                              <Star
+                                key={star}
+                                size={17}
+                                fill={
+                                  star <=
+                                  Number(rating.stars)
+                                    ? "currentColor"
+                                    : "none"
+                                }
+                              />
+                            ),
+                          )}
+                        </div>
+
+                        {rating.createdAt && (
+                          <span>
+                            {new Date(
+                              rating.createdAt,
+                            ).toLocaleDateString("ar-EG")}
+                          </span>
+                        )}
+                      </div>
+
+                      <p>
+                        {rating.comment?.trim() ||
+                          "بدون تعليق"}
+                      </p>
+
+                      {rating.customerName && (
+                        <small>
+                          {rating.customerName}
+                        </small>
+                      )}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+      </div>
+    </main>
+  );
+}

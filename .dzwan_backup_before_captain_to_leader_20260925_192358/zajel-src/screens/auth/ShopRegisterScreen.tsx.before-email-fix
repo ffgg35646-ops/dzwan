@@ -1,0 +1,613 @@
+import { registerPushToken } from "../../api/pushRegistration";
+import React, { useState } from "react";
+import {
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import * as Location from "expo-location";
+import { useNavigation } from "@react-navigation/native";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+
+import Screen from "../../components/Screen";
+import AppInput from "../../components/AppInput";
+import AppButton from "../../components/AppButton";
+import LocationSelector from "../../components/LocationSelector";
+import { api } from "../../api/client";
+import { useAppTheme } from "../../theme/useAppTheme";
+
+export default function ShopRegisterScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const navigation = useNavigation<any>();
+
+  const [type, setType] = useState<"restaurant" | "shop">("restaurant");
+
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [address, setAddress] = useState("");
+
+  const [ownerFullName, setOwnerFullName] = useState("");
+  const [ownerPhone, setOwnerPhone] = useState("");
+  const [gmail, setGmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  const [governorateId, setGovernorateId] = useState("");
+  const [areaId, setAreaId] = useState("");
+
+  const [latitude, setLatitude] = useState<number | null>(null);
+  const [longitude, setLongitude] = useState<number | null>(null);
+
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState<1 | 2>(1);
+
+  function showMessage(title: string, message: string) {
+    if (Platform.OS === "web") {
+      window.alert(`${title}\n\n${message}`);
+      return;
+    }
+
+    showMessage(title, message);
+  }
+
+  async function getLocation() {
+    setLoadingLocation(true);
+
+    try {
+      if (Platform.OS === "web") {
+        if (
+          typeof navigator === "undefined" ||
+          !navigator.geolocation
+        ) {
+          showMessage(
+            "الموقع غير متاح",
+            "المتصفح لا يدعم تحديد الموقع."
+          );
+          return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = Number(position.coords.latitude);
+            const lng = Number(position.coords.longitude);
+
+            if (
+              !Number.isFinite(lat) ||
+              !Number.isFinite(lng)
+            ) {
+              showMessage(
+                "خطأ في الموقع",
+                "تعذر الحصول على إحداثيات صحيحة."
+              );
+              return;
+            }
+
+            setLatitude(lat);
+            setLongitude(lng);
+
+            showMessage(
+              "تم تحديد الموقع",
+              "تم حفظ موقع المطعم / المحل الحالي."
+            );
+          },
+          (error) => {
+            console.error(
+              "Web geolocation error:",
+              error
+            );
+
+            showMessage(
+              "تعذر تحديد الموقع",
+              "اسمح للموقع من إعدادات المتصفح ثم حاول مرة أخرى."
+            );
+          },
+          {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0,
+          }
+        );
+
+        return;
+      }
+
+      const permission =
+        await Location.requestForegroundPermissionsAsync();
+
+      if (!permission.granted) {
+        showMessage(
+          "صلاحية الموقع",
+          "يجب السماح للتطبيق بالوصول إلى موقع المطعم / المحل."
+        );
+        return;
+      }
+
+      const current =
+        await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
+
+      const lat = Number(current.coords.latitude);
+      const lng = Number(current.coords.longitude);
+
+      if (
+        !Number.isFinite(lat) ||
+        !Number.isFinite(lng)
+      ) {
+        showMessage(
+          "خطأ في الموقع",
+          "تعذر الحصول على إحداثيات صحيحة."
+        );
+        return;
+      }
+
+      setLatitude(lat);
+      setLongitude(lng);
+
+      showMessage(
+        "تم تحديد الموقع",
+        "تم حفظ موقع المطعم / المحل الحالي."
+      );
+    } catch (error) {
+      console.error("Location error:", error);
+
+      showMessage(
+        "تعذر تحديد الموقع",
+        "تأكد من السماح بالموقع ثم حاول مرة أخرى."
+      );
+    } finally {
+      setLoadingLocation(false);
+    }
+  }
+
+  function goNext() {
+    if (!name.trim()) {
+      showMessage(
+        "تنبيه",
+        `أدخل اسم ${type === "restaurant" ? "المطعم" : "المحل"}.`
+      );
+      return;
+    }
+
+    const phoneValue = phone.trim();
+
+    if (!phoneValue) {
+      showMessage(
+        "تنبيه",
+        "أدخل رقم هاتف المطعم / المحل."
+      );
+      return;
+    }
+
+    if (!/^07\d{9}$/.test(phoneValue)) {
+      showMessage(
+        "رقم الهاتف غير صحيح",
+        "يجب أن يكون رقمًا عراقيًا مكونًا من 11 رقمًا ويبدأ بـ 07."
+      );
+      return;
+    }
+
+    if (!gmail.trim()) {
+      showMessage("تنبيه", "أدخل البريد الإلكتروني للنشاط.");
+      return;
+    }
+
+    setPage(2);
+  }
+
+  async function submit() {
+    if (!name.trim()) {
+      showMessage(
+        "تنبيه",
+        `أدخل اسم ${type === "restaurant" ? "المطعم" : "المحل"}.`
+      );
+      return;
+    }
+
+    const phoneValue = phone.trim();
+    const ownerPhoneValue = ownerPhone.trim();
+    const gmailValue = gmail.trim().toLowerCase();
+
+    if (!phoneValue) {
+      showMessage(
+        "تنبيه",
+        "أدخل رقم هاتف المطعم / المحل."
+      );
+      return;
+    }
+
+    if (!/^07\d{9}$/.test(phoneValue)) {
+      showMessage(
+        "رقم الهاتف غير صحيح",
+        "يجب أن يكون رقمًا عراقيًا مكونًا من 11 رقمًا ويبدأ بـ 07."
+      );
+      return;
+    }
+
+    if (!ownerFullName.trim()) {
+      showMessage("تنبيه", "أدخل اسم صاحب الحساب.");
+      return;
+    }
+
+    if (!ownerPhoneValue) {
+      showMessage(
+        "تنبيه",
+        "أدخل رقم هاتف صاحب الحساب."
+      );
+      return;
+    }
+
+    if (!/^07\d{9}$/.test(ownerPhoneValue)) {
+      showMessage(
+        "رقم الهاتف غير صحيح",
+        "يجب أن يكون رقم هاتف صاحب الحساب عراقيًا مكونًا من 11 رقمًا ويبدأ بـ 07."
+      );
+      return;
+    }
+
+    if (!gmailValue) {
+      showMessage("تنبيه", "أدخل Gmail صاحب الحساب.");
+      return;
+    }
+
+    if (!/^[^\s@]+@gmail\.com$/.test(gmailValue)) {
+      showMessage(
+        "Gmail غير صحيح",
+        "أدخل عنوان Gmail صحيحًا مثل example@gmail.com."
+      );
+      return;
+    }
+
+    if (password.length < 6) {
+      showMessage(
+        "كلمة السر",
+        "كلمة السر يجب أن تكون 6 أحرف أو أكثر."
+      );
+      return;
+    }
+
+    if (
+      Platform.OS !== "web" &&
+      (latitude === null || longitude === null)
+    ) {
+      showMessage(
+        "الموقع مطلوب",
+        "يجب تحديد موقع المطعم / المحل قبل إرسال التسجيل."
+      );
+      return;
+    }
+
+    if (!governorateId) {
+      showMessage("المحافظة مطلوبة", "اختر المحافظة.");
+      return;
+    }
+
+    if (!areaId) {
+      showMessage("المنطقة مطلوبة", "اختر المنطقة.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      const pushToken =
+        await registerPushToken();
+
+      await api.post("/establishment-registration", {
+        type,
+        name: name.trim(),
+        phone: phoneValue,
+        email: email.trim() || undefined,
+        address: address.trim(),
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+        ownerFullName: ownerFullName.trim(),
+        ownerPhone: ownerPhoneValue,
+        gmail: gmailValue,
+        password,
+        governorateId,
+        areaId,
+        pushToken: pushToken || undefined,
+      });
+
+      navigation.replace("WaitingApproval");
+    } catch (error: any) {
+      showMessage(
+        "تعذر إرسال التسجيل",
+        error?.response?.data?.message ||
+          "حدث خطأ أثناء إرسال التسجيل."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Screen>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.formCard}>
+          <Pressable
+            onPress={() =>
+              page === 1
+                ? navigation.goBack()
+                : setPage(1)
+            }
+            style={({ pressed }) => [
+              styles.backButton,
+              pressed && {
+                transform: [{ scale: 0.94 }],
+                opacity: 0.9,
+              },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="arrow-right"
+              size={22}
+              color="#E5501C"
+            />
+          </Pressable>
+
+          <Text style={styles.title}>
+            تسجيل المطعم / المحل
+          </Text>
+
+          <Text style={styles.pageHint}>
+            {page === 1
+              ? "بيانات النشاط"
+              : "بيانات صاحب الحساب والموقع"}
+          </Text>
+
+          {page === 1 ? (
+            <>
+              <Text style={styles.sectionTitle}>
+                نوع النشاط
+              </Text>
+
+              <View style={styles.typeRow}>
+                <View style={styles.typeItem}>
+                  <AppButton
+                    title="🍽️ مطعم"
+                    secondary={type !== "restaurant"}
+                    onPress={() => setType("restaurant")}
+                  />
+                </View>
+
+                <View style={styles.typeItem}>
+                  <AppButton
+                    title="🏪 محل"
+                    secondary={type !== "shop"}
+                    onPress={() => setType("shop")}
+                  />
+                </View>
+              </View>
+
+              <AppInput
+                placeholder={
+                  type === "restaurant"
+                    ? "اسم المطعم"
+                    : "اسم المحل"
+                }
+                value={name}
+                onChangeText={setName}
+              />
+
+              <AppInput
+                placeholder="رقم هاتف المطعم / المحل"
+                value={phone}
+                onChangeText={setPhone}
+                keyboardType="phone-pad"
+              />
+
+              <AppInput
+                placeholder="البريد الإلكتروني للنشاط"
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <AppButton
+                title="التالي"
+                onPress={goNext}
+              />
+            </>
+          ) : (
+            <>
+              <AppInput
+                placeholder="العنوان المكتوب"
+                value={address}
+                onChangeText={setAddress}
+              />
+
+              <LocationSelector
+                type="establishment"
+                governorateId={governorateId}
+                areaId={areaId}
+                onGovernorateChange={setGovernorateId}
+                onAreaChange={setAreaId}
+              />
+
+              <Text style={styles.sectionTitle}>
+                بيانات صاحب الحساب
+              </Text>
+
+              <AppInput
+                placeholder="اسم صاحب الحساب"
+                value={ownerFullName}
+                onChangeText={setOwnerFullName}
+              />
+
+              <AppInput
+                placeholder="رقم هاتف صاحب الحساب"
+                value={ownerPhone}
+                onChangeText={setOwnerPhone}
+                keyboardType="phone-pad"
+              />
+
+              <AppInput
+                placeholder="Gmail صاحب الحساب"
+                value={gmail}
+                onChangeText={setGmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+
+              <AppInput
+                placeholder="كلمة السر"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
+              <AppButton
+                title={
+                  latitude !== null
+                    ? "تم تحديد موقع النشاط ✓"
+                    : "تحديد موقع النشاط"
+                }
+                secondary
+                loading={loadingLocation}
+                onPress={getLocation}
+              />
+
+              <View style={styles.bottomButtons}>
+                <View style={styles.bottomButton}>
+                  <AppButton
+                    title="السابق"
+                    secondary
+                    onPress={() => setPage(1)}
+                  />
+                </View>
+
+                <View style={styles.bottomButton}>
+                  <AppButton
+                    title="إرسال طلب التسجيل"
+                    loading={loading}
+                    onPress={submit}
+                  />
+                </View>
+              </View>
+            </>
+          )}
+        </View>
+      </ScrollView>
+    </Screen>
+  );
+}
+
+
+
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>
+) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: 20,
+      paddingTop: 20,
+      paddingBottom: 34,
+      alignItems: "center",
+    },
+
+    formCard: {
+      width: "100%",
+      maxWidth: 380,
+      position: "relative",
+      backgroundColor: "#FFFFFF",
+      borderRadius: 24,
+      borderWidth: 1,
+      borderColor: "#F0D9BE",
+      padding: 18,
+      paddingTop: 58,
+      shadowColor: "#8A5A2E",
+      shadowOffset: {
+        width: 0,
+        height: 8,
+      },
+      shadowOpacity: 0.09,
+      shadowRadius: 18,
+      elevation: 4,
+    },
+
+    backButton: {
+      position: "absolute",
+      top: 14,
+      right: 14,
+      width: 40,
+      height: 40,
+      borderRadius: 14,
+      backgroundColor: "#FFF0DD",
+      borderWidth: 1,
+      borderColor: "#F0D9BE",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 20,
+      shadowColor: "#8A5A2E",
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 0.12,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+
+    title: {
+      color: "#24150B",
+      fontSize: 24,
+      fontWeight: "900",
+      textAlign: "center",
+    },
+
+    pageHint: {
+      color: "#8A5A2E",
+      fontSize: 12,
+      fontWeight: "700",
+      textAlign: "center",
+      marginTop: 5,
+      marginBottom: 18,
+    },
+
+    sectionTitle: {
+      color: "#8A5A2E",
+      fontSize: 14,
+      fontWeight: "800",
+      textAlign: "right",
+      marginTop: 8,
+      marginBottom: 7,
+      width: "100%",
+    },
+
+    typeRow: {
+      flexDirection: "row",
+      gap: 10,
+      width: "100%",
+      marginBottom: 2,
+    },
+
+    typeItem: {
+      flex: 1,
+    },
+
+    bottomButtons: {
+      flexDirection: "row-reverse",
+      gap: 10,
+      width: "100%",
+      marginTop: 4,
+    },
+
+    bottomButton: {
+      flex: 1,
+    },
+  });
+

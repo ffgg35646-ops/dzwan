@@ -1,0 +1,63 @@
+
+import {
+  core11OrderCreateGuard,
+  core11CaptainGuard,
+} from "../middleware/core11-order.middleware.js";
+
+import { Router } from "express";
+import {
+  requireAuth,
+  requireAdmin,
+} from "../middleware/auth.middleware.js";
+
+import {
+  loadUserScope,
+  requireManagementRole,
+} from "../middleware/scope.middleware.js";
+import {
+  getCaptainOrderBoard,
+  claimCaptainOrder,
+  rejectCaptainOrder,
+} from "../controllers/captain-order.controller.js";
+
+import {
+  assignCaptain,
+  reassignCaptain,
+  createOrder,
+  getOrder,
+  listOrders,
+  updateOrderStatus,
+  adminOrderDecision,
+} from "../controllers/order.controller.js";
+
+const router = Router();
+
+router.use(
+  requireAuth,
+  loadUserScope,
+);
+
+router.get(
+  "/captain/board",
+  getCaptainOrderBoard,
+);
+
+router.post(
+  "/captain/:id/claim",
+  claimCaptainOrder,
+);
+
+router.post(
+  "/captain/:id/reject",
+  rejectCaptainOrder,
+);
+
+router.get("/", listOrders);
+router.post("/", core11OrderCreateGuard, createOrder);
+router.get("/:id", getOrder);
+router.patch("/:id/status", core11CaptainGuard, updateOrderStatus);
+router.patch("/:id/admin-decision", requireAuth, requireAdmin, adminOrderDecision);
+router.post("/:id/assign-captain", core11CaptainGuard, assignCaptain);
+router.post("/:id/reassign-captain", reassignCaptain);
+
+export default router;

@@ -1,0 +1,980 @@
+import { useAppTheme } from "../../theme/useAppTheme";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import {
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
+
+import Screen from "../../components/Screen";
+import LoadingState from "../../components/LoadingState";
+import OrderStatusBadge from "../../components/OrderStatusBadge";
+import AppButton from "../../components/AppButton";
+import {
+  getOrder,
+  getTimeline,
+} from "../../api/orders";
+
+function timelineEventLabel(event: any) {
+  const value =
+    event?.note ||
+    event?.message ||
+    event?.event ||
+    event?.type ||
+    "";
+
+  switch (value) {
+    case "captain_reassigned":
+      return "🔄 تمت إعادة تعيين الطلب إلى كابتن آخر";
+
+    case "admin_redispatched":
+      return "🔄 تمت إعادة الطلب إلى نظام التوزيع";
+
+    case "emergency_resolved":
+      return "✅ تم إغلاق حالة الطوارئ";
+
+    case "stuck_resolved":
+      return "✅ تمت معالجة الطلب العالق";
+
+    default:
+      return value || "تحديث على الطلب";
+  }
+}
+
+export default function ShopOrderDetailsScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+
+  const route = useRoute<any>();
+  const navigation = useNavigation<any>();
+
+  const orderId = String(route.params?.orderId || "");
+
+  const [order, setOrder] = useState<any>(null);
+  const [timeline, setTimeline] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(
+    async (silent = false) => {
+      if (!orderId) {
+        setLoading(false);
+        return;
+      }
+
+      if (!silent) {
+        setLoading(true);
+      }
+
+      try {
+        const [orderResponse, timelineResponse] =
+          await Promise.all([
+            getOrder(orderId),
+            getTimeline(orderId),
+          ]);
+
+        const normalizedOrder =
+          orderResponse?.data ??
+          orderResponse?.order ??
+          orderResponse;
+
+        const normalizedTimeline =
+          timelineResponse?.data ??
+          timelineResponse?.timeline ??
+          timelineResponse;
+
+        setOrder(normalizedOrder);
+        setTimeline(normalizedTimeline);
+      } catch (error: any) {
+        if (!silent) {
+          Alert.alert(
+            "تعذر تحميل الطلب",
+            error?.response?.data?.message ||
+              error?.response?.data?.error ||
+              "تعذر تحميل تفاصيل الطلب."
+          );
+        }
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [orderId]
+  );
+
+  useEffect(() => {
+    load();
+
+    const timer = setInterval(() => {
+      load(true);
+    }, 10000);
+
+    return () => clearInterval(timer);
+  }, [load]);
+
+  function handleRefresh() {
+    setRefreshing(true);
+    load(true);
+  }
+
+  function openCaptainRating() {
+    const captainId =
+      route.params?.captainId ??
+      order?.captainId ??
+      order?.captain?._id ??
+      order?.captain?.id;
+
+    if (!captainId) {
+      Alert.alert(
+        "التقييم",
+        "لا يوجد كابتن مرتبط بهذا الطلب."
+      );
+      return;
+    }
+
+    navigation.navigate("RateCaptain", {
+      orderId:
+        order?._id ??
+        order?.id ??
+        orderId,
+      captainId,
+    });
+  }
+
+  if (loading) {
+    return (
+      <Screen>
+        <LoadingState message="جاري تحميل تفاصيل الطلب..." />
+      </Screen>
+    );
+  }
+
+  if (!order) {
+    return (
+      <Screen>
+        <View style={styles.empty}>
+          <View style={styles.emptyIcon}>
+            <Text style={styles.emptyIconText}>!</Text>
+          </View>
+
+          <Text style={styles.emptyTitle}>
+            تعذر العثور على الطلب
+          </Text>
+
+          <Text style={styles.emptyText}>
+            لم نتمكن من تحميل بيانات هذا الطلب.
+          </Text>
+
+          <AppButton
+            title="إعادة المحاولة"
+            onPress={() => load()}
+          />
+        </View>
+      </Screen>
+    );
+  }
+
+  const events = Array.isArray(timeline?.events)
+    ? timeline.events
+    : Array.isArray(timeline)
+      ? timeline
+      : [];
+
+  const status = order?.status;
+
+  const isDelivered = status === "delivered";
+
+  const customerName =
+    order?.customerName ||
+    order?.customer?.name ||
+    "الزبون";
+
+  const customerPhone =
+    order?.customerPhone ||
+    order?.customer?.phone ||
+    "غير متوفر";
+
+  const deliveryAddress =
+    order?.deliveryAddress ||
+    order?.address ||
+    "غير محدد";
+
+  const subtotal =
+    Number(order?.subtotal ?? 0);
+
+  const deliveryFee =
+    Number(order?.deliveryFee ?? 0);
+
+  const total =
+    Number(
+      order?.total ??
+        subtotal + deliveryFee
+    );
+
+  return (
+    <Screen>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <View style={styles.headerTop}>
+            <View style={styles.orderIcon}>
+              <Text style={styles.orderIconText}>
+                #
+              </Text>
+            </View>
+
+            <View style={styles.headerInfo}>
+              <Text style={styles.eyebrow}>
+                تفاصيل الطلب
+              </Text>
+
+              <Text style={styles.title}>
+                #{order?.orderNumber || orderId}
+              </Text>
+
+              <Text style={styles.createdAt}>
+                {order?.createdAt
+                  ? new Date(
+                      order.createdAt
+                    ).toLocaleString("ar-IQ")
+                  : "وقت الإنشاء غير متوفر"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.statusRow}>
+            <OrderStatusBadge status={status} />
+
+            <View style={styles.liveIndicator}>
+              <View style={styles.liveDot} />
+              <Text style={styles.liveText}>
+                يتم التحديث تلقائيًا
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.totalCard}>
+          <View style={styles.totalHeader}>
+            <Text style={styles.totalLabel}>
+              إجمالي الطلب
+            </Text>
+
+            <View style={styles.totalIcon}>
+              <Text style={styles.totalIconText}>
+                د.ع
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.totalValue}>
+            {total.toLocaleString("ar-IQ")} د.ع
+          </Text>
+
+          <View style={styles.totalDivider} />
+
+          <View style={styles.priceRow}>
+            <Text style={styles.priceValue}>
+              {subtotal.toLocaleString("ar-IQ")} د.ع
+            </Text>
+
+            <Text style={styles.priceLabel}>
+              قيمة الطلب
+            </Text>
+          </View>
+
+          <View style={styles.priceRow}>
+            <Text style={styles.priceValue}>
+              {deliveryFee.toLocaleString("ar-IQ")} د.ع
+            </Text>
+
+            <Text style={styles.priceLabel}>
+              أجرة التوصيل
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIcon}>
+              <Text style={styles.sectionIconText}>
+                01
+              </Text>
+            </View>
+
+            <View style={styles.sectionHeaderContent}>
+              <Text style={styles.sectionTitle}>
+                بيانات الزبون
+              </Text>
+
+              <Text style={styles.sectionSubtitle}>
+                معلومات المستلم
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.details}>
+            <DetailRow
+              label="الاسم"
+              value={customerName}
+              styles={styles}
+              appTheme={appTheme}
+            />
+
+            <DetailRow
+              label="رقم الهاتف"
+              value={customerPhone}
+              styles={styles}
+              appTheme={appTheme}
+            />
+
+            <DetailRow
+              label="عنوان التوصيل"
+              value={deliveryAddress}
+              styles={styles}
+              appTheme={appTheme}
+              last
+            />
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIcon}>
+              <Text style={styles.sectionIconText}>
+                02
+              </Text>
+            </View>
+
+            <View style={styles.sectionHeaderContent}>
+              <Text style={styles.sectionTitle}>
+                ملاحظات الطلب
+              </Text>
+
+              <Text style={styles.sectionSubtitle}>
+                التعليمات الخاصة بالتوصيل
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.noteBox}>
+            <Text style={styles.noteText}>
+              {order?.customerNote ||
+                "لا توجد ملاحظات خاصة بهذا الطلب."}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.sectionIcon}>
+              <Text style={styles.sectionIconText}>
+                03
+              </Text>
+            </View>
+
+            <View style={styles.sectionHeaderContent}>
+              <Text style={styles.sectionTitle}>
+                مراحل الطلب
+              </Text>
+
+              <Text style={styles.sectionSubtitle}>
+                سجل حركة الطلب
+              </Text>
+            </View>
+          </View>
+
+          {events.length === 0 ? (
+            <View style={styles.noEvents}>
+              <Text style={styles.noEventsText}>
+                لا توجد تحديثات مسجلة حتى الآن.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.timeline}>
+              {events.map(
+                (event: any, index: number) => {
+                  const isLast =
+                    index === events.length - 1;
+
+                  return (
+                    <View
+                      key={String(
+                        event?._id ??
+                          event?.id ??
+                          `${index}`
+                      )}
+                      style={styles.timelineItem}
+                    >
+                      <View style={styles.timelineRail}>
+                        <View
+                          style={[
+                            styles.timelineDot,
+                            index === 0 &&
+                              styles.timelineDotActive,
+                          ]}
+                        />
+
+                        {!isLast && (
+                          <View
+                            style={styles.timelineLine}
+                          />
+                        )}
+                      </View>
+
+                      <View
+                        style={[
+                          styles.eventContent,
+                          !isLast &&
+                            styles.eventContentSpacing,
+                        ]}
+                      >
+                        <Text style={styles.eventName}>
+                          {event?.message ||
+                            event?.type ||
+                            "تحديث على الطلب"}
+                        </Text>
+
+                        <Text style={styles.date}>
+                          {event?.createdAt
+                            ? new Date(
+                                event.createdAt
+                              ).toLocaleString(
+                                "ar-IQ"
+                              )
+                            : "وقت غير متوفر"}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                }
+              )}
+            </View>
+          )}
+        </View>
+
+        {isDelivered && (
+          <View style={styles.ratingCard}>
+            <View style={styles.ratingIcon}>
+              <Text style={styles.ratingIconText}>
+                ★
+              </Text>
+            </View>
+
+            <View style={styles.ratingContent}>
+              <Text style={styles.ratingTitle}>
+                هل انتهى التوصيل بشكل جيد؟
+              </Text>
+
+              <Text style={styles.ratingText}>
+                يمكنك تقييم الكابتن بعد إتمام الطلب.
+              </Text>
+            </View>
+
+            <AppButton
+              title="تقييم الكابتن"
+              onPress={openCaptainRating}
+            />
+          </View>
+        )}
+
+        <AppButton
+          title={
+            refreshing
+              ? "جاري التحديث..."
+              : "تحديث حالة الطلب"
+          }
+          onPress={handleRefresh}
+          loading={refreshing}
+        />
+
+        <Text style={styles.footerHint}>
+          يتم تحديث حالة الطلب تلقائيًا كل 10 ثوانٍ.
+        </Text>
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function DetailRow({
+  label,
+  value,
+  styles,
+  appTheme,
+  last = false,
+}: {
+  label: string;
+  value: string;
+  styles: ReturnType<typeof createStyles>;
+  appTheme: ReturnType<typeof useAppTheme>;
+  last?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.detailRow,
+        !last && styles.detailRowBorder,
+      ]}
+    >
+      <Text style={styles.detailValue}>
+        {value}
+      </Text>
+
+      <Text style={styles.detailLabel}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>
+) =>
+  StyleSheet.create({
+    container: {
+      paddingBottom: 38,
+      gap: 16,
+    },
+
+    header: {
+      gap: 15,
+      paddingTop: 2,
+    },
+
+    headerTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 13,
+    },
+
+    orderIcon: {
+      width: 54,
+      height: 54,
+      borderRadius: 17,
+      backgroundColor: appTheme.primaryColor,
+      alignItems: "center",
+      justifyContent: "center",
+      shadowColor: appTheme.primaryColor,
+      shadowOffset: {
+        width: 0,
+        height: 5,
+      },
+      shadowOpacity: 0.18,
+      shadowRadius: 9,
+      elevation: 4,
+    },
+
+    orderIconText: {
+      color: "#FFFFFF",
+      fontSize: 24,
+      fontWeight: "900",
+    },
+
+    headerInfo: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    eyebrow: {
+      color: appTheme.primaryColor,
+      fontSize: 12,
+      fontWeight: "800",
+      marginBottom: 2,
+    },
+
+    title: {
+      color: appTheme.textColor,
+      fontSize: 27,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    createdAt: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      marginTop: 3,
+      textAlign: "right",
+    },
+
+    statusRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+
+    liveIndicator: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+    },
+
+    liveDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: appTheme.successColor,
+    },
+
+    liveText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+
+    totalCard: {
+      backgroundColor: appTheme.primaryColor,
+      borderRadius: 22,
+      padding: 19,
+      shadowColor: appTheme.primaryColor,
+      shadowOffset: {
+        width: 0,
+        height: 8,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 14,
+      elevation: 5,
+    },
+
+    totalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+
+    totalLabel: {
+      color: "rgba(255,255,255,0.78)",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+
+    totalIcon: {
+      width: 40,
+      height: 30,
+      borderRadius: 10,
+      backgroundColor: "rgba(255,255,255,0.15)",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    totalIconText: {
+      color: "#FFFFFF",
+      fontSize: 10,
+      fontWeight: "900",
+    },
+
+    totalValue: {
+      color: "#FFFFFF",
+      fontSize: 28,
+      fontWeight: "900",
+      textAlign: "right",
+      marginTop: 8,
+    },
+
+    totalDivider: {
+      height: 1,
+      backgroundColor: "rgba(255,255,255,0.16)",
+      marginVertical: 14,
+    },
+
+    priceRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 7,
+    },
+
+    priceLabel: {
+      color: "rgba(255,255,255,0.72)",
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
+    priceValue: {
+      color: "#FFFFFF",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+
+    card: {
+      backgroundColor: appTheme.cardColor,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      padding: 16,
+      shadowColor: "#000000",
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 0.045,
+      shadowRadius: 10,
+      elevation: 2,
+    },
+
+    sectionHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+    },
+
+    sectionIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 13,
+      backgroundColor:
+        appTheme.secondaryColor + "14",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    sectionIconText: {
+      color: appTheme.primaryColor,
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    sectionHeaderContent: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    sectionTitle: {
+      color: appTheme.textColor,
+      fontSize: 16,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    sectionSubtitle: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      marginTop: 2,
+      textAlign: "right",
+    },
+
+    details: {
+      marginTop: 12,
+    },
+
+    detailRow: {
+      minHeight: 48,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 15,
+    },
+
+    detailRowBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: appTheme.borderColor,
+    },
+
+    detailLabel: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
+    detailValue: {
+      flex: 1,
+      color: appTheme.textColor,
+      fontSize: 13,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    noteBox: {
+      marginTop: 13,
+      backgroundColor: appTheme.backgroundColor,
+      borderRadius: 14,
+      padding: 14,
+      minHeight: 62,
+      justifyContent: "center",
+    },
+
+    noteText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 13,
+      lineHeight: 21,
+      textAlign: "right",
+    },
+
+    timeline: {
+      marginTop: 15,
+    },
+
+    timelineItem: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 11,
+    },
+
+    timelineRail: {
+      width: 16,
+      alignItems: "center",
+    },
+
+    timelineDot: {
+      width: 9,
+      height: 9,
+      borderRadius: 5,
+      backgroundColor: appTheme.borderColor,
+      marginTop: 5,
+    },
+
+    timelineDotActive: {
+      width: 11,
+      height: 11,
+      borderRadius: 6,
+      backgroundColor: appTheme.primaryColor,
+      shadowColor: appTheme.primaryColor,
+      shadowOpacity: 0.25,
+      shadowRadius: 5,
+      elevation: 2,
+    },
+
+    timelineLine: {
+      width: 1,
+      flex: 1,
+      minHeight: 42,
+      backgroundColor: appTheme.borderColor,
+      marginTop: 4,
+    },
+
+    eventContent: {
+      flex: 1,
+      alignItems: "flex-end",
+      paddingBottom: 5,
+    },
+
+    eventContentSpacing: {
+      minHeight: 58,
+    },
+
+    eventName: {
+      color: appTheme.textColor,
+      fontSize: 13,
+      lineHeight: 20,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    date: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      marginTop: 3,
+      textAlign: "right",
+    },
+
+    noEvents: {
+      marginTop: 14,
+      backgroundColor: appTheme.backgroundColor,
+      borderRadius: 14,
+      padding: 16,
+      alignItems: "center",
+    },
+
+    noEventsText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+    },
+
+    ratingCard: {
+      backgroundColor:
+        appTheme.warningColor + "10",
+      borderWidth: 1,
+      borderColor:
+        appTheme.warningColor + "30",
+      borderRadius: 20,
+      padding: 16,
+      gap: 12,
+    },
+
+    ratingIcon: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: appTheme.warningColor,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    ratingIconText: {
+      color: "#FFFFFF",
+      fontSize: 20,
+      fontWeight: "900",
+    },
+
+    ratingContent: {
+      alignItems: "flex-end",
+    },
+
+    ratingTitle: {
+      color: appTheme.textColor,
+      fontSize: 14,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    ratingText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      lineHeight: 19,
+      marginTop: 3,
+      textAlign: "right",
+    },
+
+    empty: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 25,
+      gap: 12,
+    },
+
+    emptyIcon: {
+      width: 58,
+      height: 58,
+      borderRadius: 20,
+      backgroundColor: appTheme.dangerColor + "12",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    emptyIconText: {
+      color: appTheme.dangerColor,
+      fontSize: 25,
+      fontWeight: "900",
+    },
+
+    emptyTitle: {
+      color: appTheme.textColor,
+      fontSize: 19,
+      fontWeight: "900",
+      textAlign: "center",
+    },
+
+    emptyText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 13,
+      textAlign: "center",
+      lineHeight: 20,
+      marginBottom: 8,
+    },
+
+    footerHint: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      textAlign: "center",
+      marginTop: -5,
+    },
+  });

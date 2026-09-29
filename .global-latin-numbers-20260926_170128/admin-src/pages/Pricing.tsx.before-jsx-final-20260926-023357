@@ -1,0 +1,3054 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronUp,
+  Edit3,
+  Plus,
+  RefreshCw,
+  Trash2,
+  X,
+} from "lucide-react";
+import { api, getApiErrorMessage } from "../lib/api";
+import "./Pricing.css";
+import "./PricingCards.css";
+
+type PricingType =
+  | "default"
+  | "governorate"
+  | "area"
+  | "area_to_area"
+  | "establishment"
+  | "establishment_type"
+  | "geofence_to_geofence";
+
+interface LocationArea {
+  _id: string;
+  name: string;
+  isActive?: boolean;
+}
+
+interface LocationItem {
+  _id: string;
+  name: string;
+  isActive?: boolean;
+  areas?: LocationArea[];
+}
+
+interface EstablishmentItem {
+  _id: string;
+  name: string;
+  type: "restaurant" | "shop";
+  status?: string;
+  governorateId?: string | { _id: string; name?: string };
+  areaId?: string | { _id: string; name?: string };
+}
+
+interface GeofenceItem {
+  _id: string;
+  name: string;
+  isActive?: boolean;
+}
+
+interface PricingRule {
+  _id: string;
+  name: string;
+  type: PricingType;
+  amount: number;
+
+  governorateId?: string | { _id: string; name?: string } | null;
+  areaId?: string | { _id: string; name?: string } | null;
+
+  fromGovernorateId?: string | { _id: string; name?: string } | null;
+  fromAreaId?: string | { _id: string; name?: string } | null;
+
+  toGovernorateId?: string | { _id: string; name?: string } | null;
+  toAreaId?: string | { _id: string; name?: string } | null;
+
+  establishmentId?: string | { _id: string; name?: string } | null;
+  establishmentType?: "restaurant" | "shop" | null;
+
+  fromGeofenceId?: string | { _id: string; name?: string } | null;
+  toGeofenceId?: string | { _id: string; name?: string } | null;
+
+  priority: number;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  isActive: boolean;
+
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface PricingForm {
+  name: string;
+  type: PricingType;
+  amount: string;
+  priority: string;
+
+  governorateId: string;
+  areaId: string;
+
+  fromGovernorateId: string;
+  fromAreaId: string;
+  toGovernorateId: string;
+  toAreaId: string;
+
+  establishmentId: string;
+  establishmentType: "" | "restaurant" | "shop";
+
+  fromGeofenceId: string;
+  toGeofenceId: string;
+
+  startsAt: string;
+  endsAt: string;
+}
+
+const emptyForm: PricingForm = {
+  name: "",
+  type: "default",
+  amount: "",
+  priority: "",
+
+  governorateId: "",
+  areaId: "",
+
+  fromGovernorateId: "",
+  fromAreaId: "",
+  toGovernorateId: "",
+  toAreaId: "",
+
+  establishmentId: "",
+  establishmentType: "",
+
+  fromGeofenceId: "",
+  toGeofenceId: "",
+
+  startsAt: "",
+  endsAt: "",
+};
+
+const typeLabels: Record<PricingType, string> = {
+  default: "السعر الأساسي",
+  governorate: "حسب المحافظة",
+  area: "حسب المنطقة",
+  area_to_area: "منطقة إلى منطقة",
+  establishment: "منشأة محددة",
+  establishment_type: "نوع منشأة",
+  geofence_to_geofence: "منطقة جغرافية إلى منطقة جغرافية",
+};
+
+function idOf(value: unknown): string {
+  if (!value) return "";
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "object" && value !== null && "_id" in value) {
+    const id = (value as { _id?: unknown })._id;
+    return typeof id === "string" ? id : "";
+  }
+
+  return "";
+}
+
+function unwrapArray<T = unknown>(payload: unknown): T[] {
+  if (Array.isArray(payload)) {
+    return payload as T[];
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const object = payload as Record<string, unknown>;
+
+  const candidates = [
+    object.data,
+    object.items,
+    object.results,
+    object.locations,
+    object.establishments,
+    object.geofences,
+    object.rules,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate as T[];
+    }
+
+    if (
+      candidate &&
+      typeof candidate === "object" &&
+      Array.isArray((candidate as Record<string, unknown>).items)
+    ) {
+      return (candidate as Record<string, unknown>)
+        .items as T[];
+    }
+  }
+
+  return [];
+}
+
+function toDateTimeLocal(value?: string | null) {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const local = new Date(
+    date.getTime() - date.getTimezoneOffset() * 60000,
+  );
+
+  return local.toISOString().slice(0, 16);
+}
+
+function toIsoOrNull(value: string) {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return date.toISOString();
+}
+
+function getRuleSummary(row: PricingRule) {
+  switch (row.type) {
+    case "default":
+      return "تطبق كقاعدة أساسية عند عدم وجود قاعدة أكثر تخصيصًا.";
+
+    case "governorate":
+      return "تطبق على المحافظة المحددة.";
+
+    case "area":
+      return "تطبق على المنطقة المحددة.";
+
+    case "area_to_area":
+      return "تطبق على مسار منطقة إلى منطقة محدد.";
+
+    case "establishment":
+      return "تطبق على منشأة محددة.";
+
+    case "establishment_type":
+      return `تطبق على جميع ${
+        row.establishmentType === "restaurant"
+          ? "المطاعم"
+          : "المحلات"
+      }.`;
+
+    case "geofence_to_geofence":
+      return "تطبق بين منطقتين جغرافيتين محددتين.";
+
+    default:
+      return "";
+  }
+}
+
+
+function PricingGeofenceEditor({
+  geofences,
+  onSaved,
+}: {
+  geofences: GeofenceItem[];
+  onSaved: () => void;
+}) {
+  const mapRef = useRef<HTMLDivElement | null>(null);
+  const leafletRef = useRef<any>(null);
+  const mapInstanceRef = useRef<any>(null);
+  const polygonRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
+  const pointsRef = useRef<[number, number][]>([]);
+
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [points, setPoints] = useState<[number, number][]>([]);
+  const [saving, setSaving] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLeaflet() {
+      if ((window as any).L) {
+        leafletRef.current = (window as any).L;
+        setMapReady(true);
+        return;
+      }
+
+      const cssId = "dzwAN-leaflet-css";
+      if (!document.getElementById(cssId)) {
+        const link = document.createElement("link");
+        link.id = cssId;
+        link.rel = "stylesheet";
+        link.href =
+          "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+        document.head.appendChild(link);
+      }
+
+      await new Promise<void>((resolve, reject) => {
+        const existing = document.getElementById(
+          "dzwAN-leaflet-js",
+        );
+
+        if (existing) {
+          existing.addEventListener("load", () => resolve(), {
+            once: true,
+          });
+          existing.addEventListener("error", () => reject(), {
+            once: true,
+          });
+          return;
+        }
+
+        const script = document.createElement("script");
+        script.id = "dzwAN-leaflet-js";
+        script.src =
+          "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+        script.onload = () => resolve();
+        script.onerror = () => reject();
+        document.body.appendChild(script);
+      });
+
+      if (!cancelled) {
+        leafletRef.current = (window as any).L;
+        setMapReady(true);
+      }
+    }
+
+    loadLeaflet().catch(() => {
+      if (!cancelled) {
+        setMapReady(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mapReady || !mapRef.current || mapInstanceRef.current) {
+      return;
+    }
+
+    const L = leafletRef.current;
+
+    const map = L.map(mapRef.current, {
+      center: [30.5085, 47.7804],
+      zoom: 11,
+      zoomControl: true,
+    });
+
+    L.tileLayer(
+      "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+      {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap",
+      },
+    ).addTo(map);
+
+    map.on("click", (event: any) => {
+      const point: [number, number] = [
+        Number(event.latlng.lat.toFixed(6)),
+        Number(event.latlng.lng.toFixed(6)),
+      ];
+
+      const next = [...pointsRef.current, point];
+      pointsRef.current = next;
+      setPoints(next);
+
+      const marker = L.circleMarker(point, {
+        radius: 6,
+        color: "#D85B18",
+        fillColor: "#D85B18",
+        fillOpacity: 1,
+        weight: 2,
+      }).addTo(map);
+
+      markersRef.current.push(marker);
+
+      if (polygonRef.current) {
+        map.removeLayer(polygonRef.current);
+      }
+
+      if (next.length >= 3) {
+        polygonRef.current = L.polygon(next, {
+          color: "#D85B18",
+          fillColor: "#D85B18",
+          fillOpacity: 0.22,
+          weight: 3,
+        }).addTo(map);
+      }
+    });
+
+    mapInstanceRef.current = map;
+
+    setTimeout(() => map.invalidateSize(), 250);
+
+    return () => {
+      map.remove();
+      mapInstanceRef.current = null;
+      polygonRef.current = null;
+      markersRef.current = [];
+    };
+  }, [mapReady]);
+
+  function clearDrawing() {
+    const map = mapInstanceRef.current;
+
+    if (map && polygonRef.current) {
+      map.removeLayer(polygonRef.current);
+    }
+
+    for (const marker of markersRef.current) {
+      map?.removeLayer(marker);
+    }
+
+    polygonRef.current = null;
+    markersRef.current = [];
+    pointsRef.current = [];
+    setPoints([]);
+  }
+
+  async function saveGeofence() {
+    if (!name.trim()) {
+      alert("اكتب اسم المنطقة الجغرافية.");
+      return;
+    }
+
+    if (points.length < 3) {
+      alert("حدد 3 نقاط على الأقل على الخريطة.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      await api.post("/geofences", {
+        name: name.trim(),
+        description: description.trim() || null,
+        coordinates: points,
+        isActive: true,
+      });
+
+      setName("");
+      setDescription("");
+      clearDrawing();
+      onSaved();
+      alert("تم حفظ المنطقة الجغرافية بنجاح.");
+    } catch (error) {
+      alert(
+        getApiErrorMessage(
+          error,
+          "تعذر حفظ المنطقة الجغرافية.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="pricing-map-editor">
+      <div className="pricing-map-editor-header">
+        <div>
+          <span className="pricing-map-kicker">
+            إنشاء منطقة جغرافية
+          </span>
+
+          <h2>
+            ارسم منطقة التوصيل على الخريطة
+          </h2>
+
+          <p>
+            اضغط على الخريطة نقطة وراء نقطة لتحديد حدود المنطقة.
+            عند تحديد 3 نقاط أو أكثر سيظهر الشكل الجغرافي تلقائيًا.
+          </p>
+        </div>
+
+        <div className="pricing-map-count">
+          <strong>{points.length}</strong>
+          <span>نقاط محددة</span>
+        </div>
+      </div>
+
+      <div className="pricing-map-layout">
+        <div className="pricing-map-canvas-wrap">
+          {!mapReady && (
+            <div className="pricing-map-loading">
+              جاري تجهيز الخريطة...
+            </div>
+          )}
+
+          <div
+            ref={mapRef}
+            className="pricing-map-canvas"
+          />
+
+          {mapReady && (
+            <div className="pricing-map-hint">
+              اضغط على الخريطة لإضافة نقاط حدود المنطقة
+            </div>
+          )}
+        </div>
+
+        <div className="pricing-map-form">
+          <div className="pricing-map-form-title">
+            بيانات المنطقة
+          </div>
+
+          <label>
+            اسم المنطقة
+            <input
+              value={name}
+              onChange={(event) =>
+                setName(event.target.value)
+              }
+              placeholder="مثال: وسط البصرة"
+            />
+          </label>
+
+          <label>
+            الوصف
+            <textarea
+              value={description}
+              onChange={(event) =>
+                setDescription(event.target.value)
+              }
+              placeholder="مثال: منطقة المطاعم والأسواق"
+              rows={4}
+            />
+          </label>
+
+          <div className="pricing-map-existing">
+            <span>المناطق الموجودة</span>
+
+            <strong>
+              {geofences.length}
+            </strong>
+          </div>
+
+          <div className="pricing-map-actions">
+            <button
+              type="button"
+              className="btn"
+              onClick={clearDrawing}
+              disabled={!points.length || saving}
+            >
+              مسح الرسم
+            </button>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => void saveGeofence()}
+              disabled={saving}
+            >
+              {saving ? "جاري الحفظ..." : "حفظ المنطقة"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+
+function RestaurantPriceOverrideEditor({
+  establishments,
+}: {
+  establishments: EstablishmentItem[];
+}) {
+  type RestaurantOverride = {
+    _id: string;
+    scope: string;
+    establishmentId?: string | { _id: string };
+    price: number;
+    priority?: number;
+    isActive?: boolean;
+  };
+
+  const restaurants = useMemo(
+    () =>
+      establishments.filter(
+        (item) => item.type === "restaurant",
+      ),
+    [establishments],
+  );
+
+  const [overrides, setOverrides] = useState<RestaurantOverride[]>([]);
+  const [restaurantId, setRestaurantId] = useState("");
+  const [price, setPrice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  function idOfEstablishment(value: unknown) {
+    if (!value) return "";
+
+    if (typeof value === "string") {
+      return value;
+    }
+
+    if (
+      typeof value === "object" &&
+      value !== null &&
+      "_id" in value
+    ) {
+      const id = (value as { _id?: unknown })._id;
+      return typeof id === "string" ? id : "";
+    }
+
+    return "";
+  }
+
+  function restaurantName(id: string) {
+    return (
+      restaurants.find(
+        (item) => item._id === id,
+      )?.name || "مطعم غير معروف"
+    );
+  }
+
+  async function loadOverrides() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get(
+        "/delivery-price-overrides",
+      );
+
+      const rows = Array.isArray(response.data?.data)
+        ? response.data.data
+        : [];
+
+      setOverrides(
+        rows.filter(
+          (row: RestaurantOverride) =>
+            row.scope === "establishment" &&
+            row.isActive !== false,
+        ),
+      );
+    } catch (error) {
+      setError(
+        getApiErrorMessage(
+          error,
+          "تعذر تحميل أسعار المطاعم المخصصة.",
+        ),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function selectRestaurant(id: string) {
+    setRestaurantId(id);
+    setError("");
+    setMessage("");
+
+    const existing = overrides.find(
+      (row) =>
+        row.scope === "establishment" &&
+        idOfEstablishment(row.establishmentId) === id,
+    );
+
+    setPrice(
+      existing ? String(existing.price ?? "") : "",
+    );
+  }
+
+  async function saveRestaurantPrice() {
+    setError("");
+    setMessage("");
+
+    const numericPrice = Number(price);
+
+    if (!restaurantId) {
+      setError("اختر المطعم أولًا.");
+      return;
+    }
+
+    if (
+      !price.trim() ||
+      !Number.isFinite(numericPrice) ||
+      numericPrice < 0
+    ) {
+      setError("أدخل سعر توصيل صحيح.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const existing = overrides.find(
+        (row) =>
+          row.scope === "establishment" &&
+          idOfEstablishment(row.establishmentId) ===
+            restaurantId,
+      );
+
+      if (existing) {
+        await api.patch(
+          `/delivery-price-overrides/${existing._id}`,
+          {
+            scope: "establishment",
+            establishmentId: restaurantId,
+            price: numericPrice,
+            priority: Number(
+              existing.priority ?? 0,
+            ),
+            isActive: true,
+          },
+        );
+      } else {
+        await api.post(
+          "/delivery-price-overrides",
+          {
+            scope: "establishment",
+            establishmentId: restaurantId,
+            price: numericPrice,
+            priority: 0,
+            isActive: true,
+          },
+        );
+      }
+
+      setMessage(
+        `تم حفظ السعر المخصص لـ ${restaurantName(
+          restaurantId,
+        )} وسيُستخدم لكل طلباته.`,
+      );
+
+      await loadOverrides();
+    } catch (error) {
+      setError(
+        getApiErrorMessage(
+          error,
+          "تعذر حفظ السعر المخصص للمطعم.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteRestaurantPrice(
+    item: RestaurantOverride,
+  ) {
+    const id = idOfEstablishment(
+      item.establishmentId,
+    );
+
+    const confirmed = window.confirm(
+      `حذف السعر المخصص لـ ${restaurantName(id)}؟`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      setMessage("");
+
+      await api.delete(
+        `/delivery-price-overrides/${item._id}`,
+      );
+
+      if (restaurantId === id) {
+        setPrice("");
+      }
+
+      setMessage(
+        `تم إلغاء السعر الخاص بـ ${restaurantName(id)}.`,
+      );
+
+      await loadOverrides();
+    } catch (error) {
+      setError(
+        getApiErrorMessage(
+          error,
+          "تعذر حذف السعر المخصص.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadOverrides();
+  }, []);
+
+  return (
+    <section className="panel">
+      <div className="page-section-title">
+        <div>
+          <span>تخصيص أسعار التوصيل</span>
+
+          <h2>سعر مخصص لمطعم</h2>
+
+          <p>
+            اختر أي مطعم وحدد له سعر توصيل ثابتًا، وسيُستخدم
+            هذا السعر في جميع طلبات المطعم.
+          </p>
+        </div>
+
+        <div className="pricing-main-amount">
+          <strong>{overrides.length}</strong>
+          <span>أسعار خاصة</span>
+        </div>
+      </div>
+
+      {(message || error) && (
+        <div
+          className={
+            error
+              ? "status status-inactive"
+              : "status status-active"
+          }
+          style={{ marginBottom: 18 }}
+        >
+          {error || message}
+        </div>
+      )}
+
+      <div className="form-grid">
+        <label>
+          المطعم
+          <select
+            value={restaurantId}
+            disabled={saving}
+            onChange={(event) =>
+              selectRestaurant(event.target.value)
+            }
+          >
+            <option value="">
+              اختر المطعم
+            </option>
+
+            {restaurants.map((restaurant) => (
+              <option
+                key={restaurant._id}
+                value={restaurant._id}
+              >
+                {restaurant.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          السعر المخصص
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={price}
+            disabled={saving}
+            onChange={(event) =>
+              setPrice(event.target.value)
+            }
+            placeholder="مثال: 5000"
+          />
+        </label>
+      </div>
+
+      <div className="form-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={saving || loading}
+          onClick={() =>
+            void saveRestaurantPrice()
+          }
+        >
+          {saving
+            ? "جاري الحفظ..."
+            : "حفظ سعر المطعم"}
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          disabled={saving || loading}
+          onClick={() =>
+            void loadOverrides()
+          }
+        >
+          <RefreshCw size={15} />
+          تحديث
+        </button>
+      </div>
+
+      <div style={{ marginTop: 22 }}>
+        {loading ? (
+          <div className="empty-state">
+            جاري تحميل أسعار المطاعم...
+          </div>
+        ) : overrides.length === 0 ? (
+          <div className="empty-state">
+            لا توجد أسعار مخصصة للمطاعم حاليًا.
+          </div>
+        ) : (
+          <div className="cards-grid">
+            {overrides.map((item) => {
+              const id = idOfEstablishment(
+                item.establishmentId,
+              );
+
+              return (
+                <article
+                  className="data-card"
+                  key={item._id}
+                >
+                  <div className="data-card-header">
+                    <div>
+                      <strong>
+                        {restaurantName(id)}
+                      </strong>
+
+                      <p>
+                        سعر ثابت لجميع طلبات المطعم
+                      </p>
+                    </div>
+
+                    <span className="status-active">
+                      {Number(
+                        item.price || 0,
+                      ).toLocaleString("ar-IQ")}
+                    </span>
+                  </div>
+
+                  <div className="data-card-actions">
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={saving}
+                      onClick={() => {
+                        setRestaurantId(id);
+                        setPrice(
+                          String(item.price ?? ""),
+                        );
+                        setError("");
+                        setMessage("");
+                      }}
+                    >
+                      <Edit3 size={15} />
+                      تعديل
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      disabled={saving}
+                      onClick={() =>
+                        void deleteRestaurantPrice(
+                          item,
+                        )
+                      }
+                    >
+                      <Trash2 size={15} />
+                      حذف السعر الخاص
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+
+function RestaurantCustomPrice({
+  establishments,
+}: {
+  establishments: EstablishmentItem[];
+}) {
+  type OverrideRow = {
+    _id: string;
+    scope: string;
+    establishmentId?: string | { _id: string };
+    price: number;
+    priority?: number;
+    isActive?: boolean;
+  };
+
+  const restaurants = useMemo(
+    () =>
+      establishments.filter(
+        (item) => item.type === "restaurant",
+      ),
+    [establishments],
+  );
+
+  const [rows, setRows] = useState<OverrideRow[]>([]);
+  const [restaurantId, setRestaurantId] = useState("");
+  const [price, setPrice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  function getId(value: unknown) {
+    if (typeof value === "string") return value;
+
+    if (
+      value &&
+      typeof value === "object" &&
+      "_id" in value
+    ) {
+      const id = (value as { _id?: unknown })._id;
+      return typeof id === "string" ? id : "";
+    }
+
+    return "";
+  }
+
+  function restaurantName(id: string) {
+    return (
+      restaurants.find(
+        (restaurant) => restaurant._id === id,
+      )?.name || "مطعم"
+    );
+  }
+
+  async function loadRows() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get(
+        "/delivery-price-overrides",
+      );
+
+      const data = Array.isArray(response.data?.data)
+        ? response.data.data
+        : [];
+
+      setRows(
+        data.filter(
+          (item: OverrideRow) =>
+            item.scope === "establishment" &&
+            item.isActive !== false,
+        ),
+      );
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر تحميل أسعار المطاعم.",
+        ),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function selectRestaurant(id: string) {
+    setRestaurantId(id);
+    setNotice("");
+    setError("");
+
+    const existing = rows.find(
+      (row) =>
+        row.scope === "establishment" &&
+        getId(row.establishmentId) === id,
+    );
+
+    setPrice(
+      existing ? String(existing.price ?? "") : "",
+    );
+  }
+
+  async function savePrice() {
+    setNotice("");
+    setError("");
+
+    const value = Number(price);
+
+    if (!restaurantId) {
+      setError("اختر المطعم أولًا.");
+      return;
+    }
+
+    if (
+      !price.trim() ||
+      !Number.isFinite(value) ||
+      value < 0
+    ) {
+      setError("أدخل سعرًا صحيحًا.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const existing = rows.find(
+        (row) =>
+          row.scope === "establishment" &&
+          getId(row.establishmentId) ===
+            restaurantId,
+      );
+
+      if (existing) {
+        await api.patch(
+          `/delivery-price-overrides/${existing._id}`,
+          {
+            scope: "establishment",
+            establishmentId: restaurantId,
+            price: value,
+            priority: Number(existing.priority ?? 0),
+            isActive: true,
+          },
+        );
+      } else {
+        await api.post(
+          "/delivery-price-overrides",
+          {
+            scope: "establishment",
+            establishmentId: restaurantId,
+            price: value,
+            priority: 0,
+            isActive: true,
+          },
+        );
+      }
+
+      setNotice(
+        `تم حفظ ${value.toLocaleString(
+          "ar-IQ",
+        )} للمطعم "${restaurantName(
+          restaurantId,
+        )}" وسيُستخدم لكل طلباته.`,
+      );
+
+      await loadRows();
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر حفظ سعر المطعم.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removePrice(row: OverrideRow) {
+    const id = getId(row.establishmentId);
+
+    if (
+      !window.confirm(
+        `هل تريد إلغاء السعر الخاص بـ "${restaurantName(id)}"؟`,
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      setNotice("");
+
+      await api.delete(
+        `/delivery-price-overrides/${row._id}`,
+      );
+
+      if (restaurantId === id) {
+        setPrice("");
+      }
+
+      setNotice(
+        `تم إلغاء السعر الخاص بـ "${restaurantName(id)}".`,
+      );
+
+      await loadRows();
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر حذف السعر الخاص.",
+        ),
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadRows();
+  }, []);
+
+  return (
+    <section className="panel">
+      <div
+        className="page-section-title"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <span>تخصيص إضافي</span>
+          <h2>سعر مخصص لمطعم</h2>
+          <p>
+            اختر مطعمًا واحدًا وحدد له سعر توصيل ثابتًا لجميع طلباته.
+          </p>
+        </div>
+
+        <div className="pricing-main-amount">
+          <strong>{rows.length}</strong>
+          <span>مطاعم بسعر خاص</span>
+        </div>
+      </div>
+
+      {(notice || error) && (
+        <div
+          className={
+            error
+              ? "status status-inactive"
+              : "status status-active"
+          }
+          style={{ marginBottom: 18 }}
+        >
+          {error || notice}
+        </div>
+      )}
+
+      <div className="form-grid">
+        <label>
+          المطعم
+          <select
+            value={restaurantId}
+            disabled={saving}
+            onChange={(event) =>
+              selectRestaurant(event.target.value)
+            }
+          >
+            <option value="">اختر المطعم</option>
+
+            {restaurants.map((restaurant) => (
+              <option
+                key={restaurant._id}
+                value={restaurant._id}
+              >
+                {restaurant.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          السعر المخصص
+          <input
+            type="number"
+            min="0"
+            step="any"
+            value={price}
+            disabled={saving}
+            onChange={(event) =>
+              setPrice(event.target.value)
+            }
+            placeholder="مثال: 5000"
+          />
+        </label>
+      </div>
+
+      <div className="form-actions">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={
+            saving ||
+            loading ||
+            restaurants.length === 0
+          }
+          onClick={() => void savePrice()}
+        >
+          <Plus size={15} />
+          {saving ? "جاري الحفظ..." : "حفظ سعر المطعم"}
+        </button>
+
+        <button
+          type="button"
+          className="btn"
+          disabled={saving || loading}
+          onClick={() => void loadRows()}
+        >
+          <RefreshCw size={15} />
+          تحديث
+        </button>
+      </div>
+
+      {rows.length > 0 && (
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            marginTop: 20,
+          }}
+        >
+          {rows.map((row) => {
+            const id = getId(row.establishmentId);
+
+            return (
+              <article
+                className="pricing-rule-card"
+                key={row._id}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 14,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <strong>
+                    {restaurantName(id)}
+                  </strong>
+
+                  <div
+                    style={{
+                      marginTop: 4,
+                      color: "#64748B",
+                      fontSize: 12,
+                    }}
+                  >
+                    سعر ثابت لكل طلبات المطعم
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <strong>
+                    {Number(
+                      row.price || 0,
+                    ).toLocaleString("ar-IQ")}
+                  </strong>
+
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={saving}
+                    onClick={() => {
+                      setRestaurantId(id);
+                      setPrice(
+                        String(row.price ?? ""),
+                      );
+                      setNotice("");
+                      setError("");
+                    }}
+                  >
+                    <Edit3 size={15} />
+                    تعديل
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-danger"
+                    disabled={saving}
+                    onClick={() =>
+                      void removePrice(row)
+                    }
+                  >
+                    <Trash2 size={15} />
+                    حذف
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
+export default function Pricing() {
+  const [rows, setRows] = useState<PricingRule[]>([]);
+  const [locations, setLocations] = useState<LocationItem[]>([]);
+  const [establishments, setEstablishments] = useState<
+    EstablishmentItem[]
+  >([]);
+  const [geofences, setGeofences] = useState<GeofenceItem[]>([]);
+  const [pricingMode, setPricingMode] = useState<
+    "area_to_area" | "geofencing"
+  >("area_to_area");
+  const [savingPricingMode, setSavingPricingMode] = useState(false);
+
+  const [form, setForm] = useState<PricingForm>(emptyForm);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingIsActive, setEditingIsActive] = useState(true);
+  const [expandedRuleId, setExpandedRuleId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const governorates = useMemo(
+    () =>
+      locations.filter(
+        (item) => item.isActive !== false,
+      ),
+    [locations],
+  );
+
+  const selectedGovernorate = useMemo(
+    () =>
+      governorates.find(
+        (item) => item._id === form.governorateId,
+      ),
+    [governorates, form.governorateId],
+  );
+
+  const selectedFromGovernorate = useMemo(
+    () =>
+      governorates.find(
+        (item) =>
+          item._id === form.fromGovernorateId,
+      ),
+    [governorates, form.fromGovernorateId],
+  );
+
+  const selectedToGovernorate = useMemo(
+    () =>
+      governorates.find(
+        (item) => item._id === form.toGovernorateId,
+      ),
+    [governorates, form.toGovernorateId],
+  );
+
+  const activeAreas = useMemo(
+    () =>
+      governorates.flatMap((governorate) =>
+        (governorate.areas || [])
+          .filter((area) => area.isActive !== false)
+          .map((area) => ({
+            ...area,
+            governorateId: governorate._id,
+            governorateName: governorate.name,
+          })),
+      ),
+    [governorates],
+  );
+
+  function governorateIdForArea(areaId: string) {
+    return (
+      activeAreas.find(
+        (area) => area._id === areaId,
+      )?.governorateId || ""
+    );
+  }
+
+  function areaLabel(value: PricingRule["fromAreaId"]) {
+    const id = idOf(value);
+
+    if (!id) return "—";
+
+    const area = activeAreas.find(
+      (item) => item._id === id,
+    );
+
+    return area
+      ? `${area.name} — ${area.governorateName}`
+      : id;
+  }
+
+  void areaLabel;
+
+  async function loadAll() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [
+        pricingResponse,
+        locationsResponse,
+        establishmentsResponse,
+        geofencesResponse,
+        settingsResponse,
+      ] = await Promise.all([
+        api.get("/pricing"),
+        api.get("/locations"),
+        api.get("/establishments"),
+        api.get("/geofences"),
+        api.get("/core11/settings"),
+      ]);
+
+      const savedPricingMode =
+        settingsResponse.data?.data?.pricingMode;
+
+      if (
+        savedPricingMode === "area_to_area" ||
+        savedPricingMode === "geofencing"
+      ) {
+        setPricingMode(savedPricingMode);
+      }
+
+      setRows(
+        unwrapArray<PricingRule>(
+          pricingResponse.data,
+        ),
+      );
+
+      setLocations(
+        unwrapArray<LocationItem>(
+          locationsResponse.data,
+        ),
+      );
+
+      setEstablishments(
+        unwrapArray<EstablishmentItem>(
+          establishmentsResponse.data,
+        ),
+      );
+
+      setGeofences(
+        unwrapArray<GeofenceItem>(
+          geofencesResponse.data,
+        ),
+      );
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(
+          requestError,
+          "تعذر تحميل بيانات التسعير.",
+        ),
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadAll();
+  }, []);
+
+  async function changePricingMode(
+    nextMode: "area_to_area" | "geofencing",
+  ) {
+    if (savingPricingMode || nextMode === pricingMode) {
+      return;
+    }
+
+    setSavingPricingMode(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await api.patch("/core11/settings", {
+        pricingMode: nextMode,
+      });
+
+      setPricingMode(nextMode);
+
+      if (nextMode === "area_to_area") {
+        onTypeChange("area_to_area");
+      } else {
+        onTypeChange("geofence_to_geofence");
+      }
+
+      setMessage(
+        nextMode === "area_to_area"
+          ? "تم تفعيل نظام التسعير من منطقة إلى منطقة."
+          : "تم تفعيل نظام المناطق الجغرافية.",
+      );
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(
+          requestError,
+          "تعذر حفظ طريقة التسعير.",
+        ),
+      );
+    } finally {
+      setSavingPricingMode(false);
+    }
+  }
+
+  function resetForm() {
+    setForm(emptyForm);
+    setEditingId(null);
+    setEditingIsActive(true);
+  }
+
+  function updateField<K extends keyof PricingForm>(
+    field: K,
+    value: PricingForm[K],
+  ) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function editRule(row: PricingRule) {
+    setEditingId(row._id);
+    setEditingIsActive(row.isActive);
+
+    setForm({
+      name: row.name || "",
+      type: row.type,
+      amount: String(row.amount ?? ""),
+      priority: row.priority ? String(row.priority) : "",
+
+      governorateId: idOf(row.governorateId),
+      areaId: idOf(row.areaId),
+
+      fromGovernorateId: idOf(
+        row.fromGovernorateId,
+      ),
+      fromAreaId: idOf(row.fromAreaId),
+      toGovernorateId: idOf(
+        row.toGovernorateId,
+      ),
+      toAreaId: idOf(row.toAreaId),
+
+      establishmentId: idOf(row.establishmentId),
+      establishmentType:
+        row.establishmentType || "",
+
+      fromGeofenceId: idOf(row.fromGeofenceId),
+      toGeofenceId: idOf(row.toGeofenceId),
+
+      startsAt: toDateTimeLocal(row.startsAt),
+      endsAt: toDateTimeLocal(row.endsAt),
+    });
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  function validateForm() {
+    if (!form.name.trim()) {
+      return "اسم قاعدة التسعير مطلوب.";
+    }
+
+    const amount = Number(form.amount);
+
+    if (!Number.isFinite(amount) || amount < 0) {
+      return "رسوم التوصيل يجب أن تكون رقمًا صحيحًا أو عشريًا أكبر من أو يساوي صفر.";
+    }
+
+    if (form.priority.trim()) {
+      const priority = Number(form.priority);
+
+      if (!Number.isInteger(priority) || priority < 0) {
+        return "الأولوية إذا أُضيفت يجب أن تكون رقمًا صحيحًا يساوي صفرًا أو أكبر.";
+      }
+    }
+
+    if (form.startsAt && form.endsAt) {
+      const starts = new Date(form.startsAt);
+      const ends = new Date(form.endsAt);
+
+      if (
+        Number.isNaN(starts.getTime()) ||
+        Number.isNaN(ends.getTime())
+      ) {
+        return "التاريخ المدخل غير صحيح.";
+      }
+
+      if (ends <= starts) {
+        return "تاريخ النهاية يجب أن يكون بعد تاريخ البداية.";
+      }
+    }
+
+    if (form.type === "governorate") {
+      if (!form.governorateId) {
+        return "اختر المحافظة.";
+      }
+    }
+
+    if (form.type === "area") {
+      if (!form.governorateId) {
+        return "اختر المحافظة.";
+      }
+
+      if (!form.areaId) {
+        return "اختر المنطقة.";
+      }
+    }
+
+    if (form.type === "area_to_area") {
+      if (!form.fromGovernorateId || !form.fromAreaId) {
+        return "يجب تحديد محافظة ومنطقة البداية.";
+      }
+
+      if (!form.toAreaId) {
+        return "يجب تحديد منطقة النهاية.";
+      }
+    }
+
+    if (form.type === "establishment") {
+      if (!form.establishmentId) {
+        return "اختر المنشأة.";
+      }
+    }
+
+    if (form.type === "establishment_type") {
+      if (!form.establishmentType) {
+        return "اختر نوع المنشأة.";
+      }
+    }
+
+    if (form.type === "geofence_to_geofence") {
+      if (
+        !form.fromGeofenceId ||
+        !form.toGeofenceId
+      ) {
+        return "اختر منطقة جغرافية للبداية وأخرى للنهاية.";
+      }
+    }
+
+    return "";
+  }
+
+  function buildPayload() {
+    const payload: Record<string, unknown> = {
+      name: form.name.trim(),
+      type: form.type,
+      amount: Number(form.amount),
+      startsAt: toIsoOrNull(form.startsAt),
+      endsAt: toIsoOrNull(form.endsAt),
+      isActive: editingId ? editingIsActive : true,
+    };
+
+    payload.priority = form.priority.trim()
+      ? Number(form.priority)
+      : 0;
+
+    if (
+      form.type === "governorate" ||
+      form.type === "area"
+    ) {
+      payload.governorateId =
+        form.governorateId || null;
+    }
+
+    if (form.type === "area") {
+      payload.areaId = form.areaId || null;
+    }
+
+    if (form.type === "area_to_area") {
+      payload.fromGovernorateId =
+        form.fromGovernorateId || null;
+
+      payload.fromAreaId =
+        form.fromAreaId || null;
+
+      payload.toGovernorateId =
+        form.toGovernorateId ||
+        governorateIdForArea(form.toAreaId) ||
+        null;
+
+      payload.toAreaId =
+        form.toAreaId || null;
+    }
+
+    if (form.type === "establishment") {
+      payload.establishmentId =
+        form.establishmentId || null;
+    }
+
+    if (form.type === "establishment_type") {
+      payload.establishmentType =
+        form.establishmentType || null;
+    }
+
+    if (
+      form.type === "geofence_to_geofence"
+    ) {
+      payload.fromGeofenceId =
+        form.fromGeofenceId || null;
+
+      payload.toGeofenceId =
+        form.toGeofenceId || null;
+    }
+
+    return payload;
+  }
+
+  async function saveRule() {
+    setBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const validationError = validateForm();
+
+      if (validationError) {
+        setError(validationError);
+        return;
+      }
+
+      const payload = buildPayload();
+
+      if (editingId) {
+        const response = await api.patch(
+          `/pricing/${editingId}`,
+          payload,
+        );
+
+        const updated = response.data;
+
+        setRows((current) =>
+          current.map((item) => {
+            const next =
+              updated?.data ||
+              updated?.rule ||
+              updated;
+
+            return next?._id === item._id
+              ? next
+              : item;
+          }),
+        );
+
+        setMessage(
+          "تم تعديل قاعدة التسعير بنجاح.",
+        );
+      } else {
+        const response = await api.post(
+          "/pricing",
+          payload,
+        );
+
+        const created =
+          response.data?.data ||
+          response.data?.rule ||
+          response.data;
+
+        if (created?._id) {
+          setRows((current) => [
+            created,
+            ...current,
+          ]);
+        } else {
+          await loadAll();
+        }
+
+        setMessage(
+          "تمت إضافة قاعدة التسعير بنجاح.",
+        );
+      }
+
+      resetForm();
+    } catch (requestError: any) {
+      console.error("saveRule error:", requestError);
+
+      const backendMessage =
+        requestError?.response?.data?.message;
+
+      const backendErrors =
+        requestError?.response?.data?.errors;
+
+      let detail = backendMessage || "";
+
+      if (
+        backendErrors &&
+        typeof backendErrors === "object"
+      ) {
+        const flattened = backendErrors.fieldErrors || {};
+
+        const fields = Object.entries(flattened)
+          .flatMap(([field, messages]) => {
+            if (!Array.isArray(messages)) return [];
+
+            return messages.map(
+              (message) => `${field}: ${message}`,
+            );
+          });
+
+        if (fields.length) {
+          detail = `${detail}${detail ? "\n" : ""}${fields.join("\n")}`;
+        }
+      }
+
+      setError(
+        detail ||
+        getApiErrorMessage(
+          requestError,
+          "تعذر حفظ قاعدة التسعير.",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleRule(row: PricingRule) {
+    const action = row.isActive
+      ? "تعطيل"
+      : "تفعيل";
+
+    if (
+      !window.confirm(
+        `هل تريد ${action} قاعدة "${row.name}"؟`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await api.patch(
+        `/pricing/${row._id}`,
+        {
+          isActive: !row.isActive,
+        },
+      );
+
+      const updated =
+        response.data?.data ||
+        response.data?.rule ||
+        response.data;
+
+      setRows((current) =>
+        current.map((item) =>
+          item._id === row._id
+            ? {
+                ...item,
+                ...(updated || {}),
+                isActive: !row.isActive,
+              }
+            : item,
+        ),
+      );
+
+      setMessage(
+        row.isActive
+          ? "تم تعطيل القاعدة."
+          : "تم تفعيل القاعدة.",
+      );
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(
+          requestError,
+          "تعذر تعديل حالة القاعدة.",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  void toggleRule;
+
+  async function removeRule(row: PricingRule) {
+    if (
+      !window.confirm(
+        `سيتم حذف قاعدة "${row.name}" نهائيًا. هل أنت متأكد؟`,
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await api.delete(
+        `/pricing/${row._id}`,
+      );
+
+      setRows((current) =>
+        current.filter(
+          (item) => item._id !== row._id,
+        ),
+      );
+
+      if (editingId === row._id) {
+        resetForm();
+      }
+
+      setMessage(
+        "تم حذف قاعدة التسعير بنجاح.",
+      );
+    } catch (requestError) {
+      setError(
+        getApiErrorMessage(
+          requestError,
+          "تعذر حذف قاعدة التسعير.",
+        ),
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function onTypeChange(type: PricingType) {
+    setForm((current) => ({
+      ...current,
+      type,
+      governorateId: "",
+      areaId: "",
+      fromGovernorateId: "",
+      fromAreaId: "",
+      toGovernorateId: "",
+      toAreaId: "",
+      establishmentId: "",
+      establishmentType: "",
+      fromGeofenceId: "",
+      toGeofenceId: "",
+    }));
+  }
+    return (
+      <>
+    <main dir="rtl" className="premium-page pricing-page">
+      <div className="premium-page-shell">
+        <section className="premium-page-intro">
+          <div>
+            <span className="premium-page-kicker">
+              إدارة التوصيل
+            </span>
+            <h1>التسعير</h1>
+            <p>
+              إدارة أسعار التوصيل والقواعد المخصصة للمناطق والمنشآت.
+            </p>
+          </div>
+        </section>
+
+      <div className="page-header">
+        <div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              window.history.back()
+            }
+          >
+            <ArrowRight size={17} />
+            العودة إلى الرئيسية
+          </button>
+
+          <h1>
+            {editingId
+              ? "تعديل قاعدة التسعير"
+              : "التسعير المخصص"}
+          </h1>
+
+          <p>
+            إدارة أسعار التوصيل حسب المحافظة
+            والمنطقة والمنشأة والمسار والمنطقة
+            الجغرافية، مع التحكم في الأولوية
+            والفترة الزمنية.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="btn"
+          onClick={() => void loadAll()}
+          disabled={busy || loading}
+        >
+          <RefreshCw size={17} />
+          تحديث البيانات
+        </button>
+      </div>
+
+      {(message || error) && (
+        <section className="panel">
+          {message && (
+            <div className="status status-active">
+              {message}
+            </div>
+          )}
+
+          {error && (
+            <div className="status status-inactive">
+              {error}
+            </div>
+          )}
+        </section>
+      )}
+
+      <section className="pricing-system-panel">
+        <div className="pricing-system-header">
+          <div>
+            <span className="pricing-system-kicker">
+              طريقة احتساب رسوم التوصيل
+            </span>
+
+            <h2>
+              كيف تريد للنظام حساب سعر التوصيل؟
+            </h2>
+
+            <p>
+              اختر النظام الذي سيعتمد عليه DZWAN عند إنشاء الطلب.
+              بعد الاختيار ستستخدم قواعد التسعير الموجودة أسفل الصفحة.
+            </p>
+          </div>
+
+          <div className="pricing-system-current">
+            <span>النظام المفعّل حاليًا</span>
+            <strong>
+              {pricingMode === "area_to_area"
+                ? "منطقة → منطقة"
+                : "المناطق الجغرافية"}
+            </strong>
+          </div>
+        </div>
+
+        <div className="pricing-system-options">
+          <button
+            type="button"
+            className={
+              pricingMode === "area_to_area"
+                ? "pricing-system-option pricing-system-option-route active"
+                : "pricing-system-option pricing-system-option-route"
+            }
+            disabled={savingPricingMode}
+            onClick={() =>
+              void changePricingMode("area_to_area")
+            }
+          >
+            <div className="pricing-system-icon">
+              ⇄
+            </div>
+
+            <div className="pricing-system-content">
+              <div className="pricing-system-title-row">
+                <h3>منطقة → منطقة</h3>
+
+                {pricingMode === "area_to_area" && (
+                  <span>مفعّل</span>
+                )}
+              </div>
+
+              <p>
+                تحدد سعرًا مباشرًا لكل مسار بين منطقتين.
+              </p>
+
+              <div className="pricing-system-example">
+                <span>مثال</span>
+                <strong>
+                  التنومة → الجزائر = 5,000
+                </strong>
+                <strong>
+                  التنومة → أبي الخصيب = 7,000
+                </strong>
+              </div>
+            </div>
+          </button>
+
+          <button
+            type="button"
+            className={
+              pricingMode === "geofencing"
+                ? "pricing-system-option pricing-system-option-map active"
+                : "pricing-system-option pricing-system-option-map"
+            }
+            disabled={savingPricingMode}
+            onClick={() =>
+              void changePricingMode("geofencing")
+            }
+          >
+            <div className="pricing-system-icon">
+              ◉
+            </div>
+
+            <div className="pricing-system-content">
+              <div className="pricing-system-title-row">
+                <h3>المناطق الجغرافية</h3>
+
+                {pricingMode === "geofencing" && (
+                  <span>مفعّل</span>
+                )}
+              </div>
+
+              <p>
+                يحدد النظام منطقة المتجر ومنطقة العميل من الخريطة
+                ويطبق قاعدة السعر المناسبة.
+              </p>
+
+              <div className="pricing-system-example">
+                <span>طريقة العمل</span>
+                <strong>
+                  موقع المتجر → المنطقة الجغرافية
+                </strong>
+                <strong>
+                  موقع العميل → المنطقة الجغرافية
+                </strong>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <div className="pricing-system-help">
+          <div>
+            <strong>
+              كيف يؤثر هذا على الطلب؟
+            </strong>
+
+            <p>
+              عند إنشاء الطلب، يبحث النظام عن القاعدة المناسبة
+              ويضع رسوم التوصيل تلقائيًا داخل الطلب.
+            </p>
+          </div>
+
+          {pricingMode === "geofencing" && (
+            <button
+              type="button"
+              className="btn"
+              onClick={() =>
+                (window.location.href = "/geofencing")
+              }
+            >
+              إدارة الخريطة
+            </button>
+          )}
+        </div>
+      </section>
+
+
+      {pricingMode === "geofencing" && (
+        <PricingGeofenceEditor
+          geofences={geofences}
+          onSaved={() => void loadAll()}
+        />
+      )}
+
+      <section className="panel">
+        <div className="page-section-title">
+          <div>
+            <h2>
+              {editingId
+                ? "تعديل قاعدة التسعير"
+                : "إضافة قاعدة جديدة"}
+            </h2>
+
+            <p>
+              يتم إرسال السعر إلى الخادم ويُطبق
+              النظام القاعدة المناسبة تلقائيًا.
+            </p>
+          </div>
+
+          {editingId && (
+            <button
+              type="button"
+              className="btn"
+              onClick={resetForm}
+              disabled={busy}
+            >
+              <X size={17} />
+              إلغاء التعديل
+            </button>
+          )}
+        </div>
+
+        <div className="form-grid">
+          <label>
+            اسم القاعدة
+            <input
+              value={form.name}
+              onChange={(event) =>
+                updateField(
+                  "name",
+                  event.target.value,
+                )
+              }
+              placeholder="مثال: سعر مطاعم المنطقة الشمالية"
+            />
+          </label>
+
+          <label>
+            نوع القاعدة
+            <select
+              value={form.type}
+              onChange={(event) =>
+                onTypeChange(
+                  event.target.value as PricingType,
+                )
+              }
+            >
+              <option value="default">
+                السعر الأساسي
+              </option>
+
+              <option value="governorate">
+                حسب المحافظة
+              </option>
+
+              <option value="area">
+                حسب المنطقة
+              </option>
+
+              <option value="area_to_area">
+                منطقة إلى منطقة
+              </option>
+
+              <option value="establishment">
+                منشأة محددة
+              </option>
+
+              <option value="establishment_type">
+                نوع منشأة
+              </option>
+
+              <option value="geofence_to_geofence">
+                منطقة جغرافية إلى منطقة جغرافية
+              </option>
+            </select>
+          </label>
+
+          <label>
+            رسوم التوصيل
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={form.amount}
+              onChange={(event) =>
+                updateField(
+                  "amount",
+                  event.target.value,
+                )
+              }
+              placeholder="5"
+            />
+          </label>
+
+          <label className="pricing-optional-field">
+            <span className="pricing-field-label">
+              <span>الأولوية</span>
+              <em>اختياري · موصى به</em>
+            </span>
+
+            <small className="pricing-field-help">
+              تُستخدم عندما توجد أكثر من قاعدة يمكن أن تنطبق على نفس الطلب.
+              يمكنك تركها فارغة.
+            </small>
+
+            <input
+              type="number"
+              step="1"
+              min="0"
+              value={form.priority}
+              onChange={(event) =>
+                updateField(
+                  "priority",
+                  event.target.value,
+                )
+              }
+              placeholder="اتركه فارغًا"
+            />
+          </label>
+
+          {form.type ===
+            "governorate" && (
+            <label>
+              المحافظة
+              <select
+                value={form.governorateId}
+                onChange={(event) => {
+                  updateField(
+                    "governorateId",
+                    event.target.value,
+                  );
+                  updateField("areaId", "");
+                }}
+              >
+                <option value="">
+                  اختر المحافظة
+                </option>
+
+                {governorates.map(
+                  (governorate) => (
+                    <option
+                      key={governorate._id}
+                      value={governorate._id}
+                    >
+                      {governorate.name}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+          )}
+
+          {form.type === "area" && (
+            <>
+              <label>
+                المحافظة
+                <select
+                  value={form.governorateId}
+                  onChange={(event) => {
+                    updateField(
+                      "governorateId",
+                      event.target.value,
+                    );
+                    updateField("areaId", "");
+                  }}
+                >
+                  <option value="">
+                    اختر المحافظة
+                  </option>
+
+                  {governorates.map(
+                    (governorate) => (
+                      <option
+                        key={governorate._id}
+                        value={governorate._id}
+                      >
+                        {governorate.name}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </label>
+
+              <label>
+                المنطقة
+                <select
+                  value={form.areaId}
+                  onChange={(event) =>
+                    updateField(
+                      "areaId",
+                      event.target.value,
+                    )
+                  }
+                  disabled={!selectedGovernorate}
+                >
+                  <option value="">
+                    اختر المنطقة
+                  </option>
+
+                  {(
+                    selectedGovernorate?.areas ||
+                    []
+                  )
+                    .filter(
+                      (area) =>
+                        area.isActive !== false,
+                    )
+                    .map((area) => (
+                      <option
+                        key={area._id}
+                        value={area._id}
+                      >
+                        {area.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </>
+          )}
+
+          {form.type === "area_to_area" && (
+            <div className="pricing-route-builder">
+              <div className="pricing-route-side pricing-route-from">
+                <div className="pricing-route-heading">
+                  <span className="pricing-route-badge">1</span>
+
+                  <div>
+                    <strong>منطقة المطعم / البداية</strong>
+                    <small>حدد المحافظة ثم المنطقة.</small>
+                  </div>
+                </div>
+
+                <label>
+                  محافظة البداية
+                  <select
+                    value={form.fromGovernorateId}
+                    onChange={(event) => {
+                      updateField(
+                        "fromGovernorateId",
+                        event.target.value,
+                      );
+
+                      updateField(
+                        "fromAreaId",
+                        "",
+                      );
+                    }}
+                  >
+                    <option value="">
+                      اختر المحافظة
+                    </option>
+
+                    {governorates.map((governorate) => (
+                      <option
+                        key={governorate._id}
+                        value={governorate._id}
+                      >
+                        {governorate.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  منطقة البداية
+                  <select
+                    value={form.fromAreaId}
+                    onChange={(event) =>
+                      updateField(
+                        "fromAreaId",
+                        event.target.value,
+                      )
+                    }
+                    disabled={!selectedFromGovernorate}
+                  >
+                    <option value="">
+                      اختر منطقة البداية
+                    </option>
+
+                    {(selectedFromGovernorate?.areas || [])
+                      .filter(
+                        (area) =>
+                          area.isActive !== false,
+                      )
+                      .map((area) => (
+                        <option
+                          key={area._id}
+                          value={area._id}
+                        >
+                          {area.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+
+              <div
+                className="pricing-route-arrow"
+                aria-hidden="true"
+              >
+                <ArrowRight size={22} />
+              </div>
+
+              <div className="pricing-route-side pricing-route-to">
+                <div className="pricing-route-heading">
+                  <span className="pricing-route-badge">2</span>
+
+                  <div>
+                    <strong>منطقة الزبون / النهاية</strong>
+                    <small>
+                      المحافظة اختيارية، المنطقة مطلوبة.
+                    </small>
+                  </div>
+                </div>
+
+                <label>
+                  محافظة النهاية
+                  <span className="pricing-optional">
+                    اختياري
+                  </span>
+
+                  <select
+                    value={form.toGovernorateId}
+                    onChange={(event) => {
+                      updateField(
+                        "toGovernorateId",
+                        event.target.value,
+                      );
+
+                      updateField(
+                        "toAreaId",
+                        "",
+                      );
+                    }}
+                  >
+                    <option value="">
+                      كل المحافظات
+                    </option>
+
+                    {governorates.map((governorate) => (
+                      <option
+                        key={governorate._id}
+                        value={governorate._id}
+                      >
+                        {governorate.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  منطقة النهاية
+                  <select
+                    value={form.toAreaId}
+                    onChange={(event) => {
+                      const areaId =
+                        event.target.value;
+
+                      const governorateId =
+                        governorateIdForArea(areaId);
+
+                      updateField(
+                        "toAreaId",
+                        areaId,
+                      );
+
+                      if (governorateId) {
+                        updateField(
+                          "toGovernorateId",
+                          governorateId,
+                        );
+                      }
+                    }}
+                  >
+                    <option value="">
+                      اختر منطقة النهاية
+                    </option>
+
+                    {(selectedToGovernorate
+                      ? (
+                          selectedToGovernorate.areas ||
+                          []
+                        )
+                          .filter(
+                            (area) =>
+                              area.isActive !== false,
+                          )
+                          .map((area) => ({
+                            ...area,
+                            governorateName:
+                              selectedToGovernorate.name,
+                          }))
+                      : activeAreas
+                    ).map((area) => (
+                      <option
+                        key={area._id}
+                        value={area._id}
+                      >
+                        {area.name} —{" "}
+                        {area.governorateName}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {form.type ===
+            "establishment" && (
+            <label>
+              المنشأة
+              <select
+                value={form.establishmentId}
+                onChange={(event) =>
+                  updateField(
+                    "establishmentId",
+                    event.target.value,
+                  )
+                }
+              >
+                <option value="">
+                  اختر المنشأة
+                </option>
+
+                {establishments.map(
+                  (establishment) => (
+                    <option
+                      key={establishment._id}
+                      value={establishment._id}
+                    >
+                      {establishment.name} —{" "}
+                      {establishment.type ===
+                      "restaurant"
+                        ? "مطعم"
+                        : "محل"}
+                    </option>
+                  ),
+                )}
+              </select>
+            </label>
+          )}
+
+          {form.type ===
+            "establishment_type" && (
+            <label>
+              نوع المنشأة
+              <select
+                value={form.establishmentType}
+                onChange={(event) =>
+                  updateField(
+                    "establishmentType",
+                    event.target.value as
+                      | ""
+                      | "restaurant"
+                      | "shop",
+                  )
+                }
+              >
+                <option value="">
+                  اختر النوع
+                </option>
+                <option value="restaurant">
+                  مطاعم
+                </option>
+                <option value="shop">
+                  محلات
+                </option>
+              </select>
+            </label>
+          )}
+
+          {form.type ===
+            "geofence_to_geofence" && (
+            <>
+              <label>
+                المنطقة الجغرافية للبداية
+                <select
+                  value={form.fromGeofenceId}
+                  onChange={(event) =>
+                    updateField(
+                      "fromGeofenceId",
+                      event.target.value,
+                    )
+                  }
+                >
+                  <option value="">
+                    اختر المنطقة الجغرافية
+                  </option>
+
+                  {geofences
+                    .filter(
+                      (item) =>
+                        item.isActive !== false,
+                    )
+                    .map((item) => (
+                      <option
+                        key={item._id}
+                        value={item._id}
+                      >
+                        {item.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+
+              <label>
+                المنطقة الجغرافية للنهاية
+                <select
+                  value={form.toGeofenceId}
+                  onChange={(event) =>
+                    updateField(
+                      "toGeofenceId",
+                      event.target.value,
+                    )
+                  }
+                >
+                  <option value="">
+                    اختر المنطقة الجغرافية
+                  </option>
+
+                  {geofences
+                    .filter(
+                      (item) =>
+                        item.isActive !== false,
+                    )
+                    .map((item) => (
+                      <option
+                        key={item._id}
+                        value={item._id}
+                      >
+                        {item.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            </>
+          )}
+
+          <label className="pricing-optional-field">
+            <span className="pricing-field-label">
+              <span>بداية سريان القاعدة</span>
+              <em>اختياري</em>
+            </span>
+
+            <small className="pricing-field-help">
+              اتركه فارغًا لتبدأ القاعدة فور حفظها.
+            </small>
+
+            <input
+              type="datetime-local"
+              value={form.startsAt}
+              onChange={(event) =>
+                updateField(
+                  "startsAt",
+                  event.target.value,
+                )
+              }
+            />
+          </label>
+
+          <label className="pricing-optional-field">
+            <span className="pricing-field-label">
+              <span>نهاية سريان القاعدة</span>
+              <em>اختياري</em>
+            </span>
+
+            <small className="pricing-field-help">
+              اتركه فارغًا لتستمر القاعدة بدون تاريخ انتهاء.
+            </small>
+
+            <input
+              type="datetime-local"
+              value={form.endsAt}
+              onChange={(event) =>
+                updateField(
+                  "endsAt",
+                  event.target.value,
+                )
+              }
+            />
+          </label>
+        </div>
+
+        <div className="form-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={busy}
+            onClick={() => void saveRule()}
+          >
+            {editingId ? (
+              <>
+                <Edit3 size={17} />
+                حفظ التعديل
+              </>
+            ) : (
+              <>
+                <Plus size={17} />
+                إضافة قاعدة
+              </>
+            )}
+          </button>
+
+          {editingId && (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={resetForm}
+            >
+              إلغاء
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="page-section-title">
+          <div>
+            <h2>قواعد التسعير الحالية</h2>
+            <p>
+              يتم عرض حالة كل قاعدة وفترتها
+              وأولويتها ونوعها.
+            </p>
+          </div>
+        </div>
+
+        {loading ? (
+          <div className="empty-state">
+            جاري تحميل قواعد التسعير...
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="empty-state">
+            لا توجد قواعد تسعير حاليًا.
+          </div>
+        ) : (
+          <div className="pricing-rule-accordion">
+            {rows.map((row) => {
+              const expanded =
+                expandedRuleId === row._id;
+
+              return (
+                <article
+                  key={row._id}
+                  className={`pricing-rule-item ${
+                    expanded ? "expanded" : ""
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="pricing-rule-summary"
+                    onClick={() =>
+                      setExpandedRuleId(
+                        expanded ? null : row._id,
+                      )
+                    }
+                  >
+                    <span className="pricing-rule-summary-icon">
+                      {row.type ===
+                      "geofence_to_geofence"
+                        ? "🗺️"
+                        : "⇄"}
+                    </span>
+
+                    <span className="pricing-rule-summary-main">
+                      <strong>{row.name}</strong>
+
+                      <small>
+                        {typeLabels[row.type]} ·{" "}
+                        {Number(
+                          row.amount || 0,
+                        ).toLocaleString("ar-EG")}{" "}
+                        رسوم التوصيل
+                      </small>
+                    </span>
+
+                    <span
+                      className={
+                        row.isActive
+                          ? "status status-active"
+                          : "status status-inactive"
+                      }
+                    >
+                      {row.isActive
+                        ? "مفعلة"
+                        : "متوقفة"}
+                    </span>
+
+                    <span className="pricing-rule-chevron">
+                      {expanded ? (
+                        <ChevronUp size={18} />
+                      ) : (
+                        <ChevronDown size={18} />
+                      )}
+                    </span>
+                  </button>
+
+                  {expanded && (
+                    <div className="pricing-rule-details">
+                      <div className="pricing-rule-detail-grid">
+                        <div>
+                          <small>نوع القاعدة</small>
+                          <strong>
+                            {typeLabels[row.type]}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small>رسوم التوصيل</small>
+                          <strong>
+                            {Number(
+                              row.amount || 0,
+                            ).toLocaleString("ar-EG")}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small>الأولوية</small>
+                          <strong>
+                            {Number(
+                              row.priority || 0,
+                            ) > 0
+                              ? row.priority
+                              : "غير محددة"}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small>بداية السريان</small>
+                          <strong>
+                            {row.startsAt
+                              ? new Date(
+                                  row.startsAt,
+                                ).toLocaleString("ar-EG")
+                              : "غير محددة"}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small>نهاية السريان</small>
+                          <strong>
+                            {row.endsAt
+                              ? new Date(
+                                  row.endsAt,
+                                ).toLocaleString("ar-EG")
+                              : "غير محددة"}
+                          </strong>
+                        </div>
+
+                        <div className="pricing-rule-detail-wide">
+                          <small>الوصف</small>
+                          <strong>
+                            {getRuleSummary(row)}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="pricing-rule-detail-actions">
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={busy}
+                          onClick={() => editRule(row)}
+                        >
+                          <Edit3 size={15} />
+                          تعديل
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn btn-danger"
+                          disabled={busy}
+                          onClick={() =>
+                            void removeRule(row)
+                          }
+                        >
+                          <Trash2 size={15} />
+                          حذف
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <RestaurantPriceOverrideEditor
+        establishments={establishments}
+      />
+
+
+      <RestaurantCustomPrice
+        establishments={establishments}
+      />
+
+      </div>
+    </div>
+      </>
+    </main>
+  );
+}

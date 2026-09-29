@@ -1,0 +1,1097 @@
+import { useEffect, useState } from "react";
+import {
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Mail,
+  Phone,
+  Pencil,
+  Plus,
+  RefreshCw,
+  ShieldCheck,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-react";
+import { api } from "../lib/api";
+import { ADMIN_PAGE_GROUPS, ADMIN_PAGE_OPTIONS, pagePermission } from "../lib/adminPages";
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "12px 14px",
+  border: "1px solid #CBD5E1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#0F172A",
+  fontSize: 14,
+};
+
+export default function SubAdmins() {
+  const [admins, setAdmins] = useState<any[]>([]);
+  const [form, setForm] = useState({
+    fullName: "",
+    phone: "",
+    email: "",
+    password: "",
+    permissions: [] as string[],
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [pageSearch, setPageSearch] = useState("");
+  const [pageDropdownOpen, setPageDropdownOpen] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [editingAdmin, setEditingAdmin] = useState<any | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editStatus, setEditStatus] = useState("active");
+  const [editPermissions, setEditPermissions] = useState<string[]>([]);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+
+  const pageChoices = ADMIN_PAGE_GROUPS.flatMap((group) =>
+    group.items.map((item) => ({
+      ...item,
+      group: group.label,
+    })),
+  );
+
+  const filteredPages = pageChoices.filter((page) => {
+    const query = pageSearch.trim().toLocaleLowerCase();
+
+    if (!query) {
+      return false;
+    }
+
+    return page.label.toLocaleLowerCase().startsWith(query);
+  }).filter((page) => {
+    const permission = pagePermission(page.path);
+    return !form.permissions.includes(permission);
+  });
+
+  const selectedPages = ADMIN_PAGE_OPTIONS.filter((page) =>
+    form.permissions.includes(pagePermission(page.path)),
+  );
+
+  async function load() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get("/completion/sub-admins");
+      setAdmins(response.data.admins || []);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || "تعذر تحميل الأدمنات");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function create() {
+    if (
+      !form.fullName.trim() ||
+      !form.phone.trim() ||
+      !form.email.trim() ||
+      !form.password
+    ) {
+      setError("أكمل جميع بيانات الأدمن الفرعي");
+      return;
+    }
+
+    if (form.permissions.length === 0) {
+      setError("اختر صفحة واحدة على الأقل للأدمن الفرعي");
+      return;
+    }
+
+    if (form.permissions.length === 0) {
+      setError("اختر صفحة واحدة على الأقل للأدمن الفرعي");
+      return;
+    }
+
+    try {
+      setCreating(true);
+      setError("");
+      setMessage("");
+
+      await api.post("/completion/sub-admins", form);
+
+      setForm({
+        fullName: "",
+        phone: "",
+        email: "",
+        password: "",
+        permissions: [],
+      });
+
+      setPageSearch("");
+      setPageDropdownOpen(false);
+
+      setMessage("تم إنشاء الأدمن الفرعي بنجاح");
+      await load();
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message || "تعذر إنشاء الأدمن الفرعي"
+      );
+    } finally {
+      setCreating(false);
+    }
+  }
+
+
+  function openEdit(admin: any) {
+    const permissions = Array.isArray(
+      admin?.staffPermission?.permissions,
+    )
+      ? admin.staffPermission.permissions.filter(
+          (item: unknown): item is string =>
+            typeof item === "string",
+        )
+      : [];
+
+    setEditingAdmin(admin);
+    setEditName(admin?.fullName || "");
+    setEditStatus(admin?.status || "active");
+    setEditPermissions(permissions);
+    setError("");
+    setMessage("");
+  }
+
+  function cancelEdit() {
+    setEditingAdmin(null);
+    setEditName("");
+    setEditStatus("active");
+    setEditPermissions([]);
+  }
+
+  async function saveEditedAdmin() {
+    if (!editingAdmin?._id) {
+      return;
+    }
+
+    if (!editName.trim()) {
+      setError("اكتب اسم الأدمن.");
+      return;
+    }
+
+    if (editPermissions.length === 0) {
+      setError("اختر صفحة واحدة على الأقل.");
+      return;
+    }
+
+    try {
+      setSavingEdit(true);
+      setError("");
+      setMessage("");
+
+      await api.patch(
+        `/completion/sub-admins/${editingAdmin._id}`,
+        {
+          fullName: editName.trim(),
+          status: editStatus,
+          permissions: editPermissions,
+        },
+      );
+
+      setEditingAdmin(null);
+      setEditName("");
+      setEditStatus("active");
+      setEditPermissions([]);
+
+      setMessage("تم تعديل الأدمن الفرعي بنجاح.");
+      await load();
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          "تعذر تعديل الأدمن الفرعي",
+      );
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function removeAdmin(admin: any) {
+    if (!admin?._id || deletingId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `هل أنت متأكد من حذف الأدمن "${admin.fullName || ""}"؟`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setDeletingId(String(admin._id));
+      setError("");
+      setMessage("");
+
+      await api.delete(
+        `/completion/sub-admins/${admin._id}`,
+      );
+
+      setMessage("تم حذف الأدمن الفرعي بنجاح.");
+      await load();
+    } catch (err: any) {
+      setError(
+        err?.response?.data?.message ||
+          "تعذر حذف الأدمن الفرعي",
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  return (
+    <div dir="rtl" style={{ padding: 28, maxWidth: 1250, margin: "0 auto" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 20,
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <div style={{ color: "#E87516", fontWeight: 800, fontSize: 12 }}>
+            ADMIN ACCESS
+          </div>
+          <h1 style={{ margin: "7px 0", fontSize: 28, color: "#0F172A" }}>
+            الأدمنات الفرعية
+          </h1>
+          <p style={{ margin: 0, color: "#64748B" }}>
+            إنشاء وإدارة حسابات الإدارة المساعدة.
+          </p>
+        </div>
+
+        <button
+          onClick={() => void load()}
+          disabled={loading}
+          style={{
+            border: "1px solid #CBD5E1",
+            background: "#fff",
+            color: "#0F172A",
+            borderRadius: 12,
+            padding: "11px 16px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          <RefreshCw size={16} />
+          تحديث
+        </button>
+      </div>
+
+      {(message || error) && (
+        <div
+          style={{
+            marginBottom: 20,
+            padding: 15,
+            borderRadius: 14,
+            background: error ? "#FEF2F2" : "#ECFDF5",
+            border: `1px solid ${error ? "#FECACA" : "#A7F3D0"}`,
+            color: error ? "#B91C1C" : "#047857",
+          }}
+        >
+          {error || message}
+        </div>
+      )}
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(340px, .8fr) minmax(450px, 1.4fr)",
+          gap: 20,
+          alignItems: "start",
+        }}
+      >
+        <section
+          style={{
+            background: "#fff",
+            border: "1px solid #E2E8F0",
+            borderRadius: 20,
+            padding: 24,
+            boxShadow: "0 8px 30px rgba(15,23,42,.05)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 13,
+                background: "#FFF0D9",
+                color: "#E87516",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <UserPlus size={22} />
+            </div>
+
+            <div>
+              <h2 style={{ margin: 0, fontSize: 18 }}>إنشاء أدمن فرعي</h2>
+              <p style={{ margin: "4px 0 0", color: "#64748B", fontSize: 12 }}>
+                حساب إداري جديد للوصول إلى لوحة الإدارة.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: "grid", gap: 14 }}>
+            <div>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7 }}>
+                الاسم الكامل
+              </label>
+              <input
+                placeholder="مثال: أحمد محمد"
+                value={form.fullName}
+                onChange={(e) =>
+                  setForm({ ...form, fullName: e.target.value })
+                }
+                style={inputStyle}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7 }}>
+                الهاتف
+              </label>
+              <div style={{ position: "relative" }}>
+                <Phone
+                  size={17}
+                  style={{
+                    position: "absolute",
+                    right: 13,
+                    top: 13,
+                    color: "#94A3B8",
+                  }}
+                />
+                <input
+                  placeholder="رقم الهاتف"
+                  value={form.phone}
+                  onChange={(e) =>
+                    setForm({ ...form, phone: e.target.value })
+                  }
+                  style={{ ...inputStyle, paddingRight: 40 }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7 }}>
+                البريد الإلكتروني
+              </label>
+              <div style={{ position: "relative" }}>
+                <Mail
+                  size={17}
+                  style={{
+                    position: "absolute",
+                    right: 13,
+                    top: 13,
+                    color: "#94A3B8",
+                  }}
+                />
+                <input
+                  type="email"
+                  placeholder="name@example.com"
+                  value={form.email}
+                  onChange={(e) =>
+                    setForm({ ...form, email: e.target.value })
+                  }
+                  style={{ ...inputStyle, paddingRight: 40 }}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label style={{ display: "block", fontSize: 13, fontWeight: 700, marginBottom: 7 }}>
+                كلمة المرور
+              </label>
+
+              <div style={{ position: "relative" }}>
+                <KeyRound
+                  size={17}
+                  style={{
+                    position: "absolute",
+                    right: 13,
+                    top: 13,
+                    color: "#94A3B8",
+                  }}
+                />
+
+                <input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="كلمة المرور"
+                  value={form.password}
+                  onChange={(e) =>
+                    setForm({ ...form, password: e.target.value })
+                  }
+                  style={{ ...inputStyle, paddingRight: 40, paddingLeft: 42 }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    left: 9,
+                    top: 8,
+                    border: 0,
+                    background: "transparent",
+                    color: "#64748B",
+                    cursor: "pointer",
+                    padding: 5,
+                  }}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
+            </div>
+
+
+            <div>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  marginBottom: 7,
+                }}
+              >
+                الصفحة
+              </label>
+
+              <div style={{ position: "relative" }}>
+                <input
+                  value={pageSearch}
+                  placeholder="اكتب اسم الصفحة..."
+                  onChange={(e) => {
+                    setPageSearch(e.target.value);
+                    setPageDropdownOpen(true);
+                  }}
+                  onFocus={() => setPageDropdownOpen(true)}
+                  style={{
+                    ...inputStyle,
+                    paddingLeft: 14,
+                  }}
+                />
+
+                {pageDropdownOpen &&
+                  pageSearch.trim() &&
+                  filteredPages.length > 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 6px)",
+                        right: 0,
+                        left: 0,
+                        zIndex: 50,
+                        background: "#fff",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: 13,
+                        boxShadow: "0 12px 30px rgba(15,23,42,.12)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {filteredPages.map((page) => (
+                        <button
+                          key={page.path}
+                          type="button"
+                          onClick={() => {
+                            const permission = pagePermission(page.path);
+
+                            setForm((current) => ({
+                              ...current,
+                              permissions: current.permissions.includes(permission)
+                                ? current.permissions
+                                : [...current.permissions, permission],
+                            }));
+
+                            setPageSearch("");
+                            setPageDropdownOpen(true);
+                          }}
+                          style={{
+                            width: "100%",
+                            border: 0,
+                            borderBottom: "1px solid #F1F5F9",
+                            background: "#fff",
+                            padding: "11px 13px",
+                            textAlign: "right",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color: "#0F172A",
+                            }}
+                          >
+                            {page.label}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: 3,
+                              fontSize: 11,
+                              color: "#94A3B8",
+                            }}
+                          >
+                            {page.group}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                {pageDropdownOpen &&
+                  pageSearch.trim() &&
+                  filteredPages.length === 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 6px)",
+                        right: 0,
+                        left: 0,
+                        zIndex: 50,
+                        background: "#fff",
+                        border: "1px solid #CBD5E1",
+                        borderRadius: 13,
+                        padding: 14,
+                        boxShadow: "0 12px 30px rgba(15,23,42,.12)",
+                        color: "#64748B",
+                        fontSize: 12,
+                        textAlign: "center",
+                      }}
+                    >
+                      لا توجد صفحة بهذا الاسم.
+                    </div>
+                  )}
+              </div>
+
+              {selectedPages.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    marginTop: 10,
+                  }}
+                >
+                  {selectedPages.map((page) => (
+                    <div
+                      key={page.path}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "7px 10px",
+                        borderRadius: 999,
+                        background: "#FFF7ED",
+                        border: "1px solid #FDBA74",
+                        color: "#9A3412",
+                        fontSize: 12,
+                        fontWeight: 800,
+                      }}
+                    >
+                      <span>{page.label}</span>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const permission = pagePermission(page.path);
+
+                          setForm((current) => ({
+                            ...current,
+                            permissions: current.permissions.filter(
+                              (item) => item !== permission,
+                            ),
+                          }));
+                        }}
+                        style={{
+                          border: 0,
+                          background: "transparent",
+                          color: "#C2410C",
+                          cursor: "pointer",
+                          fontSize: 16,
+                          lineHeight: 1,
+                          padding: 0,
+                        }}
+                        aria-label={`إزالة ${page.label}`}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div
+                style={{
+                  marginTop: 9,
+                  color: "#64748B",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                الصفحات المختارة: {selectedPages.length}
+              </div>
+            </div>
+
+            <button
+              onClick={() => void create()}
+              disabled={creating}
+              style={{
+                marginTop: 4,
+                border: 0,
+                borderRadius: 12,
+                padding: "13px 18px",
+                background: creating ? "#94A3B8" : "#E87516",
+                color: "#fff",
+                fontWeight: 800,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                cursor: creating ? "not-allowed" : "pointer",
+              }}
+            >
+              <Plus size={18} />
+              {creating ? "جاري الإنشاء..." : "إنشاء أدمن فرعي"}
+            </button>
+          </div>
+        </section>
+
+        <section
+          style={{
+            background: "#fff",
+            border: "1px solid #E2E8F0",
+            borderRadius: 20,
+            padding: 24,
+            boxShadow: "0 8px 30px rgba(15,23,42,.05)",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 18,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <Users size={21} color="#E87516" />
+              <h2 style={{ margin: 0, fontSize: 18 }}>الأدمنات</h2>
+            </div>
+
+            <span
+              style={{
+                padding: "6px 10px",
+                borderRadius: 20,
+                background: "#F1F5F9",
+                color: "#475569",
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              {admins.length} حساب
+            </span>
+          </div>
+
+          {loading ? (
+            <div style={{ textAlign: "center", padding: 45, color: "#64748B" }}>
+              جاري تحميل الحسابات...
+            </div>
+          ) : admins.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: 45,
+                border: "1px dashed #CBD5E1",
+                borderRadius: 15,
+                color: "#64748B",
+              }}
+            >
+              لا توجد حسابات أدمن فرعية حالياً.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gap: 12 }}>
+              {admins.map((admin) => (
+                <div
+                  key={admin._id}
+                  style={{
+                    padding: 17,
+                    border: "1px solid #E2E8F0",
+                    borderRadius: 15,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 15,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div
+                      style={{
+                        width: 42,
+                        height: 42,
+                        borderRadius: "50%",
+                        background: "#FFF0D9",
+                        color: "#E87516",
+                        display: "grid",
+                        placeItems: "center",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {(admin.fullName || "A").charAt(0)}
+                    </div>
+
+                    <div>
+                      <div style={{ fontWeight: 800, color: "#0F172A" }}>
+                        {admin.fullName || "بدون اسم"}
+                      </div>
+
+                      <div style={{ color: "#64748B", fontSize: 12, marginTop: 4 }}>
+                        {admin.email || admin.phone || "لا توجد بيانات اتصال"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "7px 10px",
+                      borderRadius: 20,
+                      background: "#ECFDF5",
+                      color: "#047857",
+                      fontSize: 11,
+                      fontWeight: 800,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    <CheckCircle2 size={13} />
+                    {admin.status || "نشط"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => openEdit(admin)}
+                    title="تعديل الأدمن"
+                    style={{
+                      border: "1px solid #CBD5E1",
+                      borderRadius: 10,
+                      background: "#fff",
+                      color: "#475569",
+                      padding: "8px 12px",
+                      cursor: "pointer",
+                      fontWeight: 800,
+                    }}
+                  >
+                    <Pencil size={15} style={{ verticalAlign: "middle", marginLeft: 5 }} />
+                    تعديل
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void removeAdmin(admin)}
+                    disabled={deletingId === String(admin._id)}
+                    title="حذف الأدمن"
+                    style={{
+                      border: "1px solid #FECACA",
+                      borderRadius: 10,
+                      background: "#FFF5F5",
+                      color: "#DC2626",
+                      padding: "8px 12px",
+                      cursor:
+                        deletingId === String(admin._id)
+                          ? "not-allowed"
+                          : "pointer",
+                      fontWeight: 800,
+                    }}
+                  >
+                    <Trash2 size={15} style={{ verticalAlign: "middle", marginLeft: 5 }} />
+                    {deletingId === String(admin._id)
+                      ? "جاري الحذف..."
+                      : "حذف"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: 18,
+              padding: 14,
+              borderRadius: 13,
+              background: "#F8FAFC",
+              display: "flex",
+              gap: 9,
+              color: "#475569",
+              fontSize: 12,
+            }}
+          >
+            <ShieldCheck size={17} color="#E87516" />
+            الحسابات الفرعية تُنشأ من خلال صلاحيات الإدارة الحالية.
+          </div>
+        </section>
+      {editingAdmin && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(15,23,42,.5)",
+            display: "grid",
+            placeItems: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            dir="rtl"
+            style={{
+              width: "min(680px, 100%)",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              background: "#fff",
+              borderRadius: 20,
+              padding: 24,
+              boxShadow: "0 25px 70px rgba(15,23,42,.25)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginBottom: 20,
+              }}
+            >
+              <div>
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 20,
+                    color: "#0F172A",
+                  }}
+                >
+                  تعديل الأدمن الفرعي
+                </h2>
+
+                <div
+                  style={{
+                    marginTop: 5,
+                    color: "#64748B",
+                    fontSize: 12,
+                  }}
+                >
+                  {editingAdmin.fullName || "بدون اسم"}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={savingEdit}
+                style={{
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 10,
+                  background: "#F8FAFC",
+                  color: "#475569",
+                  width: 38,
+                  height: 38,
+                  cursor: "pointer",
+                  fontSize: 20,
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: "grid", gap: 15 }}>
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    marginBottom: 7,
+                  }}
+                >
+                  الاسم
+                </label>
+
+                <input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div>
+                <label
+                  style={{
+                    display: "block",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    marginBottom: 7,
+                  }}
+                >
+                  الحالة
+                </label>
+
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  style={inputStyle}
+                >
+                  <option value="active">نشط</option>
+                  <option value="suspended">موقوف</option>
+                  <option value="inactive">غير نشط</option>
+                </select>
+              </div>
+
+              <div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 800,
+                    marginBottom: 9,
+                  }}
+                >
+                  صلاحيات الصفحات
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  {ADMIN_PAGE_OPTIONS.map((page) => {
+                    const permission = pagePermission(page.path);
+                    const selected =
+                      editPermissions.includes(permission);
+
+                    return (
+                      <button
+                        key={page.path}
+                        type="button"
+                        onClick={() => {
+                          setEditPermissions((current) =>
+                            selected
+                              ? current.filter(
+                                  (item) => item !== permission,
+                                )
+                              : [...current, permission],
+                          );
+                        }}
+                        style={{
+                          border: selected
+                            ? "1px solid #FDBA74"
+                            : "1px solid #E2E8F0",
+                          borderRadius: 11,
+                          background: selected
+                            ? "#FFF7ED"
+                            : "#F8FAFC",
+                          color: selected
+                            ? "#9A3412"
+                            : "#475569",
+                          padding: "10px 12px",
+                          textAlign: "right",
+                          cursor: "pointer",
+                          fontWeight: 800,
+                          fontSize: 12,
+                        }}
+                      >
+                        {selected ? "✓ " : ""}
+                        {page.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 8,
+                    fontSize: 12,
+                    color: "#64748B",
+                  }}
+                >
+                  الصفحات المختارة: {editPermissions.length}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 9,
+                  marginTop: 4,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={cancelEdit}
+                  disabled={savingEdit}
+                  style={{
+                    border: "1px solid #CBD5E1",
+                    borderRadius: 11,
+                    background: "#fff",
+                    color: "#475569",
+                    padding: "11px 18px",
+                    cursor: "pointer",
+                    fontWeight: 800,
+                  }}
+                >
+                  إلغاء
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void saveEditedAdmin()}
+                  disabled={savingEdit}
+                  style={{
+                    border: 0,
+                    borderRadius: 11,
+                    background: savingEdit
+                      ? "#94A3B8"
+                      : "#E87516",
+                    color: "#fff",
+                    padding: "11px 20px",
+                    cursor: savingEdit
+                      ? "not-allowed"
+                      : "pointer",
+                    fontWeight: 900,
+                  }}
+                >
+                  {savingEdit
+                    ? "جاري الحفظ..."
+                    : "حفظ التعديل"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,152 @@
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import { apiGet } from "../../api/request";
+
+export default function SupportNotificationBell() {
+  const navigation = useNavigation<any>();
+
+  const [count, setCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+
+  const loadCount = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const response = await apiGet(
+        "/support-tickets/my",
+      );
+
+      const tickets = Array.isArray(
+        response?.tickets,
+      )
+        ? response.tickets
+        : [];
+
+      const unread = tickets.filter(
+        (ticket: any) => {
+          if (ticket?.status === "closed") {
+            return false;
+          }
+
+          const messages = Array.isArray(
+            ticket?.messages,
+          )
+            ? ticket.messages
+            : [];
+
+          const lastMessage =
+            messages[messages.length - 1];
+
+          return (
+            lastMessage?.senderRole ===
+            "admin"
+          );
+        },
+      ).length;
+
+      setCount(unread);
+    } catch (error) {
+      console.error(
+        "Support notification error:",
+        error,
+      );
+      setCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadCount();
+
+    const timer = setInterval(
+      () => void loadCount(),
+      10000,
+    );
+
+    return () => clearInterval(timer);
+  }, [loadCount]);
+
+  return (
+    <Pressable
+      onPress={() =>
+        navigation.navigate("SupportTickets")
+      }
+      style={({ pressed }) => [
+        styles.button,
+        pressed && styles.pressed,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel="تذاكر الدعم"
+    >
+      <Ionicons
+        name="notifications-outline"
+        size={22}
+        color="#0F172A"
+      />
+
+      {loading && count === 0 ? (
+        <View style={styles.loadingDot}>
+          <ActivityIndicator size="small" />
+        </View>
+      ) : count > 0 ? (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>
+            {count > 99 ? "99+" : count}
+          </Text>
+        </View>
+      ) : null}
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  button: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F8FAFC",
+    position: "relative",
+  },
+
+  pressed: {
+    opacity: 0.7,
+  },
+
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 5,
+    borderRadius: 10,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+
+  badgeText: {
+    color: "#FFFFFF",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  loadingDot: {
+    position: "absolute",
+    top: 2,
+    right: 2,
+  },
+});

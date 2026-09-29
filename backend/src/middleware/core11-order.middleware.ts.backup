@@ -1,0 +1,348 @@
+import type {
+  NextFunction,
+  Request,
+  Response,
+} from "express";
+
+import mongoose from "mongoose";
+
+function userId(req: Request) {
+  return String(
+    (req as any).user?.sub || ""
+  );
+}
+
+function getBodyCustomer(
+  body: any
+) {
+  const name = String(
+    body?.customer?.name ??
+    body?.customerName ??
+    ""
+  ).trim();
+
+  const phone = String(
+    body?.customer?.phone ??
+    body?.customerPhone ??
+    ""
+  ).trim();
+
+  const addressText = String(
+    body?.customer?.addressText ??
+    body?.deliveryAddress ??
+    body?.addressText ??
+    ""
+  ).trim();
+
+  if (!name) {
+    throw new Error(
+      "CUSTOMER_NAME_REQUIRED"
+    );
+  }
+
+  if (!phone) {
+    throw new Error(
+      "CUSTOMER_PHONE_REQUIRED"
+    );
+  }
+
+  if (!addressText) {
+    throw new Error(
+      "DELIVERY_ADDRESS_REQUIRED"
+    );
+  }
+
+  let latitude = null;
+  let longitude = null;
+
+  if (
+    body?.customer?.latitude !== undefined ||
+    body?.deliveryLatitude !== undefined
+  ) {
+    latitude = Number(
+      body?.customer?.latitude ??
+      body?.deliveryLatitude
+    );
+
+    longitude = Number(
+      body?.customer?.longitude ??
+      body?.deliveryLongitude
+    );
+
+    if (
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      throw new Error(
+        "INVALID_COORDINATES"
+      );
+    }
+  }
+
+  return {
+    name,
+    phone,
+    addressText,
+    note:
+      body?.customer?.note ??
+      body?.customerNote ??
+      body?.deliveryNote ??
+      null,
+    latitude,
+    longitude,
+  };
+}
+
+export async function core11OrderCreateGuard(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const body = req.body || {};
+
+    const EstablishmentModule =
+      await import(
+        "../models/Establishment.js"
+      );
+
+    const EstablishmentModel =
+      (EstablishmentModule as any)
+        .EstablishmentModel ??
+      (EstablishmentModule as any)
+        .default;
+
+    const establishmentId = String(
+      body.establishmentId || ""
+    );
+
+    if (
+      establishmentId &&
+      mongoose.isValidObjectId(
+        establishmentId
+      )
+    ) {
+      const establishment =
+        await EstablishmentModel.findById(
+          establishmentId
+        );
+
+      if (!establishment) {
+        return res.status(404).json({
+          success: false,
+          message: "المحل غير موجود",
+        });
+      }
+
+      const status = String(
+        (establishment as any)
+          .status ||
+        (establishment as any)
+          .approvalStatus ||
+        ""
+      ).toLowerCase();
+
+      if (
+        status &&
+        ![
+          "active",
+          "approved",
+        ].includes(status)
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "لا يمكن إنشاء الطلب قبل اعتماد المحل",
+          status,
+        });
+      }
+    }
+
+    const customer =
+      getBodyCustomer(body);
+
+    (req as any).core11 =
+      (req as any).core11 || {};
+
+    (req as any).core11.customer =
+      customer;
+
+    (req as any).core11.actorId =
+      userId(req) || null;
+
+    return next();
+  } catch (error: any) {
+    return res.status(400).json({
+      success: false,
+      message:
+        error?.message ||
+        "بيانات الطلب غير صحيحة",
+    });
+  }
+}
+
+export async function core11CaptainGuard(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
+  try {
+    const role = String(
+      (req as any).user?.role || ""
+    );
+
+    if (role !== "captain") {
+      return next();
+    }
+
+    const id = userId(req);
+
+    if (
+      !mongoose.isValidObjectId(id)
+    ) {
+      return res.status(401).json({
+        success: false,
+        message: "جلسة الكابتن غير صحيحة",
+      });
+    }
+
+    const CaptainShiftModule =
+      await import(
+        "../models/CaptainShift.js"
+      );
+
+    const CaptainShiftModel =
+      (CaptainShiftModule as any)
+        .CaptainShiftModel ??
+      (CaptainShiftModule as any)
+        .default;
+
+    const now = new Date();
+
+    const startOfWeek =
+      new Date(now);
+
+    const day =
+      startOfWeek.getDay();
+
+    startOfWeek.setDate(
+      startOfWeek.getDate() -
+      (day === 0 ? 6 : day - 1)
+    );
+
+    startOfWeek.setHours(
+      0,
+      0,
+      0,
+      0
+    );
+
+    const endOfWeek =
+      new Date(startOfWeek);
+
+    endOfWeek.setDate(
+      endOfWeek.getDate() + 7
+    );
+
+    const assignment =
+      await CaptainShiftModel.findOne({
+        captainId:
+          new mongoose.Types.ObjectId(id),
+        weekStart: {
+          $gte: startOfWeek,
+          $lt: endOfWeek,
+        },
+      }).lean();
+
+    if (!assignment) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "لا يوجد شفت أسبوعي محدد للكابتن",
+        code:
+          "CAPTAIN_HAS_NO_WEEKLY_SHIFT",
+      });
+    }
+
+    const shift =
+      await CaptainShiftModel.findById(
+        (assignment as any).shiftId
+      ).lean();
+
+    if (!shift) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "الشفت الحالي غير موجود",
+      });
+    }
+
+    const parse = (v: string) => {
+      const m =
+        /^([01]\d|2[0-3]):([0-5]\d)$/.exec(
+          String(v)
+        );
+
+      if (!m) {
+        throw new Error(
+          "INVALID_SHIFT_TIME"
+        );
+      }
+
+      return (
+        Number(m[1]) * 60 +
+        Number(m[2])
+      );
+    };
+
+    const start =
+      parse(
+        String(
+          (shift as any).startTime
+        )
+      );
+
+    const end =
+      parse(
+        String(
+          (shift as any).endTime
+        )
+      );
+
+    const current =
+      now.getHours() * 60 +
+      now.getMinutes();
+
+    const inside =
+      start === end
+        ? true
+        : start < end
+          ? current >= start &&
+            current < end
+          : current >= start ||
+            current < end;
+
+    if (!inside) {
+      return res.status(403).json({
+        success: false,
+        message:
+          "لا يمكن للكابتن تنفيذ العملية خارج الشفت",
+        code:
+          "CAPTAIN_OUTSIDE_SHIFT",
+      });
+    }
+
+    return next();
+  } catch (error: any) {
+    return res.status(403).json({
+      success: false,
+      message:
+        error?.message ||
+        "تعذر التحقق من الشفت",
+    });
+  }
+}

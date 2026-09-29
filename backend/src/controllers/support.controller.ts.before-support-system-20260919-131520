@@ -1,0 +1,47 @@
+
+import { Request, Response } from "express";
+import SupportSettings from "../models/SupportSettings.js";
+
+export async function getSupport(
+  req: Request,
+  res: Response,
+) {
+  let settings =
+    await SupportSettings.findOne().lean();
+
+  if (!settings) {
+    settings = await SupportSettings.create({
+      phoneNumbers: [],
+      whatsapp: [],
+      telegram: [],
+      enabled: true,
+    });
+  }
+
+  return res.json({
+    success: true,
+    data: settings,
+  });
+}
+
+export async function updateSupport(
+  req: Request,
+  res: Response,
+) {
+  const settings =
+    await SupportSettings.findOneAndUpdate(
+      {},
+      {
+        $set: req.body,
+      },
+      {
+        new: true,
+        upsert: true,
+      },
+    );
+
+  return res.json({
+    success: true,
+    data: settings,
+  });
+}

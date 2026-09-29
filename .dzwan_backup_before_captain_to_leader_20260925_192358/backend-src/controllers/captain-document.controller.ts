@@ -1,0 +1,115 @@
+import { createAuditLog } from "../services/audit-log.service.js";
+import { Response } from "express";
+import { Types } from "mongoose";
+import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { CaptainDocumentModel } from "../models/CaptainDocument.js";
+
+export async function createDocument(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const captainId = req.user?.sub;
+
+    const {
+      documentType,
+      documentNumber,
+      fileUrl,
+      expiresAt,
+    } = req.body;
+
+    if (!captainId || !documentType || !documentNumber || !fileUrl) {
+      return res.status(400).json({
+        message: "بيانات الوثيقة ناقصة.",
+      });
+    }
+
+    const doc = await CaptainDocumentModel.create({
+      captainId,
+      documentType,
+      documentNumber,
+      fileUrl,
+      expiresAt: expiresAt ? new Date(expiresAt) : null,
+      status: "pending",
+      submittedAt: new Date(),
+    });
+
+    return res.status(201).json({
+      message: "تم رفع الوثيقة للمراجعة.",
+      document: doc,
+    });
+  } catch (error) {
+    console.error("createDocument error:", error);
+    return res.status(500).json({
+      message: "تعذر حفظ الوثيقة.",
+    });
+  }
+}
+
+export async function listMyDocuments(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const docs = await CaptainDocumentModel.find({
+    captainId: req.user?.sub,
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return res.json({ documents: docs });
+}
+
+export async function listCaptainDocuments(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const filter =
+    req.params.captainId &&
+    typeof req.params.captainId === "string" && Types.ObjectId.isValid(req.params.captainId)
+      ? { captainId: String(req.params.captainId) }
+      : {};
+
+  const docs = await CaptainDocumentModel.find(filter)
+    .populate("captainId", "fullName phone")
+    .populate("reviewedBy", "fullName")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return res.json({ documents: docs });
+}
+
+export async function reviewDocument(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const { status, reason } = req.body;
+
+  if (!["approved", "rejected"].includes(status)) {
+    return res.status(400).json({
+      message: "حالة المراجعة غير صحيحة.",
+    });
+  }
+
+  const doc = await CaptainDocumentModel.findById(req.params.id);
+
+  if (!doc) {
+    return res.status(404).json({
+      message: "الوثيقة غير موجودة.",
+    });
+  }
+
+  doc.status = status;
+  doc.reviewedAt = new Date();
+  doc.reviewedBy = new Types.ObjectId(req.user!.sub);
+  doc.rejectionReason =
+    status === "rejected" ? String(reason || "").trim() : null;
+
+  await doc.save();
+
+  return res.json({
+    message: status === "approved"
+      ? "تم اعتماد الوثيقة."
+      : "تم رفض الوثيقة.",
+    document: doc,
+  });
+}

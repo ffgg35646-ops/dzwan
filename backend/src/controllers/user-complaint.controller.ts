@@ -1,0 +1,170 @@
+import type { Response } from "express";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { Types } from "mongoose";
+import ComplaintModel from "../models/Complaint.js";
+import { OrderModel } from "../models/Order.js";
+import { EstablishmentModel } from "../models/Establishment.js";
+import { z } from "zod";
+
+const createSchema = z.object({
+  type: z.enum(["shop", "captain", "order", "delivery", "money", "proof"]),
+  orderId: z.string().trim().optional().nullable(),
+  title: z.string().trim().min(2).max(180),
+  description: z.string().trim().min(2).max(3000),
+  amount: z.coerce.number().nonnegative().optional(),
+});
+
+function userId(req: AuthenticatedRequest) {
+  const id = String(req.user?.sub ?? "");
+  return Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : null;
+}
+
+export async function createUserComplaint(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const openedBy = userId(req);
+
+    if (!openedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "المستخدم غير صالح.",
+      });
+    }
+
+    const data = createSchema.parse(req.body);
+
+    let orderId: Types.ObjectId | null = null;
+    let captainId: Types.ObjectId | null = null;
+    let establishmentId: Types.ObjectId | null = null;
+
+    if (data.orderId) {
+      if (!Types.ObjectId.isValid(data.orderId)) {
+        return res.status(400).json({
+          success: false,
+          message: "معرّف الطلب غير صالح.",
+        });
+      }
+
+      const order = await OrderModel.findById(data.orderId)
+        .select("_id captainId establishmentId")
+        .lean();
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "الطلب المرتبط بالشكوى غير موجود.",
+        });
+      }
+
+      orderId = order._id;
+      captainId = order.captainId ?? null;
+      establishmentId = order.establishmentId ?? null;
+
+      let allowed = false;
+
+      // الكابتن صاحب الطلب
+      if (
+        captainId &&
+        String(captainId) === String(openedBy)
+      ) {
+        allowed = true;
+      }
+
+      // مالك المطعم/المحل صاحب الطلب
+      if (establishmentId) {
+        const establishment =
+          await EstablishmentModel.findById(establishmentId)
+            .select("ownerUserId")
+            .lean();
+
+        if (
+          establishment?.ownerUserId &&
+          String(establishment.ownerUserId) ===
+            String(openedBy)
+        ) {
+          allowed = true;
+        }
+      }
+
+      if (!allowed) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "لا يمكنك إنشاء شكوى مرتبطة بهذا الطلب.",
+        });
+      }
+    }
+
+    const categoryMap = {
+      shop: "captain_establishment",
+      captain: "captain_establishment",
+      order: "order",
+      delivery: "delivery",
+      money: "amount",
+      proof: "delivery_proof",
+    } as const;
+
+    const complaint = await ComplaintModel.create({
+      openedBy,
+      orderId,
+      captainId,
+      establishmentId,
+      category: categoryMap[data.type],
+      title: data.title,
+      description: data.description,
+      amount:
+        typeof data.amount === "number"
+          ? data.amount
+          : null,
+      status: "open",
+    });
+
+    return res.status(201).json({
+      success: true,
+      complaint,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر إنشاء الشكوى.",
+    });
+  }
+}
+
+export async function listMyComplaints(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const openedBy = userId(req);
+
+    if (!openedBy) {
+      return res.status(401).json({
+        success: false,
+        message: "المستخدم غير صالح.",
+      });
+    }
+
+    const complaints = await ComplaintModel.find({
+      openedBy,
+    })
+      .sort({ createdAt: -1 })
+      .limit(100)
+      .lean();
+
+    return res.json({
+      success: true,
+      complaints,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "تعذر تحميل الشكاوى.",
+    });
+  }
+}

@@ -1,0 +1,19 @@
+export default function Offers() {
+  return (
+    <div
+      dir="rtl"
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#ffffff",
+        color: "#111111",
+        padding: "50px",
+        fontSize: "36px",
+        fontWeight: 900,
+        zIndex: 999999,
+      }}
+    >
+      صفحة العروض تعمل
+    </div>
+  );
+}

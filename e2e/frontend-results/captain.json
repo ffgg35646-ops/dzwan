@@ -1,0 +1,16 @@
+{
+  "app": "CAPTAIN",
+  "url": "http://127.0.0.1:8081",
+  "status": 200,
+  "finalUrl": "http://127.0.0.1:8081/",
+  "title": "SelectRole",
+  "bodyEmpty": false,
+  "visibleTextLength": 139,
+  "buttons": [],
+  "links": [],
+  "foundExpectedElements": 0,
+  "expectedElements": 10,
+  "runtimeErrors": [],
+  "failedRequests": [],
+  "httpErrors": []
+}

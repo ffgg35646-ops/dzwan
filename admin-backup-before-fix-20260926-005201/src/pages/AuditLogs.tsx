@@ -1,0 +1,578 @@
+import { useEffect, useState } from "react";
+import {
+  ClipboardList,
+  Clock3,
+  Database,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
+import { api, getApiErrorMessage } from "../lib/api";
+import HomeBackButton from "../components/admin/HomeBackButton";
+
+type AuditLog = {
+  _id: string;
+  action?: string;
+  entityType?: string;
+  description?: string;
+  createdAt?: string;
+};
+
+function text(value: unknown, fallback = "—") {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
+  return String(value);
+}
+
+function formatDate(value?: string) {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return date.toLocaleString("ar-EG");
+}
+
+export default function AuditLogs() {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  const [currentPage, setCurrentPage] =
+    useState(1);
+
+  const PAGE_SIZE = 6;
+
+  async function load(refresh = false) {
+    if (refresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
+    setError("");
+
+    try {
+      const response = await api.get("/completion/audit");
+
+      setLogs(
+        Array.isArray(response.data.logs)
+          ? response.data.logs
+          : [],
+      );
+
+      // بعد التحديث نبدأ من أول 6 عمليات.
+      setCurrentPage(1);
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(logs.length / PAGE_SIZE),
+  );
+
+  const visibleLogs = logs.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  function goToPage(page: number) {
+    const nextPage = Math.min(
+      totalPages,
+      Math.max(1, page),
+    );
+
+    setCurrentPage(nextPage);
+
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    });
+  }
+
+  return (
+    <div
+      className="admin-app audit-logs-page"
+      dir="rtl"
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        minWidth: 0,
+        minHeight: "100%",
+        overflowX: "hidden",
+        boxSizing: "border-box",
+      }}
+    >
+      <div
+        className="admin-content"
+        style={{
+          width: "100%",
+          maxWidth: "1100px",
+          minWidth: 0,
+          margin: "0 auto",
+          padding: "24px 22px 40px",
+          boxSizing: "border-box",
+        }}
+      >
+          <HomeBackButton />
+
+          <div
+            className="dashboard"
+            style={{
+              width: "100%",
+              maxWidth: 1100,
+              margin: "0 auto",
+            }}
+          >
+            <section
+              className="dashboard-intro audit-hero"
+              style={{
+                marginBottom: 18,
+                borderRadius: 22,
+                border: "1px solid #FED7AA",
+                background:
+                  "linear-gradient(135deg,#FFF7ED 0%,#FFFFFF 55%,#FFF7ED 100%)",
+                boxShadow:
+                  "0 14px 35px rgba(234,88,12,.08)",
+                padding: 22,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 18,
+                flexWrap: "wrap",
+              }}
+            >
+              <div>
+                <span className="dashboard-label">
+                  المراقبة والتدقيق
+                </span>
+
+                <h1
+                  style={{
+                    margin: "7px 0 6px",
+                    fontSize: 28,
+                    fontWeight: 950,
+                    color: "#7C2D12",
+                  }}
+                >
+                  سجل العمليات الإدارية
+                </h1>
+
+                <p>
+                  متابعة العمليات المسجلة داخل النظام مع
+                  وقت التنفيذ والكيان المرتبط بها.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                className="audit-refresh-button"
+                style={{
+                  minHeight: 46,
+                  padding: "0 17px",
+                  borderRadius: 14,
+                  border: 0,
+                  background:
+                    "linear-gradient(135deg,#EA580C,#F97316)",
+                  color: "#fff",
+                  fontWeight: 900,
+                  boxShadow:
+                    "0 9px 20px rgba(234,88,12,.18)",
+                }}
+                onClick={() => void load(true)}
+                disabled={refreshing}
+              >
+                {refreshing ? (
+                  <Loader2 size={17} className="spin" />
+                ) : (
+                  <RefreshCw size={17} />
+                )}
+
+                تحديث السجل
+              </button>
+            </section>
+
+            {error && (
+              <div className="admin-error audit-error">
+                <AlertCircle size={18} />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <section
+              className="audit-summary"
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "repeat(auto-fit,minmax(260px,1fr))",
+                gap: 14,
+                marginBottom: 18,
+              }}
+            >
+              <div
+                className="audit-summary-card"
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid #E2E8F0",
+                  background: "#FFFFFF",
+                  boxShadow:
+                    "0 10px 28px rgba(15,23,42,.06)",
+                  padding: 18,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                }}
+              >
+                <div
+                  className="audit-summary-icon"
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 14,
+                    display: "grid",
+                    placeItems: "center",
+                    background: "#FFF7ED",
+                    color: "#EA580C",
+                    flexShrink: 0,
+                  }}
+                >
+                  <ClipboardList size={20} />
+                </div>
+
+                <div>
+                  <span>إجمالي العمليات</span>
+                  <strong>{logs.length}</strong>
+                </div>
+              </div>
+
+              <div
+                className="audit-summary-card"
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid #E2E8F0",
+                  background: "#FFFFFF",
+                  boxShadow:
+                    "0 10px 28px rgba(15,23,42,.06)",
+                  padding: 18,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 14,
+                }}
+              >
+                <div
+                  className="audit-summary-icon"
+                  style={{
+                    width: 46,
+                    height: 46,
+                    borderRadius: 14,
+                    display: "grid",
+                    placeItems: "center",
+                    background: "#FFF7ED",
+                    color: "#EA580C",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Database size={20} />
+                </div>
+
+                <div>
+                  <span>السجل الحالي</span>
+                  <strong>
+                    {logs.length > 0 ? "متاح" : "فارغ"}
+                  </strong>
+                </div>
+              </div>
+            </section>
+
+            <section
+              className="audit-list-panel"
+              style={{
+                width: "100%",
+                borderRadius: 22,
+                border: "1px solid #E2E8F0",
+                background: "#FFFFFF",
+                boxShadow:
+                  "0 14px 35px rgba(15,23,42,.07)",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                className="audit-list-head"
+                style={{
+                  padding: "18px 20px",
+                  background:
+                    "linear-gradient(135deg,#FFF7ED,#FFFFFF)",
+                  borderBottom:
+                    "1px solid #F1F5F9",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                }}
+              >
+                <div>
+                  <h2>آخر العمليات</h2>
+                  <p>
+                    العمليات التي تم تسجيلها من النظام.
+                  </p>
+                </div>
+
+                <ClipboardList size={21} />
+              </div>
+
+              {loading ? (
+                <div className="audit-state">
+                  <Loader2 size={24} className="spin" />
+                  <span>جاري تحميل السجل...</span>
+                </div>
+              ) : logs.length === 0 ? (
+                <div className="audit-state audit-empty">
+                  <ClipboardList size={30} />
+                  <strong>لا توجد عمليات مسجلة</strong>
+                  <span>
+                    سيظهر السجل هنا عند تنفيذ عمليات يتم
+                    تسجيلها من النظام.
+                  </span>
+                </div>
+              ) : (
+                <div className="audit-list">
+                  {visibleLogs.map((log) => (
+                    <article
+                      className="audit-item"
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 14,
+                        padding: "17px 18px",
+                        borderRadius: 16,
+                        border: "1px solid #EEF2F7",
+                        background: "#FFFFFF",
+                        boxShadow:
+                          "0 5px 15px rgba(15,23,42,.04)",
+                      }}
+                      key={log._id}
+                    >
+                      <div
+                        className="audit-item-icon"
+                        style={{
+                          width: 42,
+                          height: 42,
+                          borderRadius: 13,
+                          display: "grid",
+                          placeItems: "center",
+                          background: "#FFF7ED",
+                          color: "#EA580C",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <ClipboardList size={18} />
+                      </div>
+
+                      <div className="audit-item-main">
+                        <div className="audit-item-top">
+                          <strong>
+                            {text(log.action)}
+                          </strong>
+
+                          <span className="audit-time">
+                            <Clock3 size={13} />
+                            {formatDate(log.createdAt)}
+                          </span>
+                        </div>
+
+                        <div
+                          className="audit-meta"
+                          style={{
+                            marginTop: 9,
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                          }}
+                        >
+                          <span>
+                            الكيان:{" "}
+                            <b>
+                              {text(log.entityType)}
+                            </b>
+                          </span>
+
+                          <span>
+                            الوصف:{" "}
+                            <b>
+                              {text(log.description)}
+                            </b>
+                          </span>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+
+              {!loading &&
+              logs.length > PAGE_SIZE ? (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 7,
+                    flexWrap: "wrap",
+                    padding: "16px 18px 20px",
+                    borderTop:
+                      "1px solid #EEF2F6",
+                    background: "#FCFCFD",
+                    direction: "rtl",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToPage(
+                        currentPage - 1,
+                      )
+                    }
+                    disabled={
+                      currentPage === 1
+                    }
+                    style={{
+                      minWidth: 82,
+                      height: 38,
+                      padding: "0 12px",
+                      borderRadius: 11,
+                      border:
+                        "1px solid #E2E8F0",
+                      background:
+                        currentPage === 1
+                          ? "#F1F5F9"
+                          : "#FFFFFF",
+                      color:
+                        currentPage === 1
+                          ? "#94A3B8"
+                          : "#334155",
+                      fontWeight: 900,
+                      cursor:
+                        currentPage === 1
+                          ? "not-allowed"
+                          : "pointer",
+                    }}
+                  >
+                    السابق
+                  </button>
+
+                  {Array.from(
+                    {
+                      length: totalPages,
+                    },
+                    (_, index) =>
+                      index + 1,
+                  ).map((page) => (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() =>
+                        goToPage(page)
+                      }
+                      style={{
+                        width: 38,
+                        height: 38,
+                        borderRadius: 11,
+                        border:
+                          page === currentPage
+                            ? "1px solid #EA580C"
+                            : "1px solid #E2E8F0",
+                        background:
+                          page === currentPage
+                            ? "#EA580C"
+                            : "#FFFFFF",
+                        color:
+                          page === currentPage
+                            ? "#FFFFFF"
+                            : "#334155",
+                        fontWeight: 950,
+                        cursor: "pointer",
+                        boxShadow:
+                          page === currentPage
+                            ? "0 6px 14px rgba(234,88,12,.18)"
+                            : "none",
+                      }}
+                    >
+                      {page}
+                    </button>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToPage(
+                        currentPage + 1,
+                      )
+                    }
+                    disabled={
+                      currentPage ===
+                      totalPages
+                    }
+                    style={{
+                      minWidth: 82,
+                      height: 38,
+                      padding: "0 12px",
+                      borderRadius: 11,
+                      border:
+                        "1px solid #E2E8F0",
+                      background:
+                        currentPage ===
+                        totalPages
+                          ? "#F1F5F9"
+                          : "#FFFFFF",
+                      color:
+                        currentPage ===
+                        totalPages
+                          ? "#94A3B8"
+                          : "#334155",
+                      fontWeight: 900,
+                      cursor:
+                        currentPage ===
+                        totalPages
+                          ? "not-allowed"
+                          : "pointer",
+                    }}
+                  >
+                    التالي
+                  </button>
+
+                  <span
+                    style={{
+                      marginRight: 6,
+                      color: "#64748B",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    صفحة{" "}
+                    {currentPage}{" "}
+                    من{" "}
+                    {totalPages}
+                  </span>
+                </div>
+              ) : null}
+            </section>
+          </div>
+      </div>
+    </div>
+  );
+}

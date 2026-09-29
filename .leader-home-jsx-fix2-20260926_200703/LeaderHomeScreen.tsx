@@ -1,0 +1,1819 @@
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
+} from "react-native";
+
+
+import { apiGet } from "../../api/request";
+import LeaderOrdersTotalCard from "./LeaderOrdersTotalCard";
+import LeaderActivitySection from "./LeaderActivitySection";
+
+
+
+type RNIconProps = {
+  color?: string;
+  size?: number;
+};
+
+function Glyph({
+  symbol,
+  color = "#111827",
+  size = 20,
+}: RNIconProps & { symbol: string }) {
+  return (
+    <Text
+      style={{
+        color,
+        fontSize: size,
+        lineHeight: size + 3,
+        fontWeight: "900",
+        textAlign: "center",
+      }}
+    >
+      {symbol}
+    </Text>
+  );
+}
+
+const AlertTriangle = (props: RNIconProps) => (
+  <Glyph {...props} symbol="!" />
+);
+
+const CheckCircle2 = (props: RNIconProps) => (
+  <Glyph {...props} symbol="✓" />
+);
+
+const ChevronLeft = (props: RNIconProps) => (
+  <Glyph {...props} symbol="‹" />
+);
+
+const Clock3 = (props: RNIconProps) => (
+  <Glyph {...props} symbol="◷" />
+);
+
+const MapPin = (props: RNIconProps) => (
+  <Glyph {...props} symbol="⌖" />
+);
+
+const Package = (props: RNIconProps) => (
+  <Glyph {...props} symbol="□" />
+);
+
+const RefreshCw = (props: RNIconProps) => (
+  <Glyph {...props} symbol="↻" />
+);
+
+const Search = (props: RNIconProps) => (
+  <Glyph {...props} symbol="⌕" />
+);
+
+const Store = (props: RNIconProps) => (
+  <Glyph {...props} symbol="⌂" />
+);
+
+const Truck = (props: RNIconProps) => (
+  <Glyph {...props} symbol="▣" />
+);
+
+const UserRound = (props: RNIconProps) => (
+  <Glyph {...props} symbol="●" />
+);
+
+const X = (props: RNIconProps) => (
+  <Glyph {...props} symbol="×" />
+);
+
+type FilterKey =
+  | "all"
+  | "active"
+  | "available"
+  | "stuck"
+  | "captains"
+  | "establishments"
+  | "completed";
+
+type AnyObject = Record<string, any>;
+
+type ScopeData = {
+  role?: string;
+  governorate?: AnyObject | null;
+  governorateName?: string;
+  areas?: AnyObject[];
+  areaNames?: string[];
+};
+
+type LeaderStats = {
+  totalOrders: number;
+  activeOrders: number;
+  availableOrders: number;
+  stuckOrders: number;
+  captains: number;
+  establishments: number;
+  completedToday: number;
+};
+
+function unwrap(value: any): any {
+  return (
+    value?.data?.data ??
+    value?.data ??
+    value
+  );
+}
+
+function toArray(value: any): AnyObject[] {
+  const v = unwrap(value);
+
+  if (Array.isArray(v)) return v;
+
+  if (Array.isArray(v?.items)) return v.items;
+  if (Array.isArray(v?.orders)) return v.orders;
+  if (Array.isArray(v?.captains)) return v.captains;
+  if (Array.isArray(v?.establishments)) return v.establishments;
+  if (Array.isArray(v?.data)) return v.data;
+
+  return [];
+}
+
+function numberValue(...values: any[]) {
+  for (const value of values) {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function textValue(...values: any[]) {
+  for (const value of values) {
+    if (
+      value !== undefined &&
+      value !== null &&
+      String(value).trim()
+    ) {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+function normalizeArabic(value: any) {
+  return String(value ?? "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[\u064B-\u065F\u0670]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و")
+    .replace(/ئ/g, "ي")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getId(item: AnyObject) {
+  return textValue(
+    item?._id,
+    item?.id,
+  );
+}
+
+function getOrderNumber(item: AnyObject) {
+  return textValue(
+    item?.orderNumber,
+    item?.orderNo,
+    item?.number,
+    item?._id,
+  );
+}
+
+function getCaptainName(item: AnyObject) {
+  return textValue(
+    item?.fullName,
+    item?.name,
+    item?.captain?.fullName,
+    item?.captain?.name,
+  );
+}
+
+function getEstablishmentName(item: AnyObject) {
+  return textValue(
+    item?.establishmentName,
+    item?.establishment?.name,
+    item?.shopName,
+    item?.restaurantName,
+    item?.name,
+  );
+}
+
+function getAreaName(item: AnyObject) {
+  return textValue(
+    item?.areaName,
+    item?.area?.name,
+  );
+}
+
+function getGovernorateName(item: AnyObject) {
+  return textValue(
+    item?.governorateName,
+    item?.governorate?.name,
+  );
+}
+
+function getOrderStatus(item: AnyObject) {
+  return normalizeArabic(
+    textValue(
+      item?.status,
+      item?.stage,
+      item?.state,
+    ),
+  );
+}
+
+function isCompletedOrder(item: AnyObject) {
+  const status = getOrderStatus(item);
+
+  return [
+    "completed",
+    "complete",
+    "delivered",
+    "delivery_completed",
+    "closed",
+  ].some((value) => status.includes(value));
+}
+
+function isStuckOrder(item: AnyObject) {
+  const status = getOrderStatus(item);
+
+  return Boolean(
+    item?.isStuck ||
+      item?.stuck ||
+      item?.stuckAt ||
+      item?.stuckOrder ||
+      status.includes("stuck") ||
+      status.includes("عالق"),
+  );
+}
+
+function isAvailableOrder(item: AnyObject) {
+  if (
+    item?.isAvailable === true ||
+    item?.available === true
+  ) {
+    return true;
+  }
+
+  const status = getOrderStatus(item);
+
+  return [
+    "available",
+    "pending",
+    "unassigned",
+    "waiting",
+    "queued",
+    "queue",
+    "dispatch_pending",
+    "awaiting_captain",
+  ].some((value) => status.includes(value));
+}
+
+function isActiveOrder(item: AnyObject) {
+  const status = getOrderStatus(item);
+
+  if (
+    isCompletedOrder(item) ||
+    isAvailableOrder(item) ||
+    isStuckOrder(item)
+  ) {
+    return false;
+  }
+
+  return [
+    "active",
+    "assigned",
+    "accepted",
+    "pickup",
+    "picked",
+    "picked_up",
+    "on_way",
+    "on_the_way",
+    "delivering",
+    "in_progress",
+    "out_for_delivery",
+    "captain_to_shop",
+    "captain_to_customer",
+  ].some((value) => status.includes(value));
+}
+
+function statusLabel(status: string) {
+  const value = normalizeArabic(status);
+
+  if (value.includes("completed") || value.includes("delivered")) {
+    return "مكتمل";
+  }
+
+  if (
+    value.includes("cancel") ||
+    value.includes("reject")
+  ) {
+    return "ملغي";
+  }
+
+  if (
+    value.includes("stuck") ||
+    value.includes("عالق")
+  ) {
+    return "عالق";
+  }
+
+  if (
+    value.includes("available") ||
+    value.includes("pending") ||
+    value.includes("unassigned")
+  ) {
+    return "متاح";
+  }
+
+  if (
+    value.includes("assigned") ||
+    value.includes("active") ||
+    value.includes("on_the_way") ||
+    value.includes("delivering")
+  ) {
+    return "نشط";
+  }
+
+  return textValue(status) || "غير محدد";
+}
+
+function statusTone(status: string) {
+  const label = statusLabel(status);
+
+  if (label === "مكتمل") {
+    return {
+      backgroundColor: "#ECFDF3",
+      color: "#15803D",
+    };
+  }
+
+  if (label === "عالق") {
+    return {
+      backgroundColor: "#FEF2F2",
+      color: "#DC2626",
+    };
+  }
+
+  if (label === "متاح") {
+    return {
+      backgroundColor: "#FFF7ED",
+      color: "#EA580C",
+    };
+  }
+
+  if (label === "نشط") {
+    return {
+      backgroundColor: "#EFF6FF",
+      color: "#2563EB",
+    };
+  }
+
+  return {
+    backgroundColor: "#F3F4F6",
+    color: "#6B7280",
+  };
+}
+
+function extractDashboardStats(raw: any): LeaderStats {
+  const root = unwrap(raw);
+  const stats =
+    root?.stats ??
+    root?.statistics ??
+    root?.summary ??
+    root;
+
+  return {
+    totalOrders: numberValue(
+      stats?.totalOrders,
+      stats?.orders,
+      stats?.total,
+    ),
+    activeOrders: numberValue(
+      stats?.activeOrders,
+      stats?.active,
+    ),
+    availableOrders: numberValue(
+      stats?.availableOrders,
+      stats?.available,
+    ),
+    stuckOrders: numberValue(
+      stats?.stuckOrders,
+      stats?.stuck,
+      stats?.stuckOrdersCount,
+    ),
+    captains: numberValue(
+      stats?.captains,
+      stats?.captainCount,
+      stats?.captainsCount,
+    ),
+    establishments: numberValue(
+      stats?.establishments,
+      stats?.establishmentCount,
+      stats?.shops,
+      stats?.restaurants,
+    ),
+    completedToday: numberValue(
+      stats?.completedToday,
+      stats?.completedOrdersToday,
+      stats?.todayCompleted,
+    ),
+  };
+}
+
+function mergeStats(
+  dashboard: LeaderStats,
+  orders: AnyObject[],
+  captains: AnyObject[],
+  establishments: AnyObject[],
+) {
+  const completed = orders.filter(isCompletedOrder).length;
+  const active = orders.filter(isActiveOrder).length;
+  const available = orders.filter(isAvailableOrder).length;
+  const stuck = orders.filter(isStuckOrder).length;
+
+  return {
+    totalOrders:
+      dashboard.totalOrders || orders.length,
+    activeOrders:
+      dashboard.activeOrders || active,
+    availableOrders:
+      dashboard.availableOrders || available,
+    stuckOrders:
+      dashboard.stuckOrders || stuck,
+    captains:
+      dashboard.captains || captains.length,
+    establishments:
+      dashboard.establishments || establishments.length,
+    completedToday:
+      dashboard.completedToday || completed,
+  };
+}
+
+function scopeTitle(scope: ScopeData) {
+  if (scope.role === "area_leader") {
+    return "قائد منطقة";
+  }
+
+  if (scope.role === "governorate_leader") {
+    return "قائد محافظة";
+  }
+
+  return "قائد";
+}
+
+function scopeDescription(scope: ScopeData) {
+  const governorate = textValue(
+    scope.governorateName,
+    scope.governorate?.name,
+  );
+
+  const areas =
+    scope.areaNames?.length
+      ? scope.areaNames
+      : (scope.areas || [])
+          .map((item) =>
+            textValue(
+              item?.name,
+              item?.area?.name,
+            ),
+          )
+          .filter(Boolean);
+
+  if (scope.role === "area_leader") {
+    if (areas.length === 1) {
+      return `${governorate} · ${areas[0]}`;
+    }
+
+    if (areas.length > 1) {
+      return `${governorate} · ${areas.length} مناطق`;
+    }
+  }
+
+  return governorate || "نطاق التشغيل";
+}
+
+export default function LeaderHomeScreen() {
+  const { width } = useWindowDimensions();
+
+  const [scope, setScope] = useState<ScopeData>({});
+  const [orders, setOrders] = useState<AnyObject[]>([]);
+  const [captains, setCaptains] = useState<AnyObject[]>([]);
+  const [establishments, setEstablishments] =
+    useState<AnyObject[]>([]);
+
+  const [dashboardStats, setDashboardStats] =
+    useState<LeaderStats>({
+      totalOrders: 0,
+      activeOrders: 0,
+      availableOrders: 0,
+      stuckOrders: 0,
+      captains: 0,
+      establishments: 0,
+      completedToday: 0,
+    });
+
+  const [filter, setFilter] =
+    useState<FilterKey>("all");
+
+  const [search, setSearch] = useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [error, setError] = useState("");
+
+  const loadData = useCallback(
+    async (refresh = false) => {
+      try {
+        if (refresh) {
+          setRefreshing(true);
+        } else {
+          setLoading(true);
+        }
+
+        setError("");
+
+        const [
+          dashboardResult,
+          ordersResult,
+          captainsResult,
+          establishmentsResult,
+          scopeResult,
+        ] = await Promise.all([
+          apiGet("/leaders/me/dashboard"),
+          apiGet("/leaders/me/orders"),
+          apiGet("/leaders/me/captains"),
+          apiGet("/leaders/me/establishments"),
+          apiGet("/leaders/me/scope"),
+        ]);
+
+        const nextOrders = toArray(
+          ordersResult,
+        );
+
+        const nextCaptains = toArray(
+          captainsResult,
+        );
+
+        const nextEstablishments =
+          toArray(establishmentsResult);
+
+        const nextScope =
+          unwrap(scopeResult) || {};
+
+        setScope(nextScope);
+
+        setOrders(nextOrders);
+        setCaptains(nextCaptains);
+        setEstablishments(
+          nextEstablishments,
+        );
+
+        setDashboardStats(
+          mergeStats(
+            extractDashboardStats(
+              dashboardResult,
+            ),
+            nextOrders,
+            nextCaptains,
+            nextEstablishments,
+          ),
+        );
+      } catch (err: any) {
+        setError(
+          textValue(
+            err?.response?.data?.message,
+            err?.message,
+            "تعذر تحميل لوحة القائد.",
+          ),
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const stats = useMemo(
+    () => dashboardStats,
+    [dashboardStats],
+  );
+
+  const cards = useMemo(
+    () => [
+      {
+        key: "all" as const,
+        title: "إجمالي الطلبات",
+        value: stats.totalOrders,
+        icon: Package,
+        background: "#FFF7ED",
+        iconBackground: "#FFEDD5",
+        iconColor: "#EA580C",
+      },
+      {
+        key: "active" as const,
+        title: "الطلبات النشطة",
+        value: stats.activeOrders,
+        icon: Truck,
+        background: "#EFF6FF",
+        iconBackground: "#DBEAFE",
+        iconColor: "#2563EB",
+      },
+      {
+        key: "available" as const,
+        title: "الطلبات المتاحة",
+        value: stats.availableOrders,
+        icon: Clock3,
+        background: "#FFF7ED",
+        iconBackground: "#FFEDD5",
+        iconColor: "#D97706",
+      },
+      {
+        key: "stuck" as const,
+        title: "الطلبات العالقة",
+        value: stats.stuckOrders,
+        icon: AlertTriangle,
+        background: "#FEF2F2",
+        iconBackground: "#FEE2E2",
+        iconColor: "#DC2626",
+      },
+      {
+        key: "captains" as const,
+        title: "الكباتن",
+        value: stats.captains,
+        icon: UserRound,
+        background: "#F0FDFA",
+        iconBackground: "#CCFBF1",
+        iconColor: "#0F766E",
+      },
+      {
+        key: "establishments" as const,
+        title: "المطاعم والمحلات",
+        value: stats.establishments,
+        icon: Store,
+        background: "#F5F3FF",
+        iconBackground: "#EDE9FE",
+        iconColor: "#7C3AED",
+      },
+      {
+        key: "completed" as const,
+        title: "المكتملة اليوم",
+        value: stats.completedToday,
+        icon: CheckCircle2,
+        background: "#F0FDF4",
+        iconBackground: "#DCFCE7",
+        iconColor: "#15803D",
+      },
+    ],
+    [stats],
+  );
+
+  const activeSearch = normalizeArabic(search);
+
+  const resultData = useMemo(() => {
+    let list: AnyObject[] = [];
+    let type:
+      | "orders"
+      | "captains"
+      | "establishments" = "orders";
+
+    if (filter === "captains") {
+      list = captains;
+      type = "captains";
+    } else if (filter === "establishments") {
+      list = establishments;
+      type = "establishments";
+    } else {
+      list = orders;
+      type = "orders";
+
+      if (filter === "active") {
+        list = list.filter(isActiveOrder);
+      }
+
+      if (filter === "available") {
+        list = list.filter(isAvailableOrder);
+      }
+
+      if (filter === "stuck") {
+        list = list.filter(isStuckOrder);
+      }
+
+      if (filter === "completed") {
+        list = list.filter(isCompletedOrder);
+      }
+    }
+
+    if (!activeSearch) {
+      return {
+        type,
+        items: list.slice(0, 80),
+      };
+    }
+
+    const filtered = list.filter(
+      (item) => {
+        const searchable = normalizeArabic(
+          [
+            getOrderNumber(item),
+            getCaptainName(item),
+            getEstablishmentName(item),
+            getAreaName(item),
+            getGovernorateName(item),
+            item?.phone,
+            item?.email,
+            item?.customerName,
+            item?.customer?.name,
+            item?.customer?.phone,
+            item?.address,
+            item?.status,
+            item?.type,
+          ]
+            .filter(Boolean)
+            .join(" "),
+        );
+
+        return searchable.includes(
+          activeSearch,
+        );
+      },
+    );
+
+    return {
+      type,
+      items: filtered.slice(0, 80),
+    };
+  }, [
+    activeSearch,
+    captains,
+    establishments,
+    filter,
+    orders,
+  ]);
+
+  const selectedCardTitle =
+    cards.find(
+      (item) => item.key === filter,
+    )?.title || "إجمالي الطلبات";
+
+  const cardWidth =
+    width >= 900
+      ? "23.5%"
+      : width >= 620
+        ? "31.7%"
+        : "47.8%";
+
+  return (
+    <SafeAreaView style={styles.safe}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() =>
+
+      <LeaderOrdersTotalCard />
+      <LeaderActivitySection /> loadData(true)}
+          />
+        }
+      >
+        <View style={styles.hero}>
+          <View style={styles.heroText}>
+            <Text style={styles.eyebrow}>
+              لوحة القيادة
+            </Text>
+
+            <Text style={styles.title}>
+              أهلاً بك في دزوان
+            </Text>
+
+            <Text style={styles.subtitle}>
+              {scopeTitle(scope)}
+            </Text>
+
+            <View style={styles.scopeRow}>
+              <MapPin size={15} color="#EA580C" />
+
+              <Text
+                style={styles.scopeText}
+                numberOfLines={2}
+              >
+                {scopeDescription(scope)}
+              </Text>
+            </View>
+          </View>
+
+          <Pressable
+            style={styles.refreshButton}
+            onPress={() => loadData(true)}
+          >
+            <RefreshCw
+              size={19}
+              color="#EA580C"
+            />
+          </Pressable>
+        </View>
+
+        {error ? (
+          <View style={styles.errorCard}>
+            <View style={styles.errorIcon}>
+              <AlertTriangle
+                size={20}
+                color="#DC2626"
+              />
+            </View>
+
+            <View style={{ flex: 1 }}>
+              <Text style={styles.errorTitle}>
+                تعذر تحميل البيانات
+              </Text>
+
+              <Text style={styles.errorText}>
+                {error}
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={() => loadData()}
+              style={styles.errorRetry}
+            >
+              <Text style={styles.errorRetryText}>
+                إعادة المحاولة
+              </Text>
+            </Pressable>
+          </View>
+        ) : null}
+
+        <View style={styles.searchBox}>
+          <Search
+            size={19}
+            color="#9CA3AF"
+          />
+
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="ابحث بالطلب أو الكابتن أو المطعم أو الهاتف أو المنطقة..."
+            placeholderTextColor="#9CA3AF"
+            style={styles.searchInput}
+            textAlign="right"
+            autoCorrect={false}
+            clearButtonMode="never"
+          />
+
+          {search ? (
+            <Pressable
+              onPress={() => setSearch("")}
+              hitSlop={8}
+            >
+              <X
+                size={18}
+                color="#6B7280"
+              />
+            </Pressable>
+          ) : null}
+        </View>
+
+        <View style={styles.cardsGrid}>
+          {cards.map((card) => {
+            const Icon = card.icon;
+            const selected =
+              filter === card.key;
+
+            return (
+              <Pressable
+                key={card.key}
+                onPress={() =>
+                  setFilter(card.key)
+                }
+                style={[
+                  styles.statCard,
+                  {
+                    width: cardWidth,
+                    backgroundColor:
+                      selected
+                        ? "#FFF7ED"
+                        : card.background,
+                    borderColor:
+                      selected
+                        ? card.iconColor
+                        : "#E5E7EB",
+                    borderWidth:
+                      selected ? 2 : 1,
+                    shadowOpacity:
+                      selected ? 0.08 : 0.03,
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.statIcon,
+                    {
+                      backgroundColor:
+                        card.iconBackground,
+                    },
+                  ]}
+                >
+                  <Icon
+                    size={21}
+                    color={card.iconColor}
+                  />
+                </View>
+
+                <View style={styles.statBody}>
+                  <Text style={styles.statTitle}>
+                    {card.title}
+                  </Text>
+
+                  <Text style={styles.statValue}>
+                    {card.value}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <View>
+            <Text style={styles.sectionEyebrow}>
+              النتائج
+            </Text>
+
+            <Text style={styles.sectionTitle}>
+              {selectedCardTitle}
+            </Text>
+
+            {activeSearch ? (
+              <Text style={styles.sectionHint}>
+                نتائج البحث داخل نطاقك فقط
+              </Text>
+            ) : (
+              <Text style={styles.sectionHint}>
+                البيانات الظاهرة تخص نطاق القائد فقط
+              </Text>
+            )}
+          </View>
+
+          {filter !== "all" ? (
+            <Pressable
+              onPress={() => {
+                setFilter("all");
+                setSearch("");
+              }}
+              style={styles.clearFilter}
+            >
+              <Text style={styles.clearFilterText}>
+                مسح الفلتر
+              </Text>
+
+              <ChevronLeft
+                size={15}
+                color="#EA580C"
+              />
+            </Pressable>
+          ) : null}
+        </View>
+
+        {loading ? (
+          <View style={styles.stateCard}>
+            <ActivityIndicator
+              size="small"
+              color="#EA580C"
+            />
+
+            <Text style={styles.stateTitle}>
+              جاري تحميل لوحة القائد...
+            </Text>
+
+            <Text style={styles.stateText}>
+              يتم تحميل الطلبات والكباتن والمنشآت
+              الخاصة بنطاقك.
+            </Text>
+          </View>
+        ) : resultData.items.length === 0 ? (
+          <View style={styles.stateCard}>
+            <View style={styles.emptyIcon}>
+              <Search
+                size={24}
+                color="#9CA3AF"
+              />
+            </View>
+
+            <Text style={styles.stateTitle}>
+              لا توجد نتائج
+            </Text>
+
+            <Text style={styles.stateText}>
+              جرّب كلمة بحث أخرى أو غيّر الفلتر
+              المحدد.
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.list}>
+            {resultData.items.map(
+              (item, index) => {
+                const id =
+                  getId(item) ||
+                  `${filter}-${index}`;
+
+                if (
+                  resultData.type ===
+                  "captains"
+                ) {
+                  const online =
+                    item?.isOnline === true;
+
+                  return (
+                    <View
+                      key={id}
+                      style={styles.row}
+                    >
+                      <View
+                        style={[
+                          styles.avatar,
+                          {
+                            backgroundColor:
+                              online
+                                ? "#ECFDF3"
+                                : "#F3F4F6",
+                          },
+                        ]}
+                      >
+                        <UserRound
+                          size={20}
+                          color={
+                            online
+                              ? "#15803D"
+                              : "#6B7280"
+                          }
+                        />
+                      </View>
+
+                      <View
+                        style={
+                          styles.rowMain
+                        }
+                      >
+                        <Text
+                          style={styles.rowTitle}
+                          numberOfLines={1}
+                        >
+                          {getCaptainName(
+                            item,
+                          ) ||
+                            "كابتن بدون اسم"}
+                        </Text>
+
+                        <Text
+                          style={styles.rowMeta}
+                          numberOfLines={2}
+                        >
+                          {textValue(
+                            item?.phone,
+                            item?.email,
+                            getAreaName(item),
+                            getGovernorateName(
+                              item,
+                            ),
+                            "بيانات الكابتن",
+                          )}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.onlinePill,
+                          {
+                            backgroundColor:
+                              online
+                                ? "#ECFDF3"
+                                : "#F3F4F6",
+                          },
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.dot,
+                            {
+                              backgroundColor:
+                                online
+                                  ? "#16A34A"
+                                  : "#9CA3AF",
+                            },
+                          ]}
+                        />
+
+                        <Text
+                          style={[
+                            styles.onlineText,
+                            {
+                              color:
+                                online
+                                  ? "#15803D"
+                                  : "#6B7280",
+                            },
+                          ]}
+                        >
+                          {online
+                            ? "متصل"
+                            : "غير متصل"}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                }
+
+                if (
+                  resultData.type ===
+                  "establishments"
+                ) {
+                  return (
+                    <View
+                      key={id}
+                      style={styles.row}
+                    >
+                      <View
+                        style={[
+                          styles.avatar,
+                          {
+                            backgroundColor:
+                              "#F5F3FF",
+                          },
+                        ]}
+                      >
+                        <Store
+                          size={20}
+                          color="#7C3AED"
+                        />
+                      </View>
+
+                      <View
+                        style={
+                          styles.rowMain
+                        }
+                      >
+                        <Text
+                          style={styles.rowTitle}
+                          numberOfLines={1}
+                        >
+                          {getEstablishmentName(
+                            item,
+                          ) ||
+                            "منشأة بدون اسم"}
+                        </Text>
+
+                        <Text
+                          style={styles.rowMeta}
+                          numberOfLines={2}
+                        >
+                          {textValue(
+                            item?.type,
+                            getAreaName(item),
+                            getGovernorateName(
+                              item,
+                            ),
+                            item?.phone,
+                            item?.status,
+                            "المطاعم والمحلات",
+                          )}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.statusPill,
+                          {
+                            backgroundColor:
+                              item?.status ===
+                              "active"
+                                ? "#ECFDF3"
+                                : "#F3F4F6",
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusText,
+                            {
+                              color:
+                                item?.status ===
+                                "active"
+                                  ? "#15803D"
+                                  : "#6B7280",
+                            },
+                          ]}
+                        >
+                          {item?.status ===
+                          "active"
+                            ? "نشط"
+                            : textValue(
+                                item?.status,
+                                "الحالة",
+                              )}
+                        </Text>
+                      </View>
+                    </View>
+                  );
+                }
+
+                const status =
+                  textValue(
+                    item?.status,
+                    item?.stage,
+                    item?.state,
+                  );
+
+                const tone =
+                  statusTone(status);
+
+                return (
+                  <View
+                    key={id}
+                    style={styles.orderRow}
+                  >
+                    <View
+                      style={styles.orderTop}
+                    >
+                      <View>
+                        <Text
+                          style={styles.orderNumber}
+                        >
+                          طلب #
+                          {getOrderNumber(
+                            item,
+                          )}
+                        </Text>
+
+                        <Text
+                          style={styles.orderMeta}
+                          numberOfLines={2}
+                        >
+                          {textValue(
+                            getEstablishmentName(
+                              item,
+                            ),
+                            "مطعم / محل",
+                          )}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={[
+                          styles.statusPill,
+                          {
+                            backgroundColor:
+                              tone.backgroundColor,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusText,
+                            {
+                              color:
+                                tone.color,
+                            },
+                          ]}
+                        >
+                          {statusLabel(
+                            status,
+                          )}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={styles.orderDetails}
+                    >
+                      <View
+                        style={styles.detailBlock}
+                      >
+                        <Text
+                          style={
+                            styles.detailLabel
+                          }
+                        >
+                          الكابتن
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.detailValue
+                          }
+                          numberOfLines={1}
+                        >
+                          {getCaptainName(
+                            item,
+                          ) || "غير مُسند"}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={styles.detailBlock}
+                      >
+                        <Text
+                          style={
+                            styles.detailLabel
+                          }
+                        >
+                          المنطقة
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.detailValue
+                          }
+                          numberOfLines={1}
+                        >
+                          {getAreaName(
+                            item,
+                          ) || "غير محددة"}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={styles.detailBlock}
+                      >
+                        <Text
+                          style={
+                            styles.detailLabel
+                          }
+                        >
+                          العميل
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.detailValue
+                          }
+                          numberOfLines={1}
+                        >
+                          {textValue(
+                            item?.customerName,
+                            item?.customer?.name,
+                            "غير متوفر",
+                          )}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              },
+            )}
+          </View>
+        )}
+
+        {resultData.items.length >= 80 ? (
+          <Text style={styles.limitNote}>
+            يتم عرض أول 80 نتيجة لتحافظ الصفحة
+            على سرعة الاستجابة.
+          </Text>
+        ) : null}
+      
+
+
+</ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  safe: {
+    flex: 1,
+    backgroundColor: "#F7F8FA",
+  },
+
+  scroll: {
+    flex: 1,
+  },
+
+  content: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 32,
+  },
+
+  hero: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    padding: 18,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 14,
+  },
+
+  heroText: {
+    flex: 1,
+    paddingRight: 12,
+  },
+
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#EA580C",
+    marginBottom: 4,
+  },
+
+  title: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  subtitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#374151",
+    marginTop: 4,
+  },
+
+  scopeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    gap: 7,
+  },
+
+  scopeText: {
+    flex: 1,
+    color: "#6B7280",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  refreshButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#FFF7ED",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  errorCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 14,
+  },
+
+  errorIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: "#FEF2F2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  errorTitle: {
+    color: "#991B1B",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  errorText: {
+    color: "#7F1D1D",
+    fontSize: 12,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+
+  errorRetry: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: "#FEF2F2",
+  },
+
+  errorRetryText: {
+    color: "#B91C1C",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  searchBox: {
+    minHeight: 54,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 14,
+  },
+
+  searchInput: {
+    flex: 1,
+    minHeight: 52,
+    color: "#111827",
+    fontSize: 13,
+    fontWeight: "700",
+  },
+
+  cardsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 12,
+    marginBottom: 22,
+  },
+
+  statCard: {
+    minHeight: 108,
+    borderRadius: 20,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    shadowColor: "#111827",
+    shadowOffset: {
+      width: 0,
+      height: 5,
+    },
+    shadowRadius: 12,
+    elevation: 2,
+  },
+
+  statIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  statBody: {
+    flex: 1,
+  },
+
+  statTitle: {
+    color: "#6B7280",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  statValue: {
+    color: "#111827",
+    fontSize: 25,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  sectionEyebrow: {
+    color: "#EA580C",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  sectionTitle: {
+    color: "#111827",
+    fontSize: 21,
+    fontWeight: "900",
+    marginTop: 2,
+  },
+
+  sectionHint: {
+    color: "#9CA3AF",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 3,
+  },
+
+  clearFilter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 11,
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "#FFF7ED",
+  },
+
+  clearFilterText: {
+    color: "#EA580C",
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  list: {
+    gap: 10,
+  },
+
+  row: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    padding: 13,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 11,
+  },
+
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  rowMain: {
+    flex: 1,
+  },
+
+  rowTitle: {
+    color: "#111827",
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  rowMeta: {
+    color: "#6B7280",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+
+  onlinePill: {
+    borderRadius: 11,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 999,
+  },
+
+  onlineText: {
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  statusPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+
+  statusText: {
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  orderRow: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    padding: 14,
+  },
+
+  orderTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+  orderNumber: {
+    color: "#111827",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  orderMeta: {
+    color: "#6B7280",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 3,
+    maxWidth: 240,
+  },
+
+  orderDetails: {
+    marginTop: 13,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F1F5F9",
+    flexDirection: "row",
+    gap: 12,
+  },
+
+  detailBlock: {
+    flex: 1,
+  },
+
+  detailLabel: {
+    color: "#9CA3AF",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+
+  detailValue: {
+    color: "#374151",
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 3,
+  },
+
+  stateCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    padding: 28,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 210,
+  },
+
+  emptyIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 17,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  stateTitle: {
+    color: "#111827",
+    fontSize: 15,
+    fontWeight: "900",
+    marginTop: 10,
+    textAlign: "center",
+  },
+
+  stateText: {
+    color: "#9CA3AF",
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "center",
+    marginTop: 5,
+    lineHeight: 19,
+  },
+
+  limitNote: {
+    color: "#9CA3AF",
+    textAlign: "center",
+    fontSize: 10,
+    fontWeight: "700",
+    marginTop: 12,
+  },
+});

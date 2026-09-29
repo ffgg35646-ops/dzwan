@@ -1,0 +1,634 @@
+import { useAppTheme } from "../../theme/useAppTheme";
+import { bootstrapLogin } from "../../utils/loginBootstrap";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  Alert,
+  Animated,
+  Platform,
+  Easing,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
+import { MaterialCommunityIcons } from "@expo/vector-icons";
+
+import Screen from "../../components/Screen";
+import AppInput from "../../components/AppInput";
+import AppButton from "../../components/AppButton";
+import { api, saveToken } from "../../api/client";
+import { useAuthStore } from "../../store/authStore";
+
+const ORANGE = "#FF6A00";
+const ORANGE_DARK = "#D94F00";
+const YELLOW = "#FFD400";
+const CREAM = "#FFF8EC";
+const WHITE = "#FFFFFF";
+const DARK = "#26160B";
+
+export default function LoginScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const navigation = useNavigation<any>();
+
+  const role = useAuthStore((s) => s.accountType);
+  const setUser = useAuthStore((s) => s.setUser);
+
+  const [identifier, setIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const cardY = useRef(new Animated.Value(70)).current;
+  const cardOpacity = useRef(new Animated.Value(0)).current;
+  const orb = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(cardY, {
+        toValue: 0,
+        delay: 120,
+        damping: 15,
+        stiffness: 110,
+        mass: 0.8,
+        useNativeDriver: true,
+      }),
+      Animated.timing(cardOpacity, {
+        toValue: 1,
+        duration: 650,
+        delay: 100,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(orb, {
+            toValue: 1,
+            duration: 3600,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+          Animated.timing(orb, {
+            toValue: 0,
+            duration: 3600,
+            easing: Easing.inOut(Easing.sin),
+            useNativeDriver: true,
+          }),
+        ]),
+      ),
+    ]).start();
+  }, [cardY, cardOpacity, orb]);
+
+  function showLoginMessage(
+    title: string,
+    message: string,
+  ) {
+    if (Platform.OS === "web") {
+      window.alert(`${title}\n\n${message}`);
+      return;
+    }
+
+    Alert.alert(title, message);
+  }
+
+  async function submit() {
+    if (!identifier.trim() || !password) {
+      showLoginMessage(
+        "تنبيه",
+        "أدخل بيانات تسجيل الدخول.",
+      );
+      return;
+    }
+
+    setLoading(true);
+
+    console.log("ZAJEL LOGIN: submit started");
+    console.log("ZAJEL LOGIN: identifier =", identifier.trim());
+
+    try {
+      const normalizedIdentifier = identifier.trim();
+
+      const loginPayload =
+        normalizedIdentifier.includes("@")
+          ? {
+              email: normalizedIdentifier.toLowerCase(),
+              password,
+            }
+          : {
+              phone: normalizedIdentifier,
+              password,
+            };
+
+      console.log(
+        "ZAJEL LOGIN: sending payload type =",
+        loginPayload.email ? "email" : "phone",
+      );
+
+      const response = await api.post(
+        "/auth/login",
+        loginPayload,
+      );
+
+      console.log(
+        "ZAJEL LOGIN: server response =",
+        response?.data,
+      );
+
+      const data = response.data;
+
+      if (data?.accessToken) {
+        await saveToken(String(data.accessToken));
+      }
+
+      const raw = data?.user;
+
+      if (!raw) {
+        throw new Error("لم تصل بيانات المستخدم.");
+      }
+
+      const user = {
+        id: String(raw.id || raw._id),
+        role: raw.role,
+        name: raw.name || raw.fullName,
+        phone: raw.phone,
+        email: raw.email,
+        status: raw.status,
+      } as any;
+
+      console.log(
+        "ZAJEL LOGIN: parsed user =",
+        user,
+      );
+
+      setUser(user);
+
+      if (user.status === "pending") {
+        navigation.replace("WaitingApproval");
+        return;
+      }
+
+      if (user.status === "rejected") {
+        showLoginMessage(
+          "الحساب مرفوض",
+          "راجع الإدارة لمعرفة سبب الرفض.",
+        );
+        return;
+      }
+
+      if (user.status === "suspended") {
+        showLoginMessage(
+          "الحساب موقوف",
+          "لا يمكنك استخدام النظام حاليًا.",
+        );
+        return;
+      }
+
+      const target =
+        user.role === "captain"
+          ? "CaptainApp"
+          : "ShopApp";
+
+      console.log(
+        "ZAJEL LOGIN: navigating to =",
+        target,
+      );
+
+      navigation.replace(target);
+    } catch (error: any) {
+      console.error(
+        "ZAJEL LOGIN ERROR:",
+        error?.response?.data || error,
+      );
+
+      showLoginMessage(
+        "تعذر تسجيل الدخول",
+        error?.response?.data?.message ||
+          error?.message ||
+          "تعذر الاتصال بالخادم.",
+      );
+    } finally {
+      console.log("ZAJEL LOGIN: finished");
+      setLoading(false);
+    }
+  }
+
+  const orbY = orb.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -18],
+  });
+
+  return (
+    <Screen style={styles.screen}>
+      <View style={styles.scene}>
+        {/* Premium orange / yellow background */}
+        <LinearGradient
+          colors={["#FFFDF8", "#FFF8EE", "#FFEEDB"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+
+        {/* Deep orange diagonal layer */}
+        <LinearGradient
+          colors={["#FF4B00", "#FF6800", "#FF8A24"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.orangePanel}
+        />
+
+        {/* Bright yellow curved layer */}
+        <LinearGradient
+          colors={["#FFF500", "#FFD400", "#FFB800"]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.yellowPanel}
+        />
+
+        {/* Soft white glass glow */}
+
+        {/* Small premium ambient details */}
+
+        <View style={styles.header}>
+          <Text style={styles.brand}>زاجل</Text>
+          <Text style={styles.welcome}>مرحبًا بك</Text>
+
+          <Text style={styles.roleText}>
+            {role === "captain"
+              ? "تسجيل دخول الكابتن"
+              : "تسجيل دخول المطعم / المحل"}
+          </Text>
+        </View>
+
+        <Animated.View
+          style={[
+            styles.card,
+            {
+              opacity: cardOpacity,
+              transform: [{ translateY: cardY }],
+            },
+          ]}
+        >
+          <Pressable
+            onPress={() => navigation.goBack()}
+            style={({ pressed }) => [
+              styles.backButton,
+              pressed && { transform: [{ scale: 0.94 }], opacity: 0.9 },
+            ]}
+          >
+            <MaterialCommunityIcons
+              name="arrow-right"
+              size={22}
+              color="#E5501C"
+            />
+          </Pressable>
+
+          <View style={styles.cardTopGlow} />
+
+          <View style={styles.cardIcon}>
+            <MaterialCommunityIcons
+              name={
+                role === "captain"
+                  ? "truck-fast-outline"
+                  : "storefront-outline"
+              }
+              size={30}
+              color={ORANGE}
+            />
+          </View>
+
+          <Text style={styles.cardTitle}>تسجيل الدخول</Text>
+
+          <Text style={styles.cardHint}>
+            أدخل بيانات حسابك للمتابعة
+          </Text>
+
+          <View style={styles.form}>
+            <View style={styles.inputShell}>
+              <MaterialCommunityIcons
+                name="account-outline"
+                size={21}
+                color="#B86A2D"
+              />
+
+              <AppInput
+                placeholder="رقم الهاتف أو البريد"
+                value={identifier}
+                onChangeText={setIdentifier}
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.inputShell}>
+              <MaterialCommunityIcons
+                name="lock-outline"
+                size={21}
+                color="#B86A2D"
+              />
+
+              <AppInput
+                placeholder="كلمة المرور"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry
+              />
+            </View>
+
+            <Pressable
+              onPress={() =>
+                navigation.navigate("ForgotPassword")
+              }
+              style={styles.forgot}
+            >
+              <Text style={styles.forgotText}>
+                نسيت كلمة المرور؟
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={submit}
+              disabled={loading}
+              style={({ pressed }) => [
+                styles.loginButton,
+                pressed && styles.loginButtonPressed,
+                loading && { opacity: 0.7 },
+              ]}
+            >
+              <LinearGradient
+                colors={["#FF7A00", "#FF5A00"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.loginGradient}
+              >
+                {loading ? (
+                  <Text style={styles.loginText}>
+                    جاري الدخول...
+                  </Text>
+                ) : (
+                  <>
+                    <Text style={styles.loginText}>
+                      تسجيل الدخول
+                    </Text>
+
+                    <MaterialCommunityIcons
+                      name="arrow-left"
+                      size={21}
+                      color={WHITE}
+                    />
+                  </>
+                )}
+              </LinearGradient>
+            </Pressable>
+          </View>
+
+          <Pressable
+            onPress={() =>
+              navigation.navigate(
+                role === "captain"
+                  ? "CaptainRegister"
+                  : "ShopRegister",
+              )
+            }
+            style={styles.registerButton}
+          >
+            <Text style={styles.registerText}>
+              {role === "captain"
+                ? "إنشاء حساب كابتن"
+                : "تسجيل مطعم / محل"}
+            </Text>
+          </Pressable>
+        </Animated.View>
+
+        <Text style={styles.footer}>
+          زاجل • توصيل أسرع • تجربة أذكى
+        </Text>
+      </View>
+    </Screen>
+  );
+}
+
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>,
+) =>
+  StyleSheet.create({
+    screen: {
+      paddingHorizontal: 0,
+      paddingTop: 0,
+      paddingBottom: 0,
+    },
+
+    scene: {
+      flex: 1,
+      backgroundColor: "#FFFDF8",
+      overflow: "hidden",
+    },
+
+    header: {
+      alignItems: "center",
+      paddingTop: 28,
+      paddingHorizontal: 20,
+      position: "relative",
+    },
+
+    backButton: {
+      position: "absolute",
+      right: 14,
+      top: 14,
+      width: 44,
+      height: 44,
+      borderRadius: 15,
+      backgroundColor: "#FFF0DD",
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "#F0D9BE",
+      zIndex: 50,
+      elevation: 6,
+      shadowColor: "#8A5A2E",
+      shadowOffset: {
+        width: 0,
+        height: 5,
+      },
+      shadowOpacity: 0.12,
+      shadowRadius: 9,
+    },
+
+    brand: {
+      color: "#E5501C",
+      fontSize: 28,
+      fontWeight: "900",
+    },
+
+    welcome: {
+      color: "#24150B",
+      fontSize: 22,
+      fontWeight: "900",
+      marginTop: 4,
+    },
+
+    roleText: {
+      color: "#8A5A2E",
+      fontSize: 12,
+      fontWeight: "700",
+      marginTop: 5,
+    },
+
+    card: {
+      alignSelf: "center",
+      position: "relative",
+      width: "88%",
+      maxWidth: 380,
+      marginTop: 24,
+      borderRadius: 24,
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1,
+      borderColor: "#F0D9BE",
+      padding: 18,
+      shadowColor: "#8A5A2E",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.10,
+      shadowRadius: 18,
+      elevation: 5,
+      overflow: "hidden",
+    },
+
+    cardTopGlow: {
+      position: "absolute",
+      width: 120,
+      height: 120,
+      borderRadius: 70,
+      right: -55,
+      top: -55,
+      backgroundColor: "#FFF1DD",
+    },
+
+    cardIcon: {
+      alignSelf: "center",
+      width: 54,
+      height: 54,
+      borderRadius: 18,
+      backgroundColor: "#FFF0DD",
+      alignItems: "center",
+      justifyContent: "center",
+      marginBottom: 9,
+    },
+
+    cardTitle: {
+      color: "#24150B",
+      textAlign: "center",
+      fontSize: 21,
+      fontWeight: "900",
+    },
+
+    cardHint: {
+      color: "#8A5A2E",
+      textAlign: "center",
+      fontSize: 12,
+      fontWeight: "600",
+      marginTop: 4,
+      marginBottom: 16,
+    },
+
+    form: {
+      gap: 10,
+    },
+
+    inputShell: {
+      minHeight: 52,
+      borderRadius: 16,
+      backgroundColor: "#FFF9F1",
+      borderWidth: 1,
+      borderColor: "#F0D9BE",
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 8,
+      overflow: "hidden",
+    },
+
+    forgot: {
+      alignSelf: "center",
+      paddingVertical: 4,
+    },
+
+    forgotText: {
+      color: "#E5501C",
+      fontSize: 12,
+      fontWeight: "800",
+    },
+
+    loginButton: {
+      height: 54,
+      borderRadius: 18,
+      overflow: "hidden",
+      marginTop: 4,
+    },
+
+    loginButtonPressed: {
+      transform: [{ scale: 0.985 }],
+      opacity: 0.92,
+    },
+
+    loginGradient: {
+      flex: 1,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+    },
+
+    loginText: {
+      color: "#FFFFFF",
+      fontSize: 15,
+      fontWeight: "900",
+    },
+
+    registerButton: {
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 44,
+      marginTop: 10,
+      borderRadius: 15,
+      backgroundColor: "#FFF4E7",
+      borderWidth: 1,
+      borderColor: "#F0D9BE",
+    },
+
+    registerText: {
+      color: "#E5501C",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+
+
+    orangePanel: {
+      position: "absolute",
+      width: "125%",
+      height: "52%",
+      right: "-38%",
+      top: "5%",
+      borderRadius: 220,
+      transform: [{ rotate: "-13deg" }],
+      opacity: 0.95,
+    },
+
+    yellowPanel: {
+      position: "absolute",
+      width: "125%",
+      height: "38%",
+      left: "-42%",
+      top: "48%",
+      borderRadius: 240,
+      transform: [{ rotate: "12deg" }],
+      opacity: 0.88,
+    },
+
+    footer: {
+      alignSelf: "center",
+      color: "#C9A177",
+      fontSize: 10,
+      fontWeight: "800",
+      marginTop: 18,
+    },
+  });
+

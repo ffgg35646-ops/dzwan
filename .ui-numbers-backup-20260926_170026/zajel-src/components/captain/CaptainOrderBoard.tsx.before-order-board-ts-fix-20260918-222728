@@ -1,0 +1,1732 @@
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import {
+  claimCaptainOrder,
+  getCaptainOrderBoard,
+  rejectCaptainOrder,
+} from "../api/captainOrderBoard";
+import { getOrder } from "../api/orders";
+
+const ORANGE = "#F97316";
+const WHITE = "#FFFFFF";
+const TEXT = "#21170F";
+const MUTED = "#8D8175";
+const GREEN = "#16A34A";
+const RED = "#EF4444";
+
+const DEFAULT_MAX_ORDERS = 3;
+
+const REJECTABLE_STATUSES = [
+  "assigned",
+  "heading_to_shop",
+  "arrived_at_shop",
+];
+
+function orderIdOf(order: any) {
+  return String(
+    order?.id ||
+      order?._id ||
+      order?.orderNumber ||
+      "",
+  );
+}
+
+function orderNumberOf(order: any) {
+  return String(
+    order?.orderNumber ||
+      order?.id ||
+      order?._id ||
+      "—",
+  );
+}
+
+function restaurantOf(order: any) {
+  return (
+    order?.restaurantName ||
+    order?.shopName ||
+    order?.establishmentName ||
+    order?.establishment?.name ||
+    "المطعم / المتجر"
+  );
+}
+
+function customerOf(order: any) {
+  return (
+    order?.customerName ||
+    order?.customer?.name ||
+    order?.customer?.fullName ||
+    "العميل"
+  );
+}
+
+function addressOf(order: any) {
+  return (
+    order?.deliveryAddress ||
+    order?.customerAddress ||
+    order?.address?.address ||
+    order?.address?.label ||
+    "عنوان التوصيل غير متوفر"
+  );
+}
+
+function totalOf(order: any) {
+  const value =
+    order?.total ??
+    order?.totalAmount ??
+    order?.amount ??
+    order?.price;
+
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return "غير متوفر";
+  }
+
+  return `${value} د.ع`;
+}
+
+function dateOf(order: any) {
+  const value =
+    order?.createdAt ||
+    order?.assignedAt;
+
+  if (!value) {
+    return "غير متوفر";
+  }
+
+  const date = new Date(value);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return "غير متوفر";
+  }
+
+  return date.toLocaleString(
+    "ar-IQ",
+    {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  );
+}
+
+export default function CaptainOrderBoard() {
+  const [activeOrders, setActiveOrders] =
+    useState<any[]>([]);
+
+  const [availableOrders, setAvailableOrders] =
+    useState<any[]>([]);
+
+  const [maxOrders, setMaxOrders] =
+    useState(DEFAULT_MAX_ORDERS);
+
+  const [openedPanel, setOpenedPanel] =
+    useState<
+      "active" | "available" | null
+    >(null);
+
+  const [expandedActiveId, setExpandedActiveId] =
+    useState<string | null>(null);
+
+  const [detailsById, setDetailsById] =
+    useState<Record<string, any>>({});
+
+  const [detailsLoadingId, setDetailsLoadingId] =
+    useState<string | null>(null);
+
+  const [claimingId, setClaimingId] =
+    useState<string | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [rejectVisible, setRejectVisible] =
+    useState(false);
+
+  const [rejectingId, setRejectingId] =
+    useState<string | null>(null);
+
+  const [rejectReason, setRejectReason] =
+    useState("");
+
+  const loadBoard = useCallback(
+    async (showLoader = false) => {
+      try {
+        if (showLoader) {
+          setLoading(true);
+        }
+
+        const result =
+          await getCaptainOrderBoard();
+
+        setActiveOrders(
+          Array.isArray(
+            result?.activeOrders
+          )
+            ? result.activeOrders
+            : []
+        );
+
+        setAvailableOrders(
+          Array.isArray(
+            result?.availableOrders
+          )
+            ? result.availableOrders
+            : []
+        );
+
+        setMaxOrders(
+          Number(
+            result?.maxActiveOrders
+          ) > 0
+            ? Number(
+                result.maxActiveOrders
+              )
+            : DEFAULT_MAX_ORDERS
+        );
+      } catch {
+        if (showLoader) {
+          Alert.alert(
+            "تعذر تحديث الطلبات",
+            "حدث خطأ أثناء تحميل الطلبات.",
+          );
+        }
+      } finally {
+        if (showLoader) {
+          setLoading(false);
+        }
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    void loadBoard(true);
+
+    const timer =
+      setInterval(
+        () => {
+          void loadBoard(false);
+        },
+        4000
+      );
+
+    return () =>
+      clearInterval(timer);
+  }, [loadBoard]);
+
+  async function openActiveDetails(
+    order: any
+  ) {
+    const id = orderIdOf(order);
+
+    if (!id) return;
+
+    const expanded =
+      expandedActiveId === id;
+
+    setExpandedActiveId(
+      expanded
+        ? null
+        : id
+    );
+
+    if (
+      expanded ||
+      detailsById[id]
+    ) {
+      return;
+    }
+
+    try {
+      setDetailsLoadingId(id);
+
+      const result =
+        await getOrder(id);
+
+      const details =
+        result?.order ||
+        result?.data?.order ||
+        result?.data ||
+        result;
+
+      setDetailsById(
+        (previous) => ({
+          ...previous,
+          [id]: details,
+        })
+      );
+    } catch {
+      Alert.alert(
+        "تعذر تحميل التفاصيل",
+        "لم نتمكن من تحميل تفاصيل هذا الطلب.",
+      );
+    } finally {
+      setDetailsLoadingId(null);
+    }
+  }
+
+  async function claim(order: any) {
+    const id = orderIdOf(order);
+
+    if (!id) return;
+
+    if (
+      activeOrders.length >=
+      maxOrders
+    ) {
+      Alert.alert(
+        "الطلبات النشطة ممتلئة",
+        `لديك ${maxOrders} طلبات نشطة بالفعل.`,
+      );
+      return;
+    }
+
+    try {
+      setClaimingId(id);
+
+      await claimCaptainOrder(id);
+
+      await loadBoard(false);
+
+      setOpenedPanel("active");
+
+      Alert.alert(
+        "تم حجز الطلب",
+        "تمت إضافة الطلب إلى الطلبات النشطة.",
+      );
+    } catch (error: any) {
+      await loadBoard(false);
+
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "الطلب لم يعد متاحًا.";
+
+      Alert.alert(
+        "تعذر حجز الطلب",
+        message,
+      );
+    } finally {
+      setClaimingId(null);
+    }
+  }
+
+  function openReject(
+    order: any
+  ) {
+    const status =
+      String(order?.status || "");
+
+    if (
+      !REJECTABLE_STATUSES.includes(
+        status
+      )
+    ) {
+      Alert.alert(
+        "لا يمكن رفض الطلب الآن",
+        "بعد استلام الطلب من المطعم لا يمكن استخدام الرفض من هذه القائمة.",
+      );
+      return;
+    }
+
+    setRejectingId(
+      orderIdOf(order)
+    );
+
+    setRejectReason("");
+    setRejectVisible(true);
+  }
+
+  async function confirmReject() {
+    const id =
+      String(
+        rejectingId || ""
+      );
+
+    const reason =
+      rejectReason.trim();
+
+    if (!id) return;
+
+    if (reason.length < 3) {
+      Alert.alert(
+        "سبب الرفض مطلوب",
+        "اكتب سببًا واضحًا للرفض.",
+      );
+      return;
+    }
+
+    try {
+      await rejectCaptainOrder(
+        id,
+        reason
+      );
+
+      setRejectVisible(false);
+      setRejectingId(null);
+      setRejectReason("");
+      setExpandedActiveId(null);
+
+      await loadBoard(false);
+
+      Alert.alert(
+        "تم رفض الطلب",
+        "تم نقل الطلب إلى تاريخ الطلبات.",
+      );
+    } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "تعذر رفض الطلب.";
+
+      Alert.alert(
+        "تعذر رفض الطلب",
+        message,
+      );
+    }
+  }
+
+  return (
+    <View style={styles.wrapper}>
+      <View style={styles.cardsRow}>
+        <Pressable
+          onPress={() =>
+            setOpenedPanel(
+              openedPanel === "active"
+                ? null
+                : "active"
+            )
+          }
+          style={[
+            styles.summaryCard,
+            openedPanel === "active" &&
+              styles.summaryCardActive,
+          ]}
+        >
+          <View
+            style={[
+              styles.iconBox,
+              {
+                backgroundColor:
+                  "#FFF1E7",
+              },
+            ]}
+          >
+            <Ionicons
+              name="cube-outline"
+              size={22}
+              color={ORANGE}
+            />
+          </View>
+
+          <Text style={styles.summaryTitle}>
+            الطلبات النشطة
+          </Text>
+
+          <Text style={styles.summaryCount}>
+            {activeOrders.length} /{" "}
+            {maxOrders}
+          </Text>
+
+          <Text style={styles.summaryHint}>
+            الطلبات التي حجزتها
+          </Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() =>
+            setOpenedPanel(
+              openedPanel === "available"
+                ? null
+                : "available"
+            )
+          }
+          style={[
+            styles.summaryCard,
+            openedPanel ===
+              "available" &&
+              styles.summaryCardAvailable,
+          ]}
+        >
+          <View
+            style={[
+              styles.iconBox,
+              {
+                backgroundColor:
+                  "#ECFDF3",
+              },
+            ]}
+          >
+            <Ionicons
+              name="layers-outline"
+              size={22}
+              color={GREEN}
+            />
+          </View>
+
+          <Text style={styles.summaryTitle}>
+            الطلبات المتاحة
+          </Text>
+
+          <Text style={styles.summaryCount}>
+            {availableOrders.length}
+          </Text>
+
+          <Text style={styles.summaryHint}>
+            طلب متاح للحجز
+          </Text>
+        </Pressable>
+      </View>
+
+      {openedPanel === "active" ? (
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <View>
+              <Text style={styles.panelTitle}>
+                الطلبات النشطة
+              </Text>
+
+              <Text style={styles.panelSubtitle}>
+                {activeOrders.length} /{" "}
+                {maxOrders}
+              </Text>
+            </View>
+
+            {loading ? (
+              <ActivityIndicator
+                size="small"
+                color={ORANGE}
+              />
+            ) : null}
+          </View>
+
+          {activeOrders.length === 0 ? (
+            <View style={styles.empty}>
+              <Ionicons
+                name="file-tray-outline"
+                size={30}
+                color="#C5B7A8"
+              />
+
+              <Text style={styles.emptyTitle}>
+                لا توجد طلبات نشطة
+              </Text>
+
+              <Text style={styles.emptyText}>
+                احجز طلبًا من قائمة الطلبات المتاحة.
+              </Text>
+            </View>
+          ) : (
+            activeOrders.map(
+              (order) => {
+                const id =
+                  orderIdOf(order);
+
+                const expanded =
+                  expandedActiveId ===
+                  id;
+
+                const details =
+                  detailsById[id] ||
+                  order;
+
+                const canReject =
+                  REJECTABLE_STATUSES.includes(
+                    String(
+                      order?.status || ""
+                    )
+                  );
+
+                return (
+                  <View
+                    key={id}
+                    style={
+                      styles.activeCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.activeTop
+                      }
+                    >
+                      <View
+                        style={
+                          styles.numberBox
+                        }
+                      >
+                        <Ionicons
+                          name="receipt-outline"
+                          size={18}
+                          color={ORANGE}
+                        />
+                      </View>
+
+                      <View
+                        style={
+                          styles.activeMain
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.orderNumber
+                          }
+                        >
+                          #
+                          {orderNumberOf(
+                            order
+                          )}
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.activeRestaurant
+                          }
+                          numberOfLines={
+                            1
+                          }
+                        >
+                          {restaurantOf(
+                            order
+                          )}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={
+                          styles.assignedPill
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.assignedText
+                          }
+                        >
+                          محجوز
+                        </Text>
+                      </View>
+                    </View>
+
+                    <View
+                      style={
+                        styles.actionRow
+                      }
+                    >
+                      <Pressable
+                        onPress={() =>
+                          void openActiveDetails(
+                            order
+                          )
+                        }
+                        style={
+                          styles.detailsButton
+                        }
+                      >
+                        <Ionicons
+                          name={
+                            expanded
+                              ? "chevron-up"
+                              : "eye-outline"
+                          }
+                          size={17}
+                          color={ORANGE}
+                        />
+
+                        <Text
+                          style={
+                            styles.detailsButtonText
+                          }
+                        >
+                          عرض تفاصيل الطلب
+                        </Text>
+                      </Pressable>
+
+                      {canReject ? (
+                        <Pressable
+                          onPress={() =>
+                            openReject(
+                              order
+                            )
+                          }
+                          style={
+                            styles.rejectButton
+                          }
+                        >
+                          <Ionicons
+                            name="close-circle-outline"
+                            size={17}
+                            color={RED}
+                          />
+
+                          <Text
+                            style={
+                              styles.rejectButtonText
+                            }
+                          >
+                            رفض الطلب
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+
+                    {expanded ? (
+                      <View
+                        style={
+                          styles.detailsCard
+                        }
+                      >
+                        {detailsLoadingId ===
+                        id ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={
+                              ORANGE
+                            }
+                          />
+                        ) : (
+                          <>
+                            <Text
+                              style={
+                                styles.detailsTitle
+                              }
+                            >
+                              تفاصيل الطلب
+                            </Text>
+
+                            <View
+                              style={
+                                styles.detailGrid
+                              }
+                            >
+                              <View
+                                style={
+                                  styles.detailItem
+                                }
+                              >
+                                <Text
+                                  style={
+                                    styles.detailLabel
+                                  }
+                                >
+                                  المطعم / المتجر
+                                </Text>
+
+                                <Text
+                                  style={
+                                    styles.detailValue
+                                  }
+                                >
+                                  {restaurantOf(
+                                    details
+                                  )}
+                                </Text>
+                              </View>
+
+                              <View
+                                style={
+                                  styles.detailItem
+                                }
+                              >
+                                <Text
+                                  style={
+                                    styles.detailLabel
+                                  }
+                                >
+                                  العميل
+                                </Text>
+
+                                <Text
+                                  style={
+                                    styles.detailValue
+                                  }
+                                >
+                                  {customerOf(
+                                    details
+                                  )}
+                                </Text>
+                              </View>
+
+                              <View
+                                style={[
+                                  styles.detailItem,
+                                  styles.fullWidth,
+                                ]}
+                              >
+                                <Text
+                                  style={
+                                    styles.detailLabel
+                                  }
+                                >
+                                  عنوان التوصيل
+                                </Text>
+
+                                <Text
+                                  style={
+                                    styles.detailValue
+                                  }
+                                >
+                                  {addressOf(
+                                    details
+                                  )}
+                                </Text>
+                              </View>
+
+                              <View
+                                style={
+                                  styles.detailItem
+                                }
+                              >
+                                <Text
+                                  style={
+                                    styles.detailLabel
+                                  }
+                                >
+                                  رقم العميل
+                                </Text>
+
+                                <Text
+                                  style={
+                                    styles.detailValue
+                                  }
+                                >
+                                  {details?.customerPhone ||
+                                    details?.customer?.phone ||
+                                    "غير متوفر"}
+                                </Text>
+                              </View>
+
+                              <View
+                                style={
+                                  styles.detailItem
+                                }
+                              >
+                                <Text
+                                  style={
+                                    styles.detailLabel
+                                  }
+                                >
+                                  الإجمالي
+                                </Text>
+
+                                <Text
+                                  style={[
+                                    styles.detailValue,
+                                    styles.price,
+                                  ]}
+                                >
+                                  {totalOf(
+                                    details
+                                  )}
+                                </Text>
+                              </View>
+
+                              <View
+                                style={[
+                                  styles.detailItem,
+                                  styles.fullWidth,
+                                ]}
+                              >
+                                <Text
+                                  style={
+                                    styles.detailLabel
+                                  }
+                                >
+                                  تاريخ الطلب
+                                </Text>
+
+                                <Text
+                                  style={
+                                    styles.detailValue
+                                  }
+                                >
+                                  {dateOf(
+                                    details
+                                  )}
+                                </Text>
+                              </View>
+
+                              {details?.customerNote ? (
+                                <View
+                                  style={[
+                                    styles.detailItem,
+                                    styles.fullWidth,
+                                  ]}
+                                >
+                                  <Text
+                                    style={
+                                      styles.detailLabel
+                                    }
+                                  >
+                                    ملاحظة العميل
+                                  </Text>
+
+                                  <Text
+                                    style={
+                                      styles.detailValue
+                                    }
+                                  >
+                                    {
+                                      details.customerNote
+                                    }
+                                  </Text>
+                                </View>
+                              ) : null}
+                            </View>
+
+                            {Array.isArray(
+                              details?.items
+                            ) &&
+                            details.items.length >
+                              0 ? (
+                              <View
+                                style={
+                                  styles.productsBox
+                                }
+                              >
+                                <Text
+                                  style={
+                                    styles.detailLabel
+                                  }
+                                >
+                                  المنتجات
+                                </Text>
+
+                                {details.items
+                                  .slice(
+                                    0,
+                                    5
+                                  )
+                                  .map(
+                                    (
+                                      item: any,
+                                      index: number
+                                    ) => (
+                                      <View
+                                        key={`${id}-item-${index}`}
+                                        style={
+                                          styles.productRow
+                                        }
+                                      >
+                                        <Text
+                                          style={
+                                            styles.productName
+                                          }
+                                        >
+                                          {item?.productName ||
+                                            item?.product?.name ||
+                                            `منتج ${
+                                              index +
+                                              1
+                                            }`}
+                                        </Text>
+
+                                        <Text
+                                          style={
+                                            styles.productQty
+                                          }
+                                        >
+                                          ×{" "}
+                                          {item?.quantity ??
+                                            1}
+                                        </Text>
+                                      </View>
+                                    )
+                                  )}
+                              </View>
+                            ) : null}
+                          </>
+                        )}
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              }
+            )
+          )}
+        </View>
+      ) : null}
+
+      {openedPanel === "available" ? (
+        <View style={styles.panel}>
+          <View style={styles.panelHeader}>
+            <View>
+              <Text style={styles.panelTitle}>
+                الطلبات المتاحة
+              </Text>
+
+              <Text style={styles.panelSubtitle}>
+                كل طلب يحجزه كابتن واحد فقط
+              </Text>
+            </View>
+
+            {loading ? (
+              <ActivityIndicator
+                size="small"
+                color={GREEN}
+              />
+            ) : null}
+          </View>
+
+          {availableOrders.length === 0 ? (
+            <View style={styles.empty}>
+              <Ionicons
+                name="checkmark-circle-outline"
+                size={30}
+                color={GREEN}
+              />
+
+              <Text style={styles.emptyTitle}>
+                لا توجد طلبات متاحة الآن
+              </Text>
+
+              <Text style={styles.emptyText}>
+                سيظهر الطلب هنا عندما يصبح متاحًا لمنطقتك.
+              </Text>
+            </View>
+          ) : (
+            availableOrders.map(
+              (order) => {
+                const id =
+                  orderIdOf(order);
+
+                const full =
+                  activeOrders.length >=
+                  maxOrders;
+
+                return (
+                  <View
+                    key={id}
+                    style={
+                      styles.availableCard
+                    }
+                  >
+                    <View
+                      style={
+                        styles.activeTop
+                      }
+                    >
+                      <View
+                        style={[
+                          styles.numberBox,
+                          {
+                            backgroundColor:
+                              "#ECFDF3",
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name="cube-outline"
+                          size={18}
+                          color={GREEN}
+                        />
+                      </View>
+
+                      <View
+                        style={
+                          styles.activeMain
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.orderNumber
+                          }
+                        >
+                          #
+                          {orderNumberOf(
+                            order
+                          )}
+                        </Text>
+
+                        <Text
+                          style={
+                            styles.activeRestaurant
+                          }
+                          numberOfLines={
+                            1
+                          }
+                        >
+                          {restaurantOf(
+                            order
+                          )}
+                        </Text>
+                      </View>
+
+                      <View
+                        style={
+                          styles.availablePill
+                        }
+                      >
+                        <Text
+                          style={
+                            styles.availableText
+                          }
+                        >
+                          طلب متاح
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text
+                      style={
+                        styles.availableAddress
+                      }
+                      numberOfLines={1}
+                    >
+                      {addressOf(
+                        order
+                      )}
+                    </Text>
+
+                    <View
+                      style={
+                        styles.availableBottom
+                      }
+                    >
+                      <Text
+                        style={
+                          styles.availableTotal
+                        }
+                      >
+                        {totalOf(
+                          order
+                        )}
+                      </Text>
+
+                      <Pressable
+                        onPress={() =>
+                          void claim(
+                            order
+                          )
+                        }
+                        disabled={
+                          claimingId ===
+                            id ||
+                          full
+                        }
+                        style={[
+                          styles.claimButton,
+                          full &&
+                            styles.claimButtonDisabled,
+                        ]}
+                      >
+                        {claimingId ===
+                        id ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={WHITE}
+                          />
+                        ) : (
+                          <>
+                            <Ionicons
+                              name="hand-left-outline"
+                              size={17}
+                              color={
+                                WHITE
+                              }
+                            />
+
+                            <Text
+                              style={
+                                styles.claimText
+                              }
+                            >
+                              {full
+                                ? "السعة ممتلئة"
+                                : "حجز الطلب"}
+                            </Text>
+                          </>
+                        )}
+                      </Pressable>
+                    </View>
+                  </View>
+                );
+              }
+            )
+          )}
+        </View>
+      ) : null}
+
+      <Modal
+        visible={rejectVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() =>
+          setRejectVisible(false)
+        }
+      >
+        <View
+          style={
+            styles.modalBackdrop
+          }
+        >
+          <View
+            style={
+              styles.modalCard
+            }
+          >
+            <View
+              style={
+                styles.modalIcon
+              }
+            >
+              <Ionicons
+                name="close-circle-outline"
+                size={28}
+                color={RED}
+              />
+            </View>
+
+            <Text
+              style={
+                styles.modalTitle
+              }
+            >
+              رفض الطلب
+            </Text>
+
+            <Text
+              style={
+                styles.modalText
+              }
+            >
+              كتابة سبب الرفض إلزامية حتى يتم حفظه في تاريخ الطلبات.
+            </Text>
+
+            <TextInput
+              value={
+                rejectReason
+              }
+              onChangeText={
+                setRejectReason
+              }
+              placeholder="اكتب سبب الرفض..."
+              placeholderTextColor="#B0A49A"
+              multiline
+              textAlignVertical="top"
+              maxLength={500}
+              style={
+                styles.reasonInput
+              }
+            />
+
+            <View
+              style={
+                styles.modalActions
+              }
+            >
+              <Pressable
+                onPress={() =>
+                  setRejectVisible(
+                    false
+                  )
+                }
+                style={
+                  styles.cancelButton
+                }
+              >
+                <Text
+                  style={
+                    styles.cancelButtonText
+                  }
+                >
+                  إلغاء
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() =>
+                  void confirmReject()
+                }
+                style={[
+                  styles.confirmRejectButton,
+                  rejectReason.trim().length <
+                    3 &&
+                    styles.disabledConfirm,
+                ]}
+              >
+                <Text
+                  style={
+                    styles.confirmRejectText
+                  }
+                >
+                  تأكيد الرفض
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrapper: {
+    marginBottom: 14,
+  },
+
+  cardsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+
+  summaryCard: {
+    flex: 1,
+    minHeight: 148,
+    backgroundColor: WHITE,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "#EEE4D7",
+    padding: 15,
+  },
+
+  summaryCardActive: {
+    borderColor: "#FFD6B5",
+    backgroundColor: "#FFFCF9",
+  },
+
+  summaryCardAvailable: {
+    borderColor: "#BBF7D0",
+    backgroundColor: "#FAFFFB",
+  },
+
+  iconBox: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+
+  summaryTitle: {
+    color: MUTED,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  summaryCount: {
+    marginTop: 4,
+    color: TEXT,
+    fontSize: 26,
+    fontWeight: "900",
+  },
+
+  summaryHint: {
+    marginTop: 3,
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  panel: {
+    marginTop: 10,
+    backgroundColor: WHITE,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#EEE4D7",
+    padding: 14,
+  },
+
+  panelHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 10,
+  },
+
+  panelTitle: {
+    color: TEXT,
+    fontSize: 16,
+    fontWeight: "900",
+  },
+
+  panelSubtitle: {
+    marginTop: 3,
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  activeCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#F0E4D6",
+    backgroundColor: "#FFF9F0",
+    padding: 12,
+    marginTop: 9,
+  },
+
+  availableCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "#D8F3E0",
+    backgroundColor: "#FCFFFD",
+    padding: 12,
+    marginTop: 9,
+  },
+
+  activeTop: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  numberBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFF1E7",
+  },
+
+  activeMain: {
+    flex: 1,
+    marginHorizontal: 10,
+  },
+
+  orderNumber: {
+    color: TEXT,
+    fontSize: 14,
+    fontWeight: "900",
+  },
+
+  activeRestaurant: {
+    marginTop: 3,
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+
+  assignedPill: {
+    backgroundColor: "#FFF1E7",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  assignedText: {
+    color: ORANGE,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  availablePill: {
+    backgroundColor: "#ECFDF3",
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  availableText: {
+    color: GREEN,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  actionRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+  },
+
+  detailsButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "#FFD9B8",
+    backgroundColor: WHITE,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 7,
+  },
+
+  detailsButtonText: {
+    color: ORANGE,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  rejectButton: {
+    minHeight: 42,
+    paddingHorizontal: 12,
+    borderRadius: 13,
+    backgroundColor: "#FFF1F2",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 5,
+  },
+
+  rejectButtonText: {
+    color: RED,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  detailsCard: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: "#EFE2D4",
+    paddingTop: 12,
+  },
+
+  detailsTitle: {
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: "900",
+    marginBottom: 9,
+  },
+
+  detailGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  detailItem: {
+    width: "48%",
+    minHeight: 58,
+    backgroundColor: WHITE,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "#F0E4D6",
+    padding: 9,
+  },
+
+  fullWidth: {
+    width: "100%",
+  },
+
+  detailLabel: {
+    color: MUTED,
+    fontSize: 9,
+    fontWeight: "800",
+    marginBottom: 4,
+  },
+
+  detailValue: {
+    color: TEXT,
+    fontSize: 11,
+    fontWeight: "800",
+    lineHeight: 17,
+  },
+
+  price: {
+    color: GREEN,
+  },
+
+  productsBox: {
+    marginTop: 9,
+    backgroundColor: WHITE,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "#F0E4D6",
+    padding: 10,
+  },
+
+  productRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F6EEE6",
+  },
+
+  productName: {
+    flex: 1,
+    color: TEXT,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  productQty: {
+    marginLeft: 8,
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  availableAddress: {
+    marginTop: 9,
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  availableBottom: {
+    marginTop: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  availableTotal: {
+    color: GREEN,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  claimButton: {
+    minHeight: 40,
+    paddingHorizontal: 13,
+    borderRadius: 13,
+    backgroundColor: GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 6,
+  },
+
+  claimButtonDisabled: {
+    backgroundColor: "#AAB2AE",
+  },
+
+  claimText: {
+    color: WHITE,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  empty: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 24,
+  },
+
+  emptyTitle: {
+    marginTop: 8,
+    color: TEXT,
+    fontSize: 13,
+    fontWeight: "900",
+  },
+
+  emptyText: {
+    marginTop: 4,
+    color: MUTED,
+    fontSize: 10,
+    fontWeight: "700",
+    textAlign: "center",
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor:
+      "rgba(20, 14, 10, 0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+  },
+
+  modalCard: {
+    width: "100%",
+    backgroundColor: WHITE,
+    borderRadius: 24,
+    padding: 18,
+  },
+
+  modalIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: "#FFF1F2",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+  },
+
+  modalTitle: {
+    marginTop: 11,
+    color: TEXT,
+    fontSize: 18,
+    fontWeight: "900",
+    textAlign: "center",
+  },
+
+  modalText: {
+    marginTop: 6,
+    color: MUTED,
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+    lineHeight: 17,
+  },
+
+  reasonInput: {
+    marginTop: 14,
+    minHeight: 110,
+    borderWidth: 1,
+    borderColor: "#E8DCD0",
+    borderRadius: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    color: TEXT,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  modalActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 12,
+  },
+
+  cancelButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    backgroundColor: "#F5F1EC",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  cancelButtonText: {
+    color: TEXT,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+
+  confirmRejectButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 14,
+    backgroundColor: RED,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  disabledConfirm: {
+    opacity: 0.45,
+  },
+
+  confirmRejectText: {
+    color: WHITE,
+    fontSize: 11,
+    fontWeight: "900",
+  },
+});

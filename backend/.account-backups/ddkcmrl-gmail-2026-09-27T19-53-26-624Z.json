@@ -1,0 +1,23 @@
+{
+  "_id": "6ab2ccd7b2f2dec78780ff63",
+  "role": "governorate_leader",
+  "status": "active",
+  "operationalEnabled": true,
+  "fullName": "weqweqweq",
+  "phone": "07132813912",
+  "passwordHash": "$2b$12$S9ggJQXQdwuSQ0IemlU.Se7TNbn3RaEuSLyJfBz7Lv2VUJFyRsgLK",
+  "avatarUrl": null,
+  "isOnline": false,
+  "lastSeenAt": null,
+  "lastLoginAt": "2026-09-27T01:56:14.132Z",
+  "approvedAt": "2026-09-22T18:45:43.409Z",
+  "approvedBy": "6a92445fbc2d12e7a69dc63b",
+  "rejectionReason": null,
+  "suspensionReason": null,
+  "governorateId": "6aa09fe1434f7ff5b35a94c2",
+  "areaId": null,
+  "createdAt": "2026-09-22T18:45:43.411Z",
+  "updatedAt": "2026-09-27T01:56:14.132Z",
+  "email": "ddkcmrl@gmail.com",
+  "areaIds": []
+}

@@ -1,0 +1,1105 @@
+import React, { useEffect, useState } from "react";
+import { Platform, ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View, } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
+
+import { useAppTheme } from "../../theme/useAppTheme";
+import Screen from "../../components/Screen";
+import { useAuthStore } from "../../store/authStore";
+import {
+  getCaptainCapacity,
+  checkShift,
+  getMyWorkAreas,
+} from "../../api/captain";
+
+
+function CaptainWebMap() {
+  if (Platform.OS !== "web") return null;
+
+  return (
+    <View style={styles.mapCard}>
+      <View style={styles.mapHeader}>
+        <View style={styles.mapLiveDot} />
+        <View style={{ flex: 1 }}>
+          <Text style={styles.mapTitle}>موقعك الآن</Text>
+          <Text style={styles.mapSubtitle}>متابعة موقعك أثناء العمل</Text>
+        </View>
+        <View style={styles.mapIconBubble}>
+          <Ionicons name="location" size={18} color="#F97316" />
+        </View>
+      </View>
+
+      {React.createElement("iframe", {
+        src: "https://www.google.com/maps?q=Iraq&output=embed",
+        title: "Captain location map",
+        style: {
+          width: "100%",
+          height: 210,
+          border: "0",
+          borderRadius: 22,
+          display: "block",
+        },
+        loading: "lazy",
+      })}
+    </View>
+  );
+}
+
+export default function CaptainHomeScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const user = useAuthStore((s) => s.user);
+
+  const [capacity, setCapacity] = useState<any>(null);
+  const [shift, setShift] = useState<any>(null);
+  const [workArea, setWorkArea] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  async function load() {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const [
+        capacityResult,
+        shiftResult,
+        workAreaResult,
+      ] = await Promise.all([
+        getCaptainCapacity(user.id),
+        checkShift(),
+        getMyWorkAreas(user.id),
+      ]);
+
+      setCapacity(capacityResult);
+      setShift(shiftResult);
+      setWorkArea(workAreaResult?.workAreas?.[0] ?? null);
+    } catch {
+      // نحتفظ بالبيانات الحالية عند فشل التحديث المؤقت.
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, [user?.id]);
+
+  const withinShift = Boolean(shift?.withinShift);
+  const activeOrders = Number(capacity?.activeOrders ?? 0);
+  const maxOrders = Number(capacity?.maxActiveOrders ?? 0);
+
+  const remaining =
+    maxOrders > activeOrders
+      ? maxOrders - activeOrders
+      : 0;
+
+  const progress =
+    maxOrders > 0
+      ? Math.min(activeOrders / maxOrders, 1)
+      : 0;
+
+  const locationBlocked =
+    workArea &&
+    (
+      workArea.governorateActive === false ||
+      workArea.captainsEnabled === false ||
+      workArea.areaActive === false ||
+      workArea.areaCaptainsEnabled === false
+    );
+
+  const captainName = user?.name || "الكابتن";
+  const firstLetter = captainName.trim().charAt(0) || "ك";
+
+  return (
+    <Screen>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={loading}
+            onRefresh={load}
+            tintColor={appTheme.primaryColor}
+            colors={["#F97316", "#FFB52E", "#FFF3D5", "#FFFFFF"]}
+          />
+        }
+      >
+        {/* ================= HEADER ================= */}
+        <View style={styles.topHeader}>
+          <View style={styles.profileBlock}>
+            <View style={styles.avatarOuter}>
+              <LinearGradient
+                colors={[
+                  appTheme.primaryColor,
+                  appTheme.primaryDarkColor,
+                ]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.avatar}
+              >
+              <View pointerEvents="none" style={styles.heroWaveLayerOne} />
+              <View pointerEvents="none" style={styles.heroWaveLayerTwo} />
+              <View pointerEvents="none" style={styles.heroWaveLayerThree} />
+              <View pointerEvents="none" style={styles.heroGlowOrb} />
+
+                <Text style={styles.avatarText}>
+                  {firstLetter}
+                </Text>
+              </LinearGradient>
+
+              <View
+                style={[
+                  styles.avatarStatus,
+                  {
+                    backgroundColor: withinShift
+                      ? "#2DD4BF"
+                      : "#FBBF24",
+                  },
+                ]}
+              />
+            </View>
+
+            <View style={styles.profileText}>
+              <Text style={styles.overline}>
+                زاجل ديلفري
+              </Text>
+
+              <Text
+                style={styles.profileName}
+                numberOfLines={1}
+              >
+                {captainName}
+              </Text>
+
+              <Text style={styles.profileSub}>
+                لوحة التحكم اليومية
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.liveBadge}>
+            <View
+              style={[
+                styles.liveDot,
+                {
+                  backgroundColor: withinShift
+                    ? "#2DD4BF"
+                    : "#FBBF24",
+                },
+              ]}
+            />
+            <Text style={styles.liveText}>
+              {withinShift ? "LIVE" : "OFF"}
+            </Text>
+          </View>
+        </View>
+
+        {/* ================= MAIN HERO ================= */}
+        <LinearGradient
+          colors={
+            withinShift
+              ? [
+                  appTheme.primaryDarkColor,
+                  appTheme.primaryColor,
+                ]
+              : [
+                  "#0F172A",
+                  "#334155",
+                ]
+          }
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.hero}
+        >
+          <View style={styles.heroOrbOne} />
+          <View style={styles.heroOrbTwo} />
+
+          <View style={styles.heroTop}>
+            <View style={styles.heroIcon}>
+              <Ionicons
+                name={
+                  withinShift
+                    ? "radio-outline"
+                    : "moon-outline"
+                }
+                size={25}
+                color="#FFFFFF"
+              />
+            </View>
+
+            <View style={styles.heroState}>
+              <Text style={styles.heroStateSmall}>
+                حالة التشغيل
+              </Text>
+
+              <Text style={styles.heroStateMain}>
+                {withinShift
+                  ? "متاح الآن"
+                  : "خارج الشفت"}
+              </Text>
+            </View>
+          </View>
+
+          <Text style={styles.heroHeadline}>
+            {withinShift
+              ? "جاهز لاستقبال الطلبات"
+              : "لا توجد طلبات جديدة الآن"}
+          </Text>
+
+          <Text style={styles.heroDescription}>
+            {withinShift
+              ? remaining > 0
+                ? `لديك مساحة لاستقبال ${remaining} طلب ${
+                    remaining === 1 ? "إضافي" : "إضافية"
+                  }.`
+                : "وصلت إلى الحد الأقصى للسعة الحالية."
+              : "يمكنك معرفة الشفت القادم من قسم الشفت والحضور."}
+          </Text>
+
+          <View style={styles.heroFooter}>
+            <View style={styles.heroMeta}>
+              <Ionicons
+                name="time-outline"
+                size={15}
+                color="rgba(255,255,255,0.72)"
+              />
+              <Text style={styles.heroMetaText}>
+                {withinShift
+                  ? "الشفت نشط"
+                  : "بانتظار وقت الشفت"}
+              </Text>
+            </View>
+
+            <View style={styles.heroMeta}>
+              <Ionicons
+                name="location-outline"
+                size={15}
+                color="rgba(255,255,255,0.72)"
+              />
+              <Text
+                style={styles.heroMetaText}
+                numberOfLines={1}
+              >
+                {workArea?.areaName || "المنطقة غير محددة"}
+              </Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* ================= WARNING ================= */}
+        {locationBlocked ? (
+          <View style={styles.warningCard}>
+            <View style={styles.warningIcon}>
+              <Ionicons
+                name="warning-outline"
+                size={19}
+                color={appTheme.dangerColor}
+              />
+            </View>
+
+            <View style={styles.warningContent}>
+              <Text style={styles.warningTitle}>
+                منطقة التشغيل متوقفة
+              </Text>
+
+              <Text style={styles.warningText}>
+                تم إيقاف استقبال الطلبات من الإدارة حتى يتم
+                تفعيل المحافظة أو المنطقة.
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* ================= SECTION TITLE ================= */}
+        <View style={styles.sectionTitleRow}>
+          <View>
+            <Text style={styles.sectionKicker}>
+              PERFORMANCE
+            </Text>
+            <Text style={styles.sectionTitle}>
+              أداء اليوم
+            </Text>
+          </View>
+
+          <View style={styles.sectionBadge}>
+            <Ionicons
+              name="pulse-outline"
+              size={14}
+              color={appTheme.primaryColor}
+            />
+            <Text style={styles.sectionBadgeText}>
+              مباشر
+            </Text>
+          </View>
+        </View>
+
+        {loading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator
+              size="small"
+              color={appTheme.primaryColor}
+            />
+            <Text style={styles.loadingText}>
+              جاري تحديث البيانات...
+            </Text>
+          </View>
+        ) : (
+          <>
+            {/* ================= METRICS ================= */}
+          <CaptainWebMap />
+
+            <View style={styles.metricsRow}>
+              <MetricCard
+                styles={styles}
+                icon="bicycle-outline"
+                label="الطلبات النشطة"
+                value={String(activeOrders)}
+                color={appTheme.primaryColor}
+              />
+
+              <MetricCard
+                styles={styles}
+                icon="layers-outline"
+                label="السعة القصوى"
+                value={String(maxOrders)}
+                color={appTheme.infoColor}
+              />
+            </View>
+
+            {/* ================= CAPACITY ================= */}
+            <View style={styles.glassCard}>
+              <View style={styles.capacityTop}>
+                <View>
+                  <Text style={styles.miniLabel}>
+                    CAPACITY
+                  </Text>
+
+                  <Text style={styles.capacityTitle}>
+                    سعة الطلبات
+                  </Text>
+                </View>
+
+                <View style={styles.capacityNumberBlock}>
+                  <Text style={styles.capacityNumber}>
+                    {activeOrders}
+                  </Text>
+
+                  <Text style={styles.capacitySlash}>
+                    / {maxOrders}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.progressOuter}>
+                <LinearGradient
+                  colors={[
+                    appTheme.primaryColor,
+                    appTheme.secondaryColor,
+                  ]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[
+                    styles.progressInner,
+                    {
+                      width: `${progress * 100}%`,
+                    },
+                  ]}
+                />
+              </View>
+
+              <View style={styles.capacityBottom}>
+                <Text style={styles.capacityHint}>
+                  {maxOrders > activeOrders
+                    ? `يمكنك استقبال ${remaining} طلب إضافي`
+                    : maxOrders > 0
+                      ? "السعة ممتلئة"
+                      : "السعة غير محددة"}
+                </Text>
+
+                <Text style={styles.capacityPercent}>
+                  {Math.round(progress * 100)}%
+                </Text>
+              </View>
+            </View>
+
+            {/* ================= OPERATION INFO ================= */}
+            <View style={styles.glassCard}>
+              <View style={styles.cardHeading}>
+                <Text style={styles.cardHeadingTitle}>
+                  معلومات التشغيل
+                </Text>
+
+                <Text style={styles.cardHeadingHint}>
+                  اليوم
+                </Text>
+              </View>
+
+              <InfoItem
+                styles={styles}
+                icon="time-outline"
+                title="حالة الشفت"
+                value={
+                  withinShift
+                    ? "نشط الآن"
+                    : "غير نشط"
+                }
+                positive={withinShift}
+              />
+
+              <View style={styles.rowDivider} />
+
+              <InfoItem
+                styles={styles}
+                icon="location-outline"
+                title="المنطقة"
+                value={
+                  workArea?.areaName ||
+                  "غير محددة"
+                }
+              />
+
+              <View style={styles.rowDivider} />
+
+              <InfoItem
+                styles={styles}
+                icon="business-outline"
+                title="المحافظة"
+                value={
+                  workArea?.governorateName ||
+                  "غير محددة"
+                }
+              />
+            </View>
+
+            {/* ================= FOOT NOTE ================= */}
+            <View style={styles.footerNote}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={17}
+                color={appTheme.primaryColor}
+              />
+
+              <Text style={styles.footerNoteText}>
+                يتم توزيع الطلبات تلقائيًا حسب الشفت والسعة
+                ومنطقة العمل.
+              </Text>
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function MetricCard({
+  styles,
+  icon,
+  label,
+  value,
+  color,
+}: {
+  styles: ReturnType<typeof createStyles>;
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  color: string;
+}) {
+  return (
+    <View style={styles.metricCard}>
+      <View
+        style={[
+          styles.metricIcon,
+          {
+            backgroundColor: color + "14",
+          },
+        ]}
+      >
+        <Ionicons
+          name={icon}
+          size={19}
+          color={color}
+        />
+      </View>
+
+      <Text style={styles.metricValue}>
+        {value}
+      </Text>
+
+      <Text style={styles.metricLabel}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function InfoItem({
+  styles,
+  icon,
+  title,
+  value,
+  positive = false,
+}: {
+  styles: ReturnType<typeof createStyles>;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  value: string;
+  positive?: boolean;
+}) {
+  return (
+    <View style={styles.infoItem}>
+      <View style={styles.infoIcon}>
+        <Ionicons
+          name={icon}
+          size={18}
+          color="#FFFFFF"
+        />
+      </View>
+
+      <View style={styles.infoCopy}>
+        <Text style={styles.infoTitle}>
+          {title}
+        </Text>
+
+        <Text
+          style={[
+            styles.infoValue,
+            positive && {
+              color: "#16A085",
+            },
+          ]}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>,
+) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: 2,
+      paddingTop: 3,
+      paddingBottom: 28,
+      gap: 14,
+    },
+
+    topHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+
+    profileBlock: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      flex: 1,
+    },
+
+    avatarOuter: {
+      position: "relative",
+      marginLeft: 11,
+    },
+
+    avatar: {
+      width: 52,
+      height: 52,
+      borderRadius: 17,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    avatarText: {
+      color: "#FFFFFF",
+      fontSize: 21,
+      fontWeight: "900",
+    },
+
+    avatarStatus: {
+      position: "absolute",
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      left: -2,
+      bottom: -1,
+      borderWidth: 2,
+      borderColor: "#FFFFFF",
+    },
+
+    profileText: {
+      alignItems: "flex-end",
+      flex: 1,
+    },
+
+    overline: {
+      color: appTheme.primaryColor,
+      fontSize: 10,
+      fontWeight: "900",
+      letterSpacing: 0.7,
+    },
+
+    profileName: {
+      color: appTheme.textColor,
+      fontSize: 20,
+      fontWeight: "900",
+      marginTop: 1,
+    },
+
+    profileSub: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "600",
+      marginTop: 2,
+    },
+
+    liveBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+    },
+
+    liveDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+    },
+
+    liveText: {
+      color: appTheme.textColor,
+      fontSize: 9,
+      fontWeight: "900",
+      letterSpacing: 0.8,
+    },
+
+    hero: {
+      minHeight: 225,
+      borderRadius: 25,
+      padding: 19,
+      overflow: "hidden",
+      position: "relative",
+      justifyContent: "space-between",
+    },
+
+    heroOrbOne: {
+      position: "absolute",
+      width: 210,
+      height: 210,
+      borderRadius: 105,
+      right: -72,
+      top: -112,
+      backgroundColor: "#FFFFFF",
+      opacity: 0.08,
+    },
+
+    heroOrbTwo: {
+      position: "absolute",
+      width: 145,
+      height: 145,
+      borderRadius: 73,
+      left: -58,
+      bottom: -75,
+      backgroundColor: appTheme.secondaryColor,
+      opacity: 0.14,
+    },
+
+    heroTop: {
+      flexDirection: "row",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+    },
+
+    heroIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      backgroundColor: "rgba(255,255,255,0.13)",
+      alignItems: "center",
+      justifyContent: "center",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.10)",
+    },
+
+    heroState: {
+      alignItems: "flex-end",
+    },
+
+    heroStateSmall: {
+      color: "rgba(255,255,255,0.64)",
+      fontSize: 10,
+      fontWeight: "700",
+    },
+
+    heroStateMain: {
+      color: "#FFFFFF",
+      fontSize: 16,
+      fontWeight: "900",
+      marginTop: 2,
+    },
+
+    heroHeadline: {
+      color: "#FFFFFF",
+      fontSize: 24,
+      lineHeight: 30,
+      fontWeight: "900",
+      textAlign: "right",
+      maxWidth: "94%",
+      marginTop: 16,
+    },
+
+    heroDescription: {
+      color: "rgba(255,255,255,0.78)",
+      fontSize: 12,
+      lineHeight: 20,
+      textAlign: "right",
+      marginTop: 3,
+      maxWidth: "94%",
+    },
+
+    heroFooter: {
+      flexDirection: "row-reverse",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 16,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: "rgba(255,255,255,0.10)",
+    },
+
+    heroMeta: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 5,
+      maxWidth: "48%",
+    },
+
+    heroMetaText: {
+      color: "rgba(255,255,255,0.72)",
+      fontSize: 10,
+      fontWeight: "700",
+    },
+
+    warningCard: {
+      flexDirection: "row-reverse",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: 12,
+      borderRadius: 17,
+      backgroundColor: "#FFF6F6",
+      borderWidth: 1,
+      borderColor: "#F2C3C3",
+    },
+
+    warningIcon: {
+      width: 34,
+      height: 34,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#FEE2E2",
+    },
+
+    warningContent: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    warningTitle: {
+      color: appTheme.dangerColor,
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    warningText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      lineHeight: 17,
+      marginTop: 2,
+      textAlign: "right",
+    },
+
+    sectionTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: 2,
+    },
+
+    sectionKicker: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 8,
+      fontWeight: "900",
+      letterSpacing: 1.6,
+      textAlign: "right",
+    },
+
+    sectionTitle: {
+      color: appTheme.textColor,
+      fontSize: 18,
+      fontWeight: "900",
+      textAlign: "right",
+      marginTop: 2,
+    },
+
+    sectionBadge: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 9,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: appTheme.primaryColor + "10",
+    },
+
+    sectionBadgeText: {
+      color: appTheme.primaryColor,
+      fontSize: 9,
+      fontWeight: "900",
+    },
+
+    metricsRow: {
+      flexDirection: "row",
+      gap: 10,
+    },
+
+    metricCard: {
+      flex: 1,
+      minHeight: 124,
+      padding: 15,
+      borderRadius: 24,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor + "70",
+      shadowColor: "#111827",
+      shadowOffset: { width: 0, height: 5 },
+      shadowOpacity: 0.028,
+      shadowRadius: 15,
+      elevation: 1,
+    },
+
+    metricIcon: {
+      width: 32,
+      height: 32,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      alignSelf: "flex-end",
+    },
+
+    metricValue: {
+      color: appTheme.textColor,
+      fontSize: 30,
+      fontWeight: "900",
+      textAlign: "right",
+      marginTop: 12,
+      letterSpacing: -0.6,
+    },
+
+    metricLabel: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "700",
+      textAlign: "right",
+      marginTop: 1,
+    },
+
+    glassCard: {
+      borderRadius: 24,
+      padding: 16,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor + "80",
+      shadowColor: "#0F172A",
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 0.025,
+      shadowRadius: 14,
+      elevation: 1,
+    },
+
+    capacityTop: {
+      flexDirection: "row",
+      alignItems: "flex-end",
+      justifyContent: "space-between",
+    },
+
+    miniLabel: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 8,
+      fontWeight: "900",
+      letterSpacing: 1.5,
+      textAlign: "right",
+    },
+
+    capacityTitle: {
+      color: appTheme.textColor,
+      fontSize: 14,
+      fontWeight: "900",
+      marginTop: 3,
+      textAlign: "right",
+    },
+
+    capacityNumberBlock: {
+      flexDirection: "row-reverse",
+      alignItems: "flex-end",
+    },
+
+    capacityNumber: {
+      color: appTheme.primaryColor,
+      fontSize: 24,
+      fontWeight: "900",
+      letterSpacing: -0.4,
+    },
+
+    capacitySlash: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      fontWeight: "800",
+      marginBottom: 3,
+      marginRight: 2,
+    },
+
+    progressOuter: {
+      height: 9,
+      marginTop: 15,
+      borderRadius: 99,
+      backgroundColor: appTheme.borderColor,
+      overflow: "hidden",
+    },
+
+    progressInner: {
+      height: "100%",
+      borderRadius: 99,
+    },
+
+    capacityBottom: {
+      flexDirection: "row-reverse",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginTop: 9,
+    },
+
+    capacityHint: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "600",
+    },
+
+    capacityPercent: {
+      color: appTheme.primaryColor,
+      fontSize: 10,
+      fontWeight: "900",
+    },
+
+    cardHeading: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+
+    cardHeadingTitle: {
+      color: appTheme.textColor,
+      fontSize: 14,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    cardHeadingHint: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 9,
+      fontWeight: "700",
+    },
+
+    infoItem: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 10,
+    },
+
+    infoIcon: {
+      width: 35,
+      height: 35,
+      borderRadius: 12,
+      backgroundColor: appTheme.primaryDarkColor,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    infoCopy: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    infoTitle: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "600",
+    },
+
+    infoValue: {
+      color: appTheme.textColor,
+      fontSize: 12,
+      fontWeight: "900",
+      marginTop: 2,
+      textAlign: "right",
+    },
+
+    rowDivider: {
+      height: 1,
+      backgroundColor: appTheme.borderColor,
+      marginVertical: 11,
+    },
+
+    footerNote: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 6,
+      paddingHorizontal: 8,
+      paddingBottom: 4,
+    },
+
+    footerNoteText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 9,
+      fontWeight: "600",
+      textAlign: "center",
+    },
+
+    loadingCard: {
+      minHeight: 140,
+      borderRadius: 20,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 9,
+    },
+
+    loadingText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "700",
+    },
+  });

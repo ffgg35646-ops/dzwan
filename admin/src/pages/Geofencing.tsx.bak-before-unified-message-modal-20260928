@@ -1,0 +1,1698 @@
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../lib/api";
+
+type Area = {
+  _id: string;
+  name: string;
+  isActive?: boolean;
+  captainsEnabled?: boolean;
+};
+
+type Governorate = {
+  _id: string;
+  name: string;
+  isActive?: boolean;
+  captainsEnabled?: boolean;
+  areas?: Area[];
+};
+
+type CoverageRow = {
+  _id: string;
+  sourceGovernorateId: any;
+  sourceAreaId: any;
+  targetGovernorateId: any;
+  targetAreaId: any;
+  isActive?: boolean;
+};
+
+type WorkArea = {
+  _id: string;
+  governorateId: any;
+  areaId: any;
+  isActive?: boolean;
+};
+
+type Captain = {
+  _id: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  governorateId?: any;
+  areaId?: any;
+  status?: string;
+};
+
+function unwrap(value: any) {
+  return value?.data ?? value;
+}
+
+function toId(value: any) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return String(value?._id ?? value?.id ?? "");
+}
+
+function toName(value: any) {
+  if (!value) return "";
+  if (typeof value === "string") return value;
+  return String(value?.name ?? "");
+}
+
+function getLocations(value: any): Governorate[] {
+  const x = unwrap(value);
+
+  if (Array.isArray(x)) return x;
+  if (Array.isArray(x?.locations)) return x.locations;
+  if (Array.isArray(x?.data)) return x.data;
+
+  return [];
+}
+
+const cardStyle = {
+  background: "#ffffff",
+  border: "1px solid #e2e8f0",
+  borderRadius: 18,
+  padding: 22,
+  boxShadow: "0 8px 24px rgba(15,23,42,0.05)",
+};
+
+const selectStyle = {
+  width: "100%",
+  height: 48,
+  padding: "0 14px",
+  borderRadius: 12,
+  border: "1px solid #cbd5e1",
+  background: "#fff",
+  color: "#0f172a",
+  fontSize: 15,
+  outline: "none",
+  boxSizing: "border-box" as const,
+};
+
+const primaryButton = {
+  height: 46,
+  padding: "0 20px",
+  border: 0,
+  borderRadius: 12,
+  background: "#F28C28",
+  color: "#fff",
+  cursor: "pointer",
+  fontSize: 15,
+  fontWeight: 700,
+};
+
+const secondaryButton = {
+  height: 42,
+  padding: "0 16px",
+  border: "1px solid #cbd5e1",
+  borderRadius: 10,
+  background: "#fff",
+  color: "#0f172a",
+  cursor: "pointer",
+  fontSize: 14,
+  fontWeight: 600,
+};
+
+const dangerButton = {
+  height: 38,
+  padding: "0 14px",
+  border: 0,
+  borderRadius: 10,
+  background: "#fee2e2",
+  color: "#b91c1c",
+  cursor: "pointer",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
+export default function Geofencing() {
+  const [locations, setLocations] = useState<Governorate[]>([]);
+  const [coverageRows, setCoverageRows] = useState<CoverageRow[]>([]);
+
+  const [tab, setTab] = useState<"default" | "captain">("default");
+
+  const [sourceGovernorateId, setSourceGovernorateId] = useState("");
+  const [sourceAreaId, setSourceAreaId] = useState("");
+
+  const [targetGovernorateId, setTargetGovernorateId] = useState("");
+  const [targetAreaId, setTargetAreaId] = useState("");
+
+  const [pendingTargets, setPendingTargets] = useState<
+    { governorateId: string; areaId: string }[]
+  >([]);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const [captainQuery, setCaptainQuery] = useState("");
+  const [captains, setCaptains] = useState<Captain[]>([]);
+  const [selectedCaptain, setSelectedCaptain] = useState<Captain | null>(null);
+  const [captainWorkAreas, setCaptainWorkAreas] = useState<WorkArea[]>([]);
+  const [customCaptainGovernorateId, setCustomCaptainGovernorateId] = useState("");
+  const [customCaptainAreaId, setCustomCaptainAreaId] = useState("");
+
+  const customCaptainAreaOptions = useMemo(() => {
+    const governorate = locations.find(
+      (item: any) =>
+        toId(item._id) === customCaptainGovernorateId,
+    ) as any;
+
+    return Array.isArray(governorate?.areas)
+      ? governorate.areas
+      : [];
+  }, [locations, customCaptainGovernorateId]);
+
+  const [captainLoading, setCaptainLoading] = useState(false);
+
+  const sourceGovernorate = useMemo(
+    () =>
+      locations.find((item) => String(item._id) === String(sourceGovernorateId)) ||
+      null,
+    [locations, sourceGovernorateId],
+  );
+
+  const targetGovernorate = useMemo(
+    () =>
+      locations.find((item) => String(item._id) === String(targetGovernorateId)) ||
+      null,
+    [locations, targetGovernorateId],
+  );
+
+  const sourceAreas = sourceGovernorate?.areas ?? [];
+  const targetAreas = targetGovernorate?.areas ?? [];
+
+  const groupedCoverage = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        sourceGovernorateId: string;
+        sourceAreaId: string;
+        targets: { governorateId: string; areaId: string }[];
+      }
+    >();
+
+    for (const row of coverageRows) {
+      if (row.isActive === false) continue;
+
+      const sourceGov = toId(row.sourceGovernorateId);
+      const sourceArea = toId(row.sourceAreaId);
+
+      if (!sourceGov || !sourceArea) continue;
+
+      const key = `${sourceGov}:${sourceArea}`;
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          sourceGovernorateId: sourceGov,
+          sourceAreaId: sourceArea,
+          targets: [],
+        });
+      }
+
+      groups.get(key)!.targets.push({
+        governorateId: toId(row.targetGovernorateId),
+        areaId: toId(row.targetAreaId),
+      });
+    }
+
+    return Array.from(groups.values());
+  }, [coverageRows]);
+
+  function findGovernorateName(id: any) {
+    const key = toId(id);
+
+    return (
+      locations.find((item) => String(item._id) === key)?.name ||
+      toName(id) ||
+      "محافظة غير محددة"
+    );
+  }
+
+  function findAreaName(governorateId: any, areaId: any) {
+    const governorate = locations.find(
+      (item) => String(item._id) === toId(governorateId),
+    );
+
+    const area = governorate?.areas?.find(
+      (item) => String(item._id) === toId(areaId),
+    );
+
+    return area?.name || toName(areaId) || "منطقة غير محددة";
+  }
+
+  function showError(value: any) {
+    const url = value?.config?.url || value?.response?.config?.url || "";
+    const status = value?.response?.status || "";
+    const apiMessage =
+      value?.response?.data?.message ||
+      value?.message ||
+      "حدث خطأ غير متوقع.";
+
+    console.error("GEOFENCING PAGE ERROR:", {
+      url,
+      status,
+      response: value?.response?.data,
+    });
+
+    setError(
+      `${status ? `HTTP ${status} - ` : ""}${url ? `${url} - ` : ""}${apiMessage}`,
+    );
+  }
+
+  async function loadAll() {
+    setLoading(true);
+    setError("");
+
+    try {
+      const [locationsResponse, coverageResponse] = await Promise.all([
+        api.get("/locations"),
+        api.get("/captain-work-areas/coverage/default"),
+      ]);
+
+      setLocations(getLocations(locationsResponse));
+
+      const coverageData = unwrap(coverageResponse);
+
+      setCoverageRows(
+        Array.isArray(coverageData)
+          ? coverageData
+          : Array.isArray(coverageData?.rows)
+            ? coverageData.rows
+            : [],
+      );
+    } catch (err) {
+      showError(err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadAll();
+  }, []);
+
+  function resetMessages() {
+    setError("");
+    setMessage("");
+  }
+
+  function changeSourceGovernorate(value: string) {
+    resetMessages();
+    setSourceGovernorateId(value);
+    setSourceAreaId("");
+    setPendingTargets([]);
+  }
+
+  function changeSourceArea(value: string) {
+    resetMessages();
+    setSourceAreaId(value);
+
+    const existing = coverageRows
+      .filter(
+        (row) =>
+          row.isActive !== false &&
+          toId(row.sourceGovernorateId) === sourceGovernorateId &&
+          toId(row.sourceAreaId) === value,
+      )
+      .map((row) => ({
+        governorateId: toId(row.targetGovernorateId),
+        areaId: toId(row.targetAreaId),
+      }));
+
+    setPendingTargets(existing);
+  }
+
+  function changeTargetGovernorate(value: string) {
+    resetMessages();
+    setTargetGovernorateId(value);
+    setTargetAreaId("");
+  }
+
+  function addPendingTarget() {
+    if (!sourceGovernorateId || !sourceAreaId) {
+      setError("اختر المحافظة والمنطقة المصدر أولًا.");
+      return;
+    }
+
+    if (!targetGovernorateId || !targetAreaId) {
+      setError("اختر المحافظة والمنطقة المستهدفة.");
+      return;
+    }
+
+    const exists = pendingTargets.some(
+      (item) =>
+        item.governorateId === targetGovernorateId &&
+        item.areaId === targetAreaId,
+    );
+
+    if (exists) {
+      setError("هذه المنطقة مضافة بالفعل.");
+      return;
+    }
+
+    setPendingTargets((current) => [
+      ...current,
+      {
+        governorateId: targetGovernorateId,
+        areaId: targetAreaId,
+      },
+    ]);
+
+    setTargetGovernorateId("");
+    setTargetAreaId("");
+    setError("");
+    setMessage("");
+  }
+
+  function removePendingTarget(governorateId: string, areaId: string) {
+    setPendingTargets((current) =>
+      current.filter(
+        (item) =>
+          item.governorateId !== governorateId ||
+          item.areaId !== areaId,
+      ),
+    );
+    resetMessages();
+  }
+
+  async function saveDefaultCoverage() {
+    if (!sourceGovernorateId || !sourceAreaId) {
+      setError("اختر المحافظة والمنطقة المصدر أولًا.");
+      return;
+    }
+
+    const targets =
+      pendingTargets.length > 0
+        ? pendingTargets
+        : targetGovernorateId && targetAreaId
+          ? [{ governorateId: targetGovernorateId, areaId: targetAreaId }]
+          : [];
+
+    if (!targets.length) {
+      setError("اختر منطقة مستهدفة واحدة على الأقل قبل الحفظ.");
+      return;
+    }
+
+    setSaving(true);
+    resetMessages();
+
+    try {
+      await api.put("/captain-work-areas/coverage/default", {
+        sourceGovernorateId,
+        sourceAreaId,
+        targets,
+      });
+
+      await loadAll();
+
+      setMessage("تم حفظ التغطية بنجاح وظهرت في القائمة المحفوظة.");
+
+      setTargetGovernorateId("");
+      setTargetAreaId("");
+      setPendingTargets([]);
+    } catch (err) {
+      showError(err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function editCoverage(
+    sourceGovId: string,
+    sourceAreaIdValue: string,
+  ) {
+    const rows = coverageRows.filter(
+      (row) =>
+        row.isActive !== false &&
+        toId(row.sourceGovernorateId) === sourceGovId &&
+        toId(row.sourceAreaId) === sourceAreaIdValue,
+    );
+
+    setTab("default");
+    setSourceGovernorateId(sourceGovId);
+    setSourceAreaId(sourceAreaIdValue);
+
+    setPendingTargets(
+      rows.map((row) => ({
+        governorateId: toId(row.targetGovernorateId),
+        areaId: toId(row.targetAreaId),
+      })),
+    );
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    setMessage("تم تحميل التغطية للتعديل.");
+    setError("");
+  }
+
+  async function searchCaptains(value: string) {
+    const query = value.trim();
+
+    setCaptainQuery(value);
+
+    if (!query) {
+      setCaptains([]);
+      setCaptainLoading(false);
+      setSelectedCaptain(null);
+      setCaptainWorkAreas([]);
+      return;
+    }
+
+    setCaptainLoading(true);
+    setError("");
+
+    try {
+      const response = await api.get(
+        "/captain-work-areas/coverage/captains",
+        {
+          params: { q: query },
+        },
+      );
+
+      const data = unwrap(response);
+
+      setCaptains(
+        Array.isArray(data)
+          ? data
+          : Array.isArray(data?.captains)
+            ? data.captains
+            : [],
+      );
+    } catch (err) {
+      showError(err);
+      setCaptains([]);
+    } finally {
+      setCaptainLoading(false);
+    }
+  }
+
+  async function openCaptain(captain: Captain) {
+    setSelectedCaptain(captain);
+    setCaptainWorkAreas([]);
+    resetMessages();
+
+    try {
+      const response = await api.get(
+        `/captain-work-areas/coverage/captains/${captain._id}`,
+      );
+
+      const data = unwrap(response);
+
+      setSelectedCaptain(data?.captain || captain);
+      setCaptainWorkAreas(
+        Array.isArray(data?.workAreas) ? data.workAreas : [],
+      );
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  function captainAreaKey(governorateId: any, areaId: any) {
+    return `${toId(governorateId)}:${toId(areaId)}`;
+  }
+
+  const allowedCaptainAreas = useMemo(() => {
+    if (!selectedCaptain) return [];
+
+    const sourceGov = toId(selectedCaptain.governorateId);
+    const sourceArea = toId(selectedCaptain.areaId);
+
+    const result = [
+      {
+        governorateId: sourceGov,
+        areaId: sourceArea,
+      },
+      ...coverageRows
+        .filter(
+          (row) =>
+            row.isActive !== false &&
+            toId(row.sourceGovernorateId) === sourceGov &&
+            toId(row.sourceAreaId) === sourceArea,
+        )
+        .map((row) => ({
+          governorateId: toId(row.targetGovernorateId),
+          areaId: toId(row.targetAreaId),
+        })),
+    ];
+
+    return result.filter(
+      (item, index, array) =>
+        item.governorateId &&
+        item.areaId &&
+        array.findIndex(
+          (x) =>
+            x.governorateId === item.governorateId &&
+            x.areaId === item.areaId,
+        ) === index,
+    );
+  }, [coverageRows, selectedCaptain]);
+
+  async function addCaptainArea(
+    governorateId: string,
+    areaId: string,
+  ) {
+    if (!selectedCaptain) return;
+
+    setError("");
+    setMessage("");
+
+    try {
+      await api.post(
+        `/captain-work-areas/coverage/captains/${selectedCaptain._id}/areas`,
+        {
+          governorateId,
+          areaId,
+        },
+      );
+
+      const response = await api.get(
+        `/captain-work-areas/coverage/captains/${selectedCaptain._id}`,
+      );
+
+      const data = unwrap(response);
+
+      setCaptainWorkAreas(
+        Array.isArray(data?.workAreas) ? data.workAreas : [],
+      );
+
+      setMessage("تم تفعيل المنطقة للكابتن.");
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  async function removeCaptainArea(workAreaId: string) {
+    if (!selectedCaptain) return;
+
+    setError("");
+    setMessage("");
+
+    try {
+      await api.delete(
+        `/captain-work-areas/coverage/captains/${selectedCaptain._id}/areas/${workAreaId}`,
+      );
+
+      setCaptainWorkAreas((current) =>
+        current.filter((item) => item._id !== workAreaId),
+      );
+
+      setMessage("تم حذف منطقة العمل للكابتن.");
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  async function addCustomCaptainArea() {
+    if (
+      !selectedCaptain ||
+      !customCaptainGovernorateId ||
+      !customCaptainAreaId
+    ) {
+      return;
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      await api.post(
+        `/captain-work-areas/coverage/captains/${selectedCaptain._id}/areas`,
+        {
+          governorateId: customCaptainGovernorateId,
+          areaId: customCaptainAreaId,
+        },
+      );
+
+      const response = await api.get(
+        `/captain-work-areas/coverage/captains/${selectedCaptain._id}`,
+      );
+
+      const data = unwrap(response);
+
+      setCaptainWorkAreas(
+        Array.isArray(data?.workAreas)
+          ? data.workAreas
+          : [],
+      );
+
+      setCustomCaptainAreaId("");
+      setMessage("تمت إضافة المنطقة للكابتن المخصص.");
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  async function applyCaptainDefault() {
+    if (!selectedCaptain) return;
+
+    setError("");
+    setMessage("");
+
+    try {
+      await api.post(
+        `/captain-work-areas/coverage/captains/${selectedCaptain._id}/apply-default`,
+      );
+
+      const response = await api.get(
+        `/captain-work-areas/coverage/captains/${selectedCaptain._id}`,
+      );
+
+      const data = unwrap(response);
+
+      setCaptainWorkAreas(
+        Array.isArray(data?.workAreas) ? data.workAreas : [],
+      );
+
+      setMessage("تم تطبيق النظام الافتراضي على الكابتن.");
+    } catch (err) {
+      showError(err);
+    }
+  }
+
+  return (
+    <div
+      dir="rtl"
+      style={{
+        minHeight: "100%",
+        padding: 24,
+        background: "#f8fafc",
+        boxSizing: "border-box",
+      }}
+    >
+      <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+        <div style={{ marginBottom: 22 }}>
+          <h1
+            style={{
+              margin: 0,
+              fontSize: 30,
+              color: "#0f172a",
+              fontWeight: 800,
+            }}
+          >
+            المناطق الجغرافية للكباتن
+          </h1>
+
+          <p
+            style={{
+              margin: "8px 0 0",
+              color: "#64748b",
+              fontSize: 15,
+            }}
+          >
+            تحديد التغطية الافتراضية للمناطق وإدارة مناطق كل كابتن.
+          </p>
+        </div>
+
+        {message ? (
+          <div
+            style={{
+              ...cardStyle,
+              marginBottom: 16,
+              borderColor: "#bbf7d0",
+              background: "#f0fdf4",
+              color: "#166534",
+            }}
+          >
+            {message}
+          </div>
+        ) : null}
+
+        {error ? (
+          <div
+            style={{
+              ...cardStyle,
+              marginBottom: 16,
+              borderColor: "#fecaca",
+              background: "#fef2f2",
+              color: "#b91c1c",
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            marginBottom: 18,
+            flexWrap: "wrap",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setTab("default")}
+            style={{
+              ...secondaryButton,
+              background: tab === "default" ? "#F28C28" : "#fff",
+              color: tab === "default" ? "#fff" : "#0f172a",
+              borderColor: tab === "default" ? "#F28C28" : "#cbd5e1",
+            }}
+          >
+            التغطية الافتراضية
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setTab("captain")}
+            style={{
+              ...secondaryButton,
+              background: tab === "captain" ? "#F28C28" : "#fff",
+              color: tab === "captain" ? "#fff" : "#0f172a",
+              borderColor: tab === "captain" ? "#F28C28" : "#cbd5e1",
+            }}
+          >
+            تغطية الكابتن
+          </button>
+
+          <button
+            type="button"
+            onClick={() => void loadAll()}
+            style={{ ...secondaryButton, marginRight: "auto" }}
+            disabled={loading}
+          >
+            {loading ? "جاري التحديث..." : "تحديث"}
+          </button>
+        </div>
+
+        {tab === "default" ? (
+          <div style={{ display: "grid", gap: 18 }}>
+            <div style={cardStyle}>
+              <div style={{ marginBottom: 18 }}>
+                <h2
+                  style={{
+                    margin: 0,
+                    color: "#0f172a",
+                    fontSize: 20,
+                  }}
+                >
+                  إنشاء أو تعديل التغطية
+                </h2>
+
+                <p
+                  style={{
+                    margin: "6px 0 0",
+                    color: "#64748b",
+                    fontSize: 14,
+                  }}
+                >
+                  حدد منطقة المصدر ثم أضف المناطق التي يسمح للكابتن بالعمل
+                  فيها.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    "repeat(auto-fit, minmax(240px, 1fr))",
+                  gap: 14,
+                }}
+              >
+                <label style={{ display: "grid", gap: 7 }}>
+                  <span style={{ fontWeight: 700, color: "#334155" }}>
+                    محافظة المصدر
+                  </span>
+
+                  <select
+                    value={sourceGovernorateId}
+                    onChange={(e) =>
+                      changeSourceGovernorate(e.target.value)
+                    }
+                    style={selectStyle}
+                  >
+                    <option value="">اختر المحافظة</option>
+
+                    {locations
+                      .filter((item) => item.isActive !== false)
+                      .map((item) => (
+                        <option key={item._id} value={item._id}>
+                          {item.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: 7 }}>
+                  <span style={{ fontWeight: 700, color: "#334155" }}>
+                    منطقة المصدر
+                  </span>
+
+                  <select
+                    value={sourceAreaId}
+                    onChange={(e) => changeSourceArea(e.target.value)}
+                    style={selectStyle}
+                    disabled={!sourceGovernorateId}
+                  >
+                    <option value="">اختر المنطقة</option>
+
+                    {sourceAreas
+                      .filter((item) => item.isActive !== false)
+                      .map((item) => (
+                        <option key={item._id} value={item._id}>
+                          {item.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 22,
+                  paddingTop: 20,
+                  borderTop: "1px solid #e2e8f0",
+                }}
+              >
+                <h3
+                  style={{
+                    margin: "0 0 14px",
+                    fontSize: 17,
+                    color: "#0f172a",
+                  }}
+                >
+                  المناطق المستهدفة
+                </h3>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns:
+                      "repeat(auto-fit, minmax(220px, 1fr))",
+                    gap: 12,
+                    alignItems: "end",
+                  }}
+                >
+                  <label style={{ display: "grid", gap: 7 }}>
+                    <span style={{ fontWeight: 700, color: "#334155" }}>
+                      المحافظة المستهدفة
+                    </span>
+
+                    <select
+                      value={targetGovernorateId}
+                      onChange={(e) =>
+                        changeTargetGovernorate(e.target.value)
+                      }
+                      style={selectStyle}
+                    >
+                      <option value="">اختر المحافظة</option>
+
+                      {locations
+                        .filter((item) => item.isActive !== false)
+                        .map((item) => (
+                          <option key={item._id} value={item._id}>
+                            {item.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 7 }}>
+                    <span style={{ fontWeight: 700, color: "#334155" }}>
+                      المنطقة المستهدفة
+                    </span>
+
+                    <select
+                      value={targetAreaId}
+                      onChange={(e) => setTargetAreaId(e.target.value)}
+                      style={selectStyle}
+                      disabled={!targetGovernorateId}
+                    >
+                      <option value="">اختر المنطقة</option>
+
+                      {targetAreas
+                        .filter((item) => item.isActive !== false)
+                        .map((item) => (
+                          <option key={item._id} value={item._id}>
+                            {item.name}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={addPendingTarget}
+                    style={primaryButton}
+                  >
+                    + إضافة المنطقة
+                  </button>
+                </div>
+
+                <div style={{ marginTop: 16 }}>
+                  {pendingTargets.length === 0 ? (
+                    <div
+                      style={{
+                        border: "1px dashed #cbd5e1",
+                        borderRadius: 12,
+                        padding: 18,
+                        color: "#64748b",
+                        textAlign: "center",
+                      }}
+                    >
+                      لم تتم إضافة مناطق مستهدفة بعد.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 10,
+                      }}
+                    >
+                      {pendingTargets.map((item, index) => (
+                        <div
+                          key={`${item.governorateId}:${item.areaId}`}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 12,
+                            padding: 14,
+                            borderRadius: 12,
+                            background: "#f8fafc",
+                            border: "1px solid #e2e8f0",
+                          }}
+                        >
+                          <div>
+                            <div
+                              style={{
+                                fontWeight: 700,
+                                color: "#0f172a",
+                              }}
+                            >
+                              {index + 1}.{" "}
+                              {findAreaName(
+                                item.governorateId,
+                                item.areaId,
+                              )}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 3,
+                                fontSize: 13,
+                                color: "#64748b",
+                              }}
+                            >
+                              {findGovernorateName(item.governorateId)}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              removePendingTarget(
+                                item.governorateId,
+                                item.areaId,
+                              )
+                            }
+                            style={dangerButton}
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 18,
+                    display: "flex",
+                    gap: 10,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => void saveDefaultCoverage()}
+                    disabled={saving}
+                    style={{
+                      ...primaryButton,
+                      opacity: saving ? 0.6 : 1,
+                    }}
+                  >
+                    {saving ? "جاري الحفظ..." : "حفظ التغطية"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSourceGovernorateId("");
+                      setSourceAreaId("");
+                      setTargetGovernorateId("");
+                      setTargetAreaId("");
+                      setPendingTargets([]);
+                      resetMessages();
+                    }}
+                    style={secondaryButton}
+                  >
+                    مسح النموذج
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div style={cardStyle}>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <div>
+                  <h2
+                    style={{
+                      margin: 0,
+                      fontSize: 20,
+                      color: "#0f172a",
+                    }}
+                  >
+                    التغطيات المحفوظة
+                  </h2>
+
+                  <p
+                    style={{
+                      margin: "6px 0 0",
+                      color: "#64748b",
+                      fontSize: 14,
+                    }}
+                  >
+                    كل سطر يعرض المصدر والمناطق المسموح الوصول إليها.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    minWidth: 42,
+                    height: 42,
+                    padding: "0 12px",
+                    borderRadius: 12,
+                    display: "grid",
+                    placeItems: "center",
+                    background: "#fff7ed",
+                    color: "#F28C28",
+                    fontWeight: 800,
+                  }}
+                >
+                  {groupedCoverage.length}
+                </div>
+              </div>
+
+              {groupedCoverage.length === 0 ? (
+                <div
+                  style={{
+                    border: "1px dashed #cbd5e1",
+                    borderRadius: 14,
+                    padding: 28,
+                    textAlign: "center",
+                    color: "#64748b",
+                  }}
+                >
+                  لا توجد تغطيات محفوظة حاليًا.
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 12 }}>
+                  {groupedCoverage.map((group) => (
+                    <div
+                      key={`${group.sourceGovernorateId}:${group.sourceAreaId}`}
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        borderRadius: 14,
+                        padding: 16,
+                        background: "#fbfdff",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                          gap: 12,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "#64748b",
+                              marginBottom: 5,
+                            }}
+                          >
+                            منطقة المصدر
+                          </div>
+
+                          <div
+                            style={{
+                              fontWeight: 800,
+                              color: "#0f172a",
+                              fontSize: 17,
+                            }}
+                          >
+                            {findAreaName(
+                              group.sourceGovernorateId,
+                              group.sourceAreaId,
+                            )}
+                          </div>
+
+                          <div
+                            style={{
+                              marginTop: 3,
+                              fontSize: 13,
+                              color: "#64748b",
+                            }}
+                          >
+                            {findGovernorateName(
+                              group.sourceGovernorateId,
+                            )}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              editCoverage(
+                                group.sourceGovernorateId,
+                                group.sourceAreaId,
+                              )
+                            }
+                            style={secondaryButton}
+                          >
+                            تعديل
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const ok = window.confirm(
+                                "هل تريد حذف هذه التغطية المحفوظة؟"
+                              );
+
+                              if (!ok) return;
+
+                              try {
+                                await api.put(
+                                  "/captain-work-areas/coverage/default",
+                                  {
+                                    sourceGovernorateId:
+                                      group.sourceGovernorateId,
+                                    sourceAreaId:
+                                      group.sourceAreaId,
+                                    targets: [],
+                                  },
+                                );
+
+                                await loadAll();
+                              } catch (error) {
+                                console.error(
+                                  "DELETE COVERAGE ERROR:",
+                                  error,
+                                );
+                              }
+                            }}
+                            style={{
+                              ...secondaryButton,
+                              color: "#dc2626",
+                              borderColor: "#fecaca",
+                              background: "#fff1f2",
+                            }}
+                          >
+                            حذف
+                          </button>
+                        </div>
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 14,
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        {group.targets.map((target) => (
+                          <div
+                            key={`${target.governorateId}:${target.areaId}`}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 10,
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              background: "#f8fafc",
+                            }}
+                          >
+                            <span
+                              style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: 999,
+                                background: "#22c55e",
+                                flexShrink: 0,
+                              }}
+                            />
+
+                            <span
+                              style={{
+                                color: "#334155",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {findAreaName(
+                                target.governorateId,
+                                target.areaId,
+                              )}
+                            </span>
+
+                            <span
+                              style={{
+                                color: "#94a3b8",
+                                fontSize: 13,
+                              }}
+                            >
+                              {findGovernorateName(
+                                target.governorateId,
+                              )}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 18 }}>
+            <div style={cardStyle}>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 20,
+                  color: "#0f172a",
+                }}
+              >
+                إدارة تغطية الكابتن
+              </h2>
+
+              <p
+                style={{
+                  margin: "6px 0 18px",
+                  color: "#64748b",
+                  fontSize: 14,
+                }}
+              >
+                ابحث عن الكابتن ثم اعرض مناطق عمله أو طبّق له النظام الافتراضي.
+              </p>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                <span style={{ fontWeight: 700, color: "#334155" }}>
+                  بحث عن كابتن
+                </span>
+
+                <input
+                  value={captainQuery}
+                  onChange={(e) => {
+                    void searchCaptains(e.target.value);
+                  }}
+                  placeholder="الاسم أو الهاتف أو البريد..."
+                  style={selectStyle}
+                />
+              </div>
+
+              {captainLoading ? (
+                <div
+                  style={{
+                    marginTop: 14,
+                    color: "#64748b",
+                  }}
+                >
+                  جاري البحث...
+                </div>
+              ) : null}
+
+              {captains.length > 0 ? (
+                <div
+                  style={{
+                    marginTop: 14,
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  {captains.map((captain) => (
+                    <button
+                      key={captain._id}
+                      type="button"
+                      onClick={() => void openCaptain(captain)}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        textAlign: "right",
+                        padding: 14,
+                        borderRadius: 12,
+                        border: "1px solid #e2e8f0",
+                        background:
+                          selectedCaptain?._id === captain._id
+                            ? "#fff7ed"
+                            : "#fff",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <span>
+                        <strong
+                          style={{
+                            display: "block",
+                            color: "#0f172a",
+                          }}
+                        >
+                          {captain.fullName}
+                        </strong>
+
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: 4,
+                            color: "#64748b",
+                            fontSize: 13,
+                          }}
+                        >
+                          {captain.phone || captain.email || "بدون بيانات اتصال"}
+                        </span>
+                      </span>
+
+                      <span
+                        style={{
+                          color: "#F28C28",
+                          fontWeight: 700,
+                          alignSelf: "center",
+                        }}
+                      >
+                        فتح
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            {selectedCaptain ? (
+              <div style={cardStyle}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "flex-start",
+                    gap: 14,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#64748b",
+                        marginBottom: 5,
+                      }}
+                    >
+                      الكابتن المختار
+                    </div>
+
+                    <h3
+                      style={{
+                        margin: 0,
+                        fontSize: 22,
+                        color: "#0f172a",
+                      }}
+                    >
+                      {selectedCaptain.fullName}
+                    </h3>
+
+                    <div
+                      style={{
+                        marginTop: 6,
+                        color: "#64748b",
+                        fontSize: 14,
+                      }}
+                    >
+                      {selectedCaptain.phone || selectedCaptain.email || ""}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void applyCaptainDefault()}
+                    style={primaryButton}
+                  >
+                    تطبيق النظام الافتراضي
+                  </button>
+                </div>
+
+                          <div
+            style={{
+              marginTop: 18,
+              padding: 16,
+              borderRadius: 14,
+              border: "1px solid #e5e7eb",
+              background: "#fafafa",
+            }}
+          >
+            <h4
+              style={{
+                margin: "0 0 12px",
+                fontSize: 15,
+                fontWeight: 800,
+              }}
+            >
+              إضافة منطقة للكابتن المخصص
+            </h4>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
+              <select
+                value={customCaptainGovernorateId}
+                onChange={(event) => {
+                  setCustomCaptainGovernorateId(event.target.value);
+                  setCustomCaptainAreaId("");
+                }}
+                style={{
+                  width: "100%",
+                  minHeight: 44,
+                  padding: "0 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  background: "#fff",
+                }}
+              >
+                <option value="">اختر المحافظة</option>
+
+                {locations.map((governorate: any) => (
+                  <option
+                    key={governorate._id}
+                    value={toId(governorate._id)}
+                  >
+                    {governorate.name || "بدون اسم"}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={customCaptainAreaId}
+                onChange={(event) =>
+                  setCustomCaptainAreaId(event.target.value)
+                }
+                disabled={!customCaptainGovernorateId}
+                style={{
+                  width: "100%",
+                  minHeight: 44,
+                  padding: "0 12px",
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  background: "#fff",
+                }}
+              >
+                <option value="">
+                  {customCaptainGovernorateId
+                    ? "اختر المنطقة"
+                    : "اختر المحافظة أولًا"}
+                </option>
+
+                {customCaptainAreaOptions.map((area: any) => (
+                  <option
+                    key={area._id}
+                    value={toId(area._id)}
+                  >
+                    {area.name || "بدون اسم"}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void addCustomCaptainArea()}
+              disabled={
+                !selectedCaptain ||
+                !customCaptainGovernorateId ||
+                !customCaptainAreaId
+              }
+              style={{
+                marginTop: 12,
+                width: "100%",
+                minHeight: 44,
+                border: 0,
+                borderRadius: 10,
+                cursor: "pointer",
+                fontWeight: 800,
+                background:
+                  !selectedCaptain ||
+                  !customCaptainGovernorateId ||
+                  !customCaptainAreaId
+                    ? "#d1d5db"
+                    : "#111827",
+                color: "#fff",
+              }}
+            >
+              إضافة منطقة للكابتن
+            </button>
+          </div>
+
+<div style={{ marginTop: 18 }}>
+                  <h4
+                    style={{
+                      margin: "0 0 12px",
+                      color: "#0f172a",
+                      fontSize: 17,
+                    }}
+                  >
+                    المناطق المسموح بها
+                  </h4>
+
+                  {allowedCaptainAreas.length === 0 ? (
+                    <div
+                      style={{
+                        border: "1px dashed #cbd5e1",
+                        borderRadius: 12,
+                        padding: 20,
+                        color: "#64748b",
+                        textAlign: "center",
+                      }}
+                    >
+                      لا توجد مناطق محددة لهذا الكابتن.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(240px, 1fr))",
+                        gap: 10,
+                      }}
+                    >
+                      {allowedCaptainAreas.map((item) => {
+                        const existing = captainWorkAreas.find(
+                          (workArea) =>
+                            captainAreaKey(
+                              workArea.governorateId,
+                              workArea.areaId,
+                            ) ===
+                            captainAreaKey(
+                              item.governorateId,
+                              item.areaId,
+                            ),
+                        );
+
+                        return (
+                          <div
+                            key={captainAreaKey(
+                              item.governorateId,
+                              item.areaId,
+                            )}
+                            style={{
+                              border: "1px solid #e2e8f0",
+                              borderRadius: 12,
+                              padding: 14,
+                              background: "#fbfdff",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontWeight: 800,
+                                color: "#0f172a",
+                              }}
+                            >
+                              {findAreaName(
+                                item.governorateId,
+                                item.areaId,
+                              )}
+                            </div>
+
+                            <div
+                              style={{
+                                marginTop: 4,
+                                fontSize: 13,
+                                color: "#64748b",
+                              }}
+                            >
+                              {findGovernorateName(
+                                item.governorateId,
+                              )}
+                            </div>
+
+                            {existing ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void removeCaptainArea(existing._id)
+                                }
+                                style={{
+                                  ...dangerButton,
+                                  marginTop: 12,
+                                }}
+                              >
+                                حذف من الكابتن
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void addCaptainArea(
+                                    item.governorateId,
+                                    item.areaId,
+                                  )
+                                }
+                                style={{
+                                  ...secondaryButton,
+                                  marginTop: 12,
+                                }}
+                              >
+                                تفعيل للكابتن
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

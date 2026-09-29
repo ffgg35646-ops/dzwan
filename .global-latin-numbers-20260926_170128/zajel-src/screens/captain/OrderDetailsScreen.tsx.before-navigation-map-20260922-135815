@@ -1,0 +1,2235 @@
+import * as ImagePicker from "expo-image-picker";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Alert,
+  Modal,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  Linking,
+  Platform,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
+import MapView, { Marker, Polyline } from "../../components/maps/MapView";
+import { useNavigation, useRoute } from "@react-navigation/native";
+
+import Screen from "../../components/Screen";
+import AppButton from "../../components/AppButton";
+import LoadingState from "../../components/LoadingState";
+import OrderStatusBadge from "../../components/OrderStatusBadge";
+import { useAppTheme } from "../../theme/useAppTheme";
+import {
+  acceptCaptainOrder,
+  uploadDeliveryProofPhoto,
+  uploadPickupOrderPhoto,
+  getDeliveryProof,
+  getPickupOrderPhoto,
+} from "../../api/captainOrder";
+
+import { sendEmergencyAlert } from "../../api/captainEmergency";
+import {
+  cancelOrder,
+  getOrder,
+  getTimeline,
+  updateOrderStatus,
+} from "../../api/orders";
+
+
+function shortOrderNumber(order: any): string {
+  const values = [
+    order?.shortOrderNumber,
+    order?.sequence,
+    order?.orderNumber,
+    order?.number,
+  ];
+
+  for (const value of values) {
+    if (
+      value === undefined ||
+      value === null
+    ) {
+      continue;
+    }
+
+    const raw = String(value).trim();
+
+    if (!raw) continue;
+
+    if (raw.startsWith("DZ-")) {
+      const match = raw.match(
+        /^DZ-\d+-([0-9]+)/
+      );
+
+      if (match?.[1]) {
+        return match[1];
+      }
+
+      return raw.slice(-8);
+    }
+
+    return raw.replace(/^#/, "");
+  }
+
+  return "—";
+}
+
+function moneyText(value: any): string {
+  const amount = Number(value ?? 0);
+
+  if (!Number.isFinite(amount)) {
+    return "0 د.ع";
+  }
+
+  return `${amount.toLocaleString("en-US")} د.ع`;
+}
+
+const STATUS_ACTIONS: Record<
+  string,
+  { label: string; icon: keyof typeof Ionicons.glyphMap; status?: any; pickup?: boolean } | null
+> = {
+  assigned: {
+    label: "التوجه إلى المحل",
+    icon: "navigate-outline",
+    status: "heading_to_shop",
+  },
+  heading_to_shop: {
+    label: "تأكيد الوصول للمحل",
+    icon: "location-outline",
+    status: "arrived_at_shop",
+  },
+  arrived_at_shop: {
+    label: "استلام الطلب",
+    icon: "cube-outline",
+    pickup: true,
+  },
+  picked_up: {
+    label: "بدء التوصيل",
+    icon: "bicycle-outline",
+    status: "on_the_way",
+  },
+  on_the_way: {
+    label: "إثبات التسليم",
+    icon: "checkmark-circle-outline",
+    status: "delivered",
+  },
+};
+
+const EMERGENCY_REASONS = [
+  {
+    value: "vehicle_breakdown" as const,
+    label: "عطل في المركبة",
+    icon: "car-outline" as const,
+  },
+  {
+    value: "customer_issue" as const,
+    label: "مشكلة مع العميل",
+    icon: "person-outline" as const,
+  },
+  {
+    value: "establishment_issue" as const,
+    label: "مشكلة مع المطعم / المحل",
+    icon: "storefront-outline" as const,
+  },
+  {
+    value: "accident" as const,
+    label: "حادث",
+    icon: "warning-outline" as const,
+  },
+  {
+    value: "cannot_complete" as const,
+    label: "لا أستطيع إكمال الطلب",
+    icon: "hand-left-outline" as const,
+  },
+  {
+    value: "other" as const,
+    label: "سبب آخر",
+    icon: "ellipsis-horizontal-circle-outline" as const,
+  },
+];
+
+export default function OrderDetailsScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const route = useRoute<any>();
+  const navigation = useNavigation<any>();
+
+  const orderId = String(route.params?.orderId || "");
+  const isWebPlatform = Platform.OS === "web";
+
+  const [order, setOrder] = useState<any>(null);
+  const [deliveryProofPhoto, setDeliveryProofPhoto] =
+    useState<any>(null);
+  const [pickupOrderPhoto, setPickupOrderPhoto] =
+    useState<any>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+
+  const [timeline, setTimeline] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [captainLocation, setCaptainLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+
+  const [emergencyModalVisible, setEmergencyModalVisible] =
+    useState(false);
+
+  const [emergencyType, setEmergencyType] =
+    useState<
+      (typeof EMERGENCY_REASONS)[number]["value"]
+    >("vehicle_breakdown");
+
+  const [emergencyDescription, setEmergencyDescription] =
+    useState("");
+
+  const [emergencyBusy, setEmergencyBusy] =
+    useState(false);
+
+  const isPickupStage =
+    order?.status === "assigned" ||
+    order?.status === "heading_to_shop" ||
+    order?.status === "arrived_at_shop";
+
+  const mapTarget =
+    isPickupStage
+      ? {
+          latitude: Number(order?.establishmentId?.latitude),
+          longitude: Number(order?.establishmentId?.longitude),
+          title: order?.establishmentId?.name || "المحل",
+        }
+      : {
+          latitude: Number(order?.customerSnapshot?.latitude),
+          longitude: Number(order?.customerSnapshot?.longitude),
+          title: order?.customerSnapshot?.name || "العميل",
+        };
+
+  const hasMapTarget =
+    Number.isFinite(mapTarget.latitude) &&
+    Number.isFinite(mapTarget.longitude) &&
+    mapTarget.latitude !== 0 &&
+    mapTarget.longitude !== 0;
+
+
+
+  async function choosePhoto(
+    kind: "pickup" | "delivery",
+  ) {
+    if (!orderId) return;
+
+    const permission =
+      await ImagePicker.requestCameraPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "صلاحية الكاميرا",
+        "يجب السماح باستخدام الكاميرا.",
+      );
+      return;
+    }
+
+    const result =
+      await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        quality: 0.85,
+      });
+
+    if (
+      result.canceled ||
+      !result.assets?.[0]?.uri
+    ) {
+      return;
+    }
+
+    try {
+      setPhotoBusy(true);
+
+      const uri = result.assets[0].uri;
+
+      if (kind === "pickup") {
+        const response =
+          await uploadPickupOrderPhoto(
+            orderId,
+            uri,
+          );
+
+        setPickupOrderPhoto(
+          response?.photo ??
+          response?.data ??
+          response,
+        );
+
+        Alert.alert(
+          "تم الحفظ",
+          "تم حفظ صورة الطلب عند الاستلام.",
+        );
+      } else {
+        const response =
+          await uploadDeliveryProofPhoto(
+            orderId,
+            uri,
+          );
+
+        setDeliveryProofPhoto(
+          response?.proof ??
+          response?.photo ??
+          response?.data ??
+          response,
+        );
+
+        Alert.alert(
+          "تم الحفظ",
+          "تم حفظ صورة إثبات التسليم.",
+        );
+      }
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر رفع الصورة",
+        error?.response?.data?.message ||
+          "تعذر حفظ الصورة.",
+      );
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  const load = useCallback(async (silent = false) => {
+    if (!orderId) {
+      setLoading(false);
+      return;
+    }
+
+    if (!silent) setLoading(true);
+
+    try {
+      const [orderData, timelineData] = await Promise.all([
+        getOrder(orderId),
+        getTimeline(orderId),
+      ]);
+
+      setOrder(orderData);
+
+      try {
+        const [deliveryResult, pickupResult] =
+          await Promise.all([
+            getDeliveryProof(orderId).catch(() => null),
+            getPickupOrderPhoto(orderId).catch(() => null),
+          ]);
+
+        setDeliveryProofPhoto(
+          deliveryResult?.proof ??
+          deliveryResult?.data ??
+          deliveryResult,
+        );
+
+        setPickupOrderPhoto(
+          pickupResult?.photo ??
+          pickupResult?.data ??
+          pickupResult,
+        );
+      } catch {
+        // الصور اختيارية؛ لا نمنع تحميل الطلب.
+      }
+
+      setTimeline(timelineData);
+    } catch (error: any) {
+      if (!silent) {
+        Alert.alert(
+          "تعذر تحميل الطلب",
+          error?.response?.data?.message ||
+            "تعذر تحميل تفاصيل الطلب."
+        );
+      }
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, [orderId]);
+
+  useEffect(() => {
+    load();
+
+    const timer = setInterval(() => load(true), 10000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    (async () => {
+      try {
+        const permission =
+          await Location.requestForegroundPermissionsAsync();
+
+        if (permission.status !== "granted") return;
+
+        const current =
+          await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+
+        if (mounted) {
+          setCaptainLocation({
+            latitude: current.coords.latitude,
+            longitude: current.coords.longitude,
+          });
+        }
+      } catch {
+        // موقع الكابتن اختياري.
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const status = order?.status;
+  const action = STATUS_ACTIONS[status] || null;
+
+  const final = [
+    "delivered",
+    "cancelled",
+    "rejected",
+  ].includes(status);
+
+  const customerLatitude =
+    Number(order?.customerSnapshot?.latitude);
+
+  const customerLongitude =
+    Number(order?.customerSnapshot?.longitude);
+
+  const hasCustomerLocation =
+    Number.isFinite(customerLatitude) &&
+    Number.isFinite(customerLongitude);
+
+  function distanceKm(
+    fromLat: number,
+    fromLng: number,
+    toLat: number,
+    toLng: number,
+  ) {
+    const rad = (value: number) =>
+      (value * Math.PI) / 180;
+
+    const R = 6371;
+    const dLat = rad(toLat - fromLat);
+    const dLng = rad(toLng - fromLng);
+
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(rad(fromLat)) *
+        Math.cos(rad(toLat)) *
+        Math.sin(dLng / 2) ** 2;
+
+    return (
+      R *
+      2 *
+      Math.atan2(
+        Math.sqrt(a),
+        Math.sqrt(1 - a),
+      )
+    );
+  }
+
+  const distance =
+    hasCustomerLocation && captainLocation
+      ? distanceKm(
+          captainLocation.latitude,
+          captainLocation.longitude,
+          customerLatitude,
+          customerLongitude,
+        )
+      : null;
+
+  const etaMinutes =
+    distance !== null
+      ? Math.max(
+          1,
+          Math.ceil((distance / 35) * 60),
+        )
+      : null;
+
+  const openCustomerMap = async () => {
+    if (!hasCustomerLocation) return;
+
+    const url =
+      Platform.OS === "ios"
+        ? `http://maps.apple.com/?ll=${customerLatitude},${customerLongitude}`
+        : `https://www.google.com/maps/search/?api=1&query=${customerLatitude},${customerLongitude}`;
+
+    if (await Linking.canOpenURL(url)) {
+      await Linking.openURL(url);
+    }
+  };
+
+  const restaurant = useMemo(
+    () => ({
+      name:
+        order?.establishmentId?.name ||
+        order?.establishment?.name ||
+        order?.establishmentName ||
+        "—",
+
+      phone:
+        order?.establishmentId?.phone ||
+        order?.establishment?.phone ||
+        order?.establishmentPhone ||
+        "—",
+
+      address:
+        order?.establishmentId?.address ||
+        order?.establishment?.address ||
+        order?.establishmentAddress ||
+        "—",
+    }),
+    [order],
+  );
+
+  const customer = useMemo(
+    () => ({
+      name:
+        order?.customerSnapshot?.name ||
+        order?.customer?.name ||
+        order?.customerName ||
+        "—",
+      phone:
+        order?.customerSnapshot?.phone ||
+        order?.customer?.phone ||
+        order?.customerPhone ||
+        "—",
+      address:
+        order?.address?.address ||
+        order?.deliveryAddress ||
+        "—",
+    }),
+    [order]
+  );
+
+  async function acceptCurrentOrder() {
+    setBusy(true);
+
+    try {
+      await acceptCaptainOrder(orderId);
+      await load(true);
+
+      Alert.alert(
+        "تم قبول الطلب",
+        "تم تعيين الطلب لك بنجاح."
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر قبول الطلب",
+        error?.response?.data?.message ||
+          "لا يمكن قبول الطلب الآن."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function changeStatus(nextStatus: any) {
+    setBusy(true);
+
+    try {
+      await updateOrderStatus(orderId, nextStatus);
+      await load(true);
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر تحديث الطلب",
+        error?.response?.data?.message ||
+          "لا يمكن تحديث حالة الطلب."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openEmergencyModal() {
+    setEmergencyType("vehicle_breakdown");
+    setEmergencyDescription("");
+    setEmergencyModalVisible(true);
+  }
+
+  async function submitEmergency() {
+    if (!orderId || emergencyBusy) return;
+
+    const selectedReason =
+      EMERGENCY_REASONS.find(
+        (item) => item.value === emergencyType,
+      );
+
+    const description =
+      emergencyDescription.trim() ||
+      selectedReason?.label ||
+      "الكابتن يحتاج تدخل الإدارة.";
+
+    try {
+      setEmergencyBusy(true);
+
+      await sendEmergencyAlert(
+        orderId,
+        emergencyType,
+        description,
+        captainLocation?.latitude,
+        captainLocation?.longitude,
+      );
+
+      setEmergencyModalVisible(false);
+      setEmergencyDescription("");
+
+      Alert.alert(
+        "🚨 تم إرسال الطوارئ",
+        "تم إرسال حالة الطوارئ إلى الإدارة بنجاح.",
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر إرسال الطوارئ",
+        error?.response?.data?.message ||
+          error?.message ||
+          "تعذر إرسال التنبيه.",
+      );
+    } finally {
+      setEmergencyBusy(false);
+    }
+  }
+
+  async function cancel() {
+    Alert.alert(
+      "إلغاء الطلب",
+      "هل أنت متأكد من إلغاء هذا الطلب؟",
+      [
+        { text: "رجوع", style: "cancel" },
+        {
+          text: "إلغاء الطلب",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+
+            try {
+              await cancelOrder(
+                orderId,
+                "إلغاء الطلب من تطبيق الكابتن."
+              );
+
+              await load(true);
+            } catch (error: any) {
+              Alert.alert(
+                "تعذر الإلغاء",
+                error?.response?.data?.message ||
+                  "لا يمكن إلغاء الطلب في هذه المرحلة."
+              );
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  }
+
+  if (loading) {
+    return (
+      <Screen>
+        <LoadingState message="جاري تحميل تفاصيل الطلب..." />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              load(true);
+            }}
+            tintColor={appTheme.primaryColor}
+            colors={[appTheme.primaryColor]}
+          />
+        }
+        contentContainerStyle={styles.container}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons
+              name="cube-outline"
+              size={23}
+              color={appTheme.primaryColor}
+            />
+          </View>
+
+          <View style={styles.headerContent}>
+            <Text style={styles.eyebrow}>تفاصيل الطلب</Text>
+            <Text style={styles.title}>
+              طلب #{shortOrderNumber(order)}
+            </Text>
+          </View>
+
+          <OrderStatusBadge status={status} />
+        </View>
+
+        <View style={styles.hero}>
+          <Text style={styles.heroLabel}>إجمالي الطلب</Text>
+
+          <Text style={styles.heroMoney}>
+            {order?.total ??
+              order?.subtotal ??
+              0}{" "}
+            د.ع
+          </Text>
+
+          <View style={styles.heroMeta}>
+            <View style={styles.heroMetaItem}>
+              <Ionicons
+                name="bicycle-outline"
+                size={17}
+                color="#CCFBF1"
+              />
+              <Text style={styles.heroMetaText}>
+                توصيل
+              </Text>
+            </View>
+
+            <View style={styles.heroMetaItem}>
+              <Ionicons
+                name="cash-outline"
+                size={17}
+                color="#CCFBF1"
+              />
+              <Text style={styles.heroMetaText}>
+                {order?.deliveryFee ?? 0} د.ع توصيل
+              </Text>
+            </View>
+          </View>
+        </View>
+
+        <SectionTitle
+          title="بيانات الزبون"
+          icon="person-outline"
+          appTheme={appTheme}
+        />
+
+        <View style={styles.formCard}>
+          <InfoRow
+            icon="person-outline"
+            label="الاسم"
+            value={customer.name}
+            appTheme={appTheme}
+          />
+
+          <InfoRow
+            icon="call-outline"
+            label="الهاتف"
+            value={customer.phone}
+            appTheme={appTheme}
+          />
+
+          <InfoRow
+            icon="location-outline"
+            label="عنوان التوصيل"
+            value={customer.address}
+            appTheme={appTheme}
+            last
+          />
+
+          {order?.customerNote && (
+            <View style={styles.noteBox}>
+              <Ionicons
+                name="chatbubble-ellipses-outline"
+                size={18}
+                color={appTheme.warningColor}
+              />
+
+              <View style={styles.noteContent}>
+                <Text style={styles.noteLabel}>
+                  ملاحظات الزبون
+                </Text>
+                <Text style={styles.noteText}>
+                  {order.customerNote}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        <SectionTitle
+          title="بيانات المطعم / المحل"
+          icon="storefront-outline"
+          appTheme={appTheme}
+        />
+
+        <View style={styles.formCard}>
+          <InfoRow
+            icon="storefront-outline"
+            label="اسم المطعم / المحل"
+            value={restaurant.name}
+            appTheme={appTheme}
+          />
+
+          <InfoRow
+            icon="call-outline"
+            label="الهاتف"
+            value={restaurant.phone}
+            appTheme={appTheme}
+          />
+
+          <InfoRow
+            icon="location-outline"
+            label="عنوان الاستلام"
+            value={restaurant.address}
+            appTheme={appTheme}
+            last
+          />
+        </View>
+
+        <SectionTitle
+          title="محتويات الطلب"
+          icon="basket-outline"
+          appTheme={appTheme}
+        />
+
+        <View style={styles.productsCard}>
+          {Array.isArray(order?.items) &&
+          order.items.length > 0 ? (
+            order.items.map(
+              (item: any, index: number) => (
+                <View
+                  key={`details-item-${index}`}
+                  style={[
+                    styles.productDetailRow,
+                    index !==
+                      order.items.length - 1 &&
+                      styles.productDetailBorder,
+                  ]}
+                >
+                  <View
+                    style={
+                      styles.productDetailMain
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.productDetailName
+                      }
+                      numberOfLines={2}
+                    >
+                      {item?.name ||
+                        item?.productName ||
+                        item?.title ||
+                        "منتج"}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.productDetailQty
+                      }
+                    >
+                      الكمية: {item?.quantity ?? 1}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={
+                      styles.productDetailPrice
+                    }
+                  >
+                    {moneyText(
+                      item?.total ??
+                      item?.lineTotal ??
+                      item?.subtotal ??
+                      item?.price ??
+                      0,
+                    )}
+                  </Text>
+                </View>
+              ),
+            )
+          ) : (
+            <Text style={styles.emptyInline}>
+              لا توجد تفاصيل منتجات متاحة.
+            </Text>
+          )}
+        </View>
+
+        <SectionTitle
+          title="الحساب"
+          icon="cash-outline"
+          appTheme={appTheme}
+        />
+
+        <View style={styles.moneyCard}>
+          <View style={styles.moneyRow}>
+            <Text style={styles.moneyLabel}>
+              قيمة المنتجات
+            </Text>
+
+            <Text style={styles.moneyValue}>
+              {moneyText(
+                order?.subtotal ??
+                order?.itemsSubtotal ??
+                0,
+              )}
+            </Text>
+          </View>
+
+          <View style={styles.moneyRow}>
+            <Text style={styles.moneyLabel}>
+              رسوم التوصيل
+            </Text>
+
+            <Text style={styles.moneyValue}>
+              {moneyText(
+                order?.deliveryFee ?? 0,
+              )}
+            </Text>
+          </View>
+
+          <View style={styles.grandTotalRow}>
+            <Text
+              style={styles.grandTotalLabel}
+            >
+              الإجمالي النهائي
+            </Text>
+
+            <Text
+              style={styles.grandTotalValue}
+            >
+              {moneyText(
+                order?.total ??
+                order?.subtotal ??
+                0,
+              )}
+            </Text>
+          </View>
+        </View>
+
+        {hasCustomerLocation && (
+          <>
+            <SectionTitle
+              title="موقع الزبون"
+              icon="map-outline"
+              appTheme={appTheme}
+            />
+
+            <View style={styles.mapCard}>
+              <MapView
+                style={styles.map}
+                initialRegion={{
+                  latitude: customerLatitude,
+                  longitude: customerLongitude,
+                  latitudeDelta: 0.035,
+                  longitudeDelta: 0.035,
+                }}
+                showsUserLocation={!!captainLocation}
+                showsMyLocationButton={!!captainLocation}
+              >
+                <Marker
+                  coordinate={{
+                    latitude: customerLatitude,
+                    longitude: customerLongitude,
+                  }}
+                  title="الزبون"
+                  description={customer.address}
+                />
+
+                {captainLocation && (
+                  <>
+                    <Marker
+                      coordinate={captainLocation}
+                      title="موقعك"
+                    />
+
+                    <Polyline
+                      coordinates={[
+                        captainLocation,
+                        {
+                          latitude: customerLatitude,
+                          longitude: customerLongitude,
+                        },
+                      ]}
+                      strokeWidth={4}
+                    />
+                  </>
+                )}
+              </MapView>
+
+              <View style={styles.mapInfo}>
+                <Text style={styles.mapMetricText}>
+                  {distance !== null
+                    ? `المسافة: ${distance.toFixed(1)} كم تقريبًا`
+                    : "جارٍ تحديد المسافة"}
+                </Text>
+
+                <Text style={styles.mapMetricText}>
+                  {etaMinutes !== null
+                    ? `الوقت المتوقع: ${etaMinutes} دقيقة تقريبًا`
+                    : "يتم حساب الوقت"}
+                </Text>
+              </View>
+
+              <AppButton
+                title="فتح الملاحة"
+                onPress={openCustomerMap}
+                style={styles.mapButton}
+              />
+            </View>
+          </>
+        )}
+
+        <SectionTitle
+          title="سجل الطلب"
+          icon="time-outline"
+          appTheme={appTheme}
+        />
+
+        <View style={styles.card}>
+          {timeline?.events?.length ? (
+            timeline.events.map((event: any, index: number) => (
+              <View
+                key={String(event?._id || index)}
+                style={styles.event}
+              >
+                <View style={styles.eventLine}>
+                  {index !== timeline.events.length - 1 && (
+                    <View style={styles.verticalLine} />
+                  )}
+
+                  <View style={styles.eventDot}>
+                    <Ionicons
+                      name="checkmark"
+                      size={11}
+                      color="#FFFFFF"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.eventBody}>
+                  <Text style={styles.eventName}>
+                    {event?.message ||
+                      event?.type ||
+                      "تحديث"}
+                  </Text>
+
+                  {!!event?.createdAt && (
+                    <Text style={styles.eventDate}>
+                      {new Date(
+                        event.createdAt
+                      ).toLocaleString("ar-IQ")}
+                    </Text>
+                  )}
+                </View>
+              </View>
+            ))
+          ) : (
+            <Text style={styles.emptyInline}>
+              لا توجد أحداث مسجلة حتى الآن.
+            </Text>
+          )}
+        </View>
+
+        {!!timeline?.durations && (
+          <>
+            <SectionTitle
+              title="مدة المراحل"
+              icon="timer-outline"
+              appTheme={appTheme}
+            />
+
+            <View style={styles.card}>
+              <DurationRow
+                title="انتظار الكابتن"
+                value={timeline.durations.captain_wait_ms}
+                appTheme={appTheme}
+              />
+
+              <DurationRow
+                title="الوصول للمحل"
+                value={timeline.durations.captain_to_shop_ms}
+                appTheme={appTheme}
+              />
+
+              <DurationRow
+                title="انتظار المحل"
+                value={timeline.durations.shop_wait_ms}
+                appTheme={appTheme}
+              />
+
+              <DurationRow
+                title="مدة التوصيل"
+                value={timeline.durations.delivery_ms}
+                appTheme={appTheme}
+              />
+
+              <DurationRow
+                title="إجمالي الطلب"
+                value={timeline.durations.total_ms}
+                appTheme={appTheme}
+                last
+              />
+            </View>
+          </>
+        )}
+
+        {!final && (
+          <View style={styles.actions}>
+            {status === "pending" && !order?.captainId && (
+              <AppButton
+                title="قبول الطلب"
+                onPress={acceptCurrentOrder}
+                loading={busy}
+              />
+            )}
+
+            {action && status === "assigned" && (
+              <AppButton
+                title={action.label}
+                onPress={() =>
+                  changeStatus(action.status)
+                }
+                loading={busy}
+              />
+            )}
+
+            {action && status === "heading_to_shop" && (
+              <AppButton
+                title={action.label}
+                onPress={() =>
+                  changeStatus(action.status)
+                }
+                loading={busy}
+              />
+            )}
+
+            {action && status === "arrived_at_shop" && (
+              <AppButton
+                title={action.label}
+                onPress={() =>
+                  navigation.navigate("Pickup", {
+                    orderId,
+                  })
+                }
+                loading={busy}
+              />
+            )}
+
+            {action && status === "picked_up" && (
+              <AppButton
+                title={action.label}
+                onPress={() =>
+                  changeStatus(action.status)
+                }
+                loading={busy}
+              />
+            )}
+
+            {status === "on_the_way" && (
+              <AppButton
+                title="إثبات التسليم"
+                onPress={() =>
+                  navigation.navigate("DeliveryProof", {
+                    orderId,
+                  })
+                }
+              />
+            )}
+
+            {(status === "assigned" ||
+              status === "picked_up") && (
+              <AppButton
+                title="الحركة النقدية"
+                secondary
+                onPress={() =>
+                  navigation.navigate("Cash", {
+                    orderId,
+                    orderTotal:
+                      Number(
+                        order?.total ??
+                        order?.subtotal ??
+                        0
+                      ),
+                    deliveryFee:
+                      Number(
+                        order?.deliveryFee ??
+                        0
+                      ),
+                  })
+                }
+              />
+            )}
+
+
+          {/* =====================================================
+              20) صورة الطلب عند الاستلام من المحل
+             ===================================================== */}
+          {(status === "assigned" ||
+            status === "ready_for_pickup") && (
+            <View style={styles.proofCard}>
+              <View style={styles.proofHeader}>
+                <Ionicons
+                  name="camera-outline"
+                  size={22}
+                  color={appTheme.primaryColor}
+                />
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.proofTitle}>
+                    20. صورة الطلب عند الاستلام
+                  </Text>
+
+                  <Text style={styles.proofDescription}>
+                    التقط صورة للطلب عند استلامه من المحل.
+                  </Text>
+                </View>
+              </View>
+
+              {pickupOrderPhoto ? (
+                <View style={styles.proofSuccess}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color="#16A34A"
+                  />
+
+                  <Text style={styles.proofSuccessText}>
+                    تم حفظ صورة الاستلام بنجاح
+                  </Text>
+                </View>
+              ) : (
+                <AppButton
+                  title="تصوير الطلب عند الاستلام"
+                  onPress={() => choosePhoto("pickup")}
+                  loading={photoBusy}
+                  secondary
+                />
+              )}
+            </View>
+          )}
+
+          {/* =====================================================
+              19) صورة إثبات التسليم
+             ===================================================== */}
+          {status === "picked_up" && (
+            <View style={styles.proofCard}>
+              <View style={styles.proofHeader}>
+                <Ionicons
+                  name="shield-checkmark-outline"
+                  size={22}
+                  color={appTheme.primaryColor}
+                />
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.proofTitle}>
+                    19. إثبات التسليم
+                  </Text>
+
+                  <Text style={styles.proofDescription}>
+                    التقط صورة عند تسليم الطلب للزبون.
+                  </Text>
+                </View>
+              </View>
+
+              {deliveryProofPhoto ? (
+                <View style={styles.proofSuccess}>
+                  <Ionicons
+                    name="checkmark-circle"
+                    size={20}
+                    color="#16A34A"
+                  />
+
+                  <Text style={styles.proofSuccessText}>
+                    تم حفظ صورة إثبات التسليم بنجاح
+                  </Text>
+                </View>
+              ) : (
+                <AppButton
+                  title="تصوير إثبات التسليم"
+                  onPress={() => choosePhoto("delivery")}
+                  loading={photoBusy}
+                />
+              )}
+            </View>
+          )}
+
+            <Pressable
+              onPress={openEmergencyModal}
+              disabled={emergencyBusy}
+              style={({ pressed }) => [
+                styles.emergencyButton,
+                pressed && {
+                  transform: [{ scale: 0.985 }],
+                  opacity: 0.92,
+                },
+                emergencyBusy && {
+                  opacity: 0.55,
+                },
+              ]}
+            >
+              {emergencyBusy ? (
+                <Text style={styles.emergencyButtonText}>
+                  جاري الإرسال...
+                </Text>
+              ) : (
+                <>
+                  <Ionicons
+                    name="warning-outline"
+                    size={21}
+                    color="#FFFFFF"
+                  />
+
+                  <Text style={styles.emergencyButtonText}>
+                    🚨 زر الطوارئ
+                  </Text>
+                </>
+              )}
+            </Pressable>
+
+            <AppButton
+              title="إلغاء الطلب"
+              secondary
+              onPress={cancel}
+              loading={busy}
+            />
+          </View>
+        )}
+      </ScrollView>
+
+      <Modal
+        visible={emergencyModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() =>
+          !emergencyBusy &&
+          setEmergencyModalVisible(false)
+        }
+      >
+        <View style={styles.emergencyModalOverlay}>
+          <View style={styles.emergencyModalCard}>
+            <View style={styles.emergencyModalHeader}>
+              <View style={styles.emergencyModalIcon}>
+                <Ionicons
+                  name="warning-outline"
+                  size={26}
+                  color="#DC2626"
+                />
+              </View>
+
+              <View style={styles.emergencyModalHeaderText}>
+                <Text style={styles.emergencyModalTitle}>
+                  🚨 حالة طوارئ
+                </Text>
+
+                <Text style={styles.emergencyModalSubtitle}>
+                  اختر سبب الطوارئ الخاص بهذا الطلب
+                </Text>
+              </View>
+            </View>
+
+            <ScrollView
+              style={styles.emergencyReasonsList}
+              contentContainerStyle={{
+                paddingBottom: 4,
+              }}
+              showsVerticalScrollIndicator={false}
+            >
+              {EMERGENCY_REASONS.map((reason) => {
+                const selected =
+                  emergencyType === reason.value;
+
+                return (
+                  <Pressable
+                    key={reason.value}
+                    onPress={() =>
+                      setEmergencyType(reason.value)
+                    }
+                    style={[
+                      styles.emergencyReason,
+                      selected &&
+                        styles.emergencyReasonSelected,
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.emergencyReasonIcon,
+                        selected &&
+                          styles.emergencyReasonIconSelected,
+                      ]}
+                    >
+                      <Ionicons
+                        name={reason.icon}
+                        size={20}
+                        color={
+                          selected
+                            ? "#FFFFFF"
+                            : "#DC2626"
+                        }
+                      />
+                    </View>
+
+                    <Text
+                      style={[
+                        styles.emergencyReasonText,
+                        selected &&
+                          styles.emergencyReasonTextSelected,
+                      ]}
+                    >
+                      {reason.label}
+                    </Text>
+
+                    {selected && (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={22}
+                        color="#DC2626"
+                      />
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Text style={styles.emergencyInputLabel}>
+              تفاصيل إضافية
+            </Text>
+
+            <TextInput
+              value={emergencyDescription}
+              onChangeText={setEmergencyDescription}
+              placeholder="اكتب تفاصيل المشكلة هنا..."
+              placeholderTextColor="#94A3B8"
+              multiline
+              numberOfLines={4}
+              textAlign="right"
+              textAlignVertical="top"
+              style={styles.emergencyInput}
+              editable={!emergencyBusy}
+              maxLength={2000}
+            />
+
+            <View style={styles.emergencyModalActions}>
+              <Pressable
+                onPress={() =>
+                  setEmergencyModalVisible(false)
+                }
+                disabled={emergencyBusy}
+                style={styles.emergencyCancelButton}
+              >
+                <Text style={styles.emergencyCancelText}>
+                  رجوع
+                </Text>
+              </Pressable>
+
+              <Pressable
+                onPress={submitEmergency}
+                disabled={emergencyBusy}
+                style={[
+                  styles.emergencySendButton,
+                  emergencyBusy && {
+                    opacity: 0.55,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={19}
+                  color="#FFFFFF"
+                />
+
+                <Text style={styles.emergencySendText}>
+                  {emergencyBusy
+                    ? "جاري الإرسال..."
+                    : "إرسال الطوارئ"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </Screen>
+  );
+}
+
+function SectionTitle({
+  title,
+  icon,
+  appTheme,
+}: {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  appTheme: ReturnType<typeof useAppTheme>;
+}) {
+  const styles = createStyles(appTheme);
+
+  return (
+    <View style={styles.sectionTitle}>
+      <View style={styles.sectionIcon}>
+        <Ionicons
+          name={icon}
+          size={17}
+          color={appTheme.primaryColor}
+        />
+      </View>
+
+      <Text style={styles.sectionText}>{title}</Text>
+    </View>
+  );
+}
+
+function InfoRow({
+  icon,
+  label,
+  value,
+  appTheme,
+  last = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  appTheme: ReturnType<typeof useAppTheme>;
+  last?: boolean;
+}) {
+  const styles = createStyles(appTheme);
+
+  return (
+    <View
+      style={[
+        styles.infoRow,
+        !last && styles.infoBorder,
+      ]}
+    >
+      <View style={styles.infoIcon}>
+        <Ionicons
+          name={icon}
+          size={18}
+          color={appTheme.primaryColor}
+        />
+      </View>
+
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>{label}</Text>
+        <Text style={styles.infoValue}>{value}</Text>
+      </View>
+    </View>
+  );
+}
+
+function DurationRow({
+  title,
+  value,
+  appTheme,
+  last = false,
+}: {
+  title: string;
+  value: number | null | undefined;
+  appTheme: ReturnType<typeof useAppTheme>;
+  last?: boolean;
+}) {
+  const styles = createStyles(appTheme);
+
+  let text = "غير متاح";
+
+  if (typeof value === "number") {
+    const totalSeconds = Math.floor(value / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    text = `${minutes} دقيقة ${seconds} ثانية`;
+  }
+
+  return (
+    <View
+      style={[
+        styles.durationRow,
+        !last && styles.durationBorder,
+      ]}
+    >
+      <Text style={styles.durationTitle}>
+        {title}
+      </Text>
+
+      <Text style={styles.durationValue}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>,
+) =>
+  StyleSheet.create({
+    container: {
+      paddingHorizontal: 2,
+      paddingBottom: 34,
+    },
+
+    header: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      marginBottom: 18,
+    },
+
+    headerIcon: {
+      width: 46,
+      height: 46,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor + "12",
+      marginLeft: 11,
+    },
+
+    headerContent: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    eyebrow: {
+      color: appTheme.primaryColor,
+      fontSize: 11,
+      fontWeight: "800",
+    },
+
+    title: {
+      marginTop: 2,
+      color: appTheme.textColor,
+      fontSize: 23,
+      fontWeight: "900",
+    },
+
+    hero: {
+
+      padding: 18,
+      borderRadius: 22,
+      backgroundColor: "#FFF3E3",
+      marginBottom: 4,
+      borderWidth: 1,
+      borderColor: "#F2D5AF",
+    },
+
+    heroLabel: {
+
+      color: "#9B6A37",
+      fontSize: 11,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    heroMoney: {
+
+      marginTop: 4,
+      color: "#CC6E0D",
+      fontSize: 27,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    heroMeta: {
+      marginTop: 15,
+      flexDirection: "row-reverse",
+      gap: 16,
+    },
+
+    heroMetaItem: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 6,
+    },
+
+    heroMetaText: {
+      color: "#CCFBF1",
+      fontSize: 11,
+      fontWeight: "700",
+    },
+
+    sectionTitle: {
+      marginTop: 22,
+      marginBottom: 9,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 7,
+    },
+
+    sectionIcon: {
+      width: 31,
+      height: 31,
+      borderRadius: 10,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor + "12",
+    },
+
+    sectionText: {
+      color: appTheme.textColor,
+      fontSize: 17,
+      fontWeight: "900",
+    },
+
+    formCard: {
+
+      gap: 9,
+    },
+
+    productsCard: {
+
+      padding: 11,
+      borderRadius: 18,
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1,
+      borderColor: "#EDE3D9",
+    },
+
+    productDetailRow: {
+
+      minHeight: 62,
+      paddingVertical: 10,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+
+    productDetailBorder: {
+
+      borderBottomWidth: 1,
+      borderBottomColor: "#F1E8DF",
+    },
+
+    productDetailMain: {
+
+      flex: 1,
+      minWidth: 0,
+      alignItems: "flex-end",
+    },
+
+    productDetailName: {
+
+      color: appTheme.textColor,
+      fontSize: 12,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    productDetailQty: {
+
+      marginTop: 3,
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "700",
+    },
+
+    productDetailPrice: {
+
+      minWidth: 85,
+      color: "#C9670B",
+      fontSize: 12,
+      fontWeight: "900",
+      textAlign: "left",
+    },
+
+    moneyCard: {
+
+      padding: 12,
+      borderRadius: 18,
+      backgroundColor: "#FFF9F1",
+      borderWidth: 1,
+      borderColor: "#F0DDC5",
+    },
+
+    moneyRow: {
+
+      minHeight: 45,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+
+    moneyLabel: {
+
+      color: "#836A51",
+      fontSize: 11,
+      fontWeight: "800",
+    },
+
+    moneyValue: {
+
+      color: "#5F4733",
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    grandTotalRow: {
+
+      marginTop: 5,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor: "#E8D4BC",
+      minHeight: 56,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+
+    grandTotalLabel: {
+
+      color: "#6E4A26",
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    grandTotalValue: {
+
+      color: "#C9670B",
+      fontSize: 17,
+      fontWeight: "900",
+    },
+
+    card: {
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      backgroundColor: appTheme.cardColor,
+      paddingHorizontal: 16,
+      paddingVertical: 5,
+    },
+
+    infoRow: {
+
+      minHeight: 67,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+      borderRadius: 16,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1,
+      borderColor: "#EDE3D9",
+    },
+
+    infoBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: appTheme.borderColor,
+    },
+
+    infoIcon: {
+
+      width: 39,
+      height: 39,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#FFF2E1",
+      marginLeft: 10,
+    },
+
+    infoContent: {
+
+      flex: 1,
+      minWidth: 0,
+      alignItems: "flex-end",
+    },
+
+    infoLabel: {
+
+      color: "#9A897B",
+      fontSize: 9,
+      fontWeight: "800",
+    },
+
+    infoValue: {
+
+      marginTop: 4,
+      color: appTheme.textColor,
+      fontSize: 13,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    noteBox: {
+      marginVertical: 12,
+      padding: 12,
+      borderRadius: 14,
+      flexDirection: "row-reverse",
+      alignItems: "flex-start",
+      backgroundColor: appTheme.warningColor + "0D",
+    },
+
+    noteContent: {
+      flex: 1,
+      marginRight: 9,
+      alignItems: "flex-end",
+    },
+
+    noteLabel: {
+      color: appTheme.warningColor,
+      fontSize: 11,
+      fontWeight: "800",
+    },
+
+    noteText: {
+      marginTop: 3,
+      color: appTheme.textColor,
+      fontSize: 13,
+      lineHeight: 20,
+      textAlign: "right",
+    },
+
+    event: {
+      minHeight: 65,
+      flexDirection: "row-reverse",
+    },
+
+    eventLine: {
+      width: 30,
+      alignItems: "center",
+    },
+
+    verticalLine: {
+      position: "absolute",
+      top: 25,
+      bottom: 0,
+      width: 1,
+      backgroundColor: appTheme.borderColor,
+    },
+
+    eventDot: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.primaryColor,
+    },
+
+    eventBody: {
+      flex: 1,
+      paddingRight: 8,
+      paddingBottom: 12,
+      alignItems: "flex-end",
+    },
+
+    eventName: {
+      color: appTheme.textColor,
+      fontSize: 13,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    eventDate: {
+      marginTop: 3,
+      color: appTheme.secondaryTextColor,
+      fontSize: 10,
+      textAlign: "right",
+    },
+
+    emptyInline: {
+      paddingVertical: 18,
+      color: appTheme.secondaryTextColor,
+      textAlign: "center",
+    },
+
+    emergencyButton: {
+      minHeight: 56,
+      borderRadius: 17,
+      paddingHorizontal: 18,
+      backgroundColor: "#DC2626",
+      borderWidth: 1,
+      borderColor: "#B91C1C",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row-reverse",
+      gap: 9,
+      marginTop: 4,
+      shadowColor: "#7F1D1D",
+      shadowOffset: {
+        width: 0,
+        height: 5,
+      },
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      elevation: 4,
+    },
+
+    emergencyButtonText: {
+      color: "#FFFFFF",
+      fontSize: 16,
+      fontWeight: "900",
+    },
+
+    emergencyModalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(15, 23, 42, 0.58)",
+      justifyContent: "flex-end",
+    },
+
+    emergencyModalCard: {
+      backgroundColor: "#FFFFFF",
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      paddingHorizontal: 18,
+      paddingTop: 20,
+      paddingBottom: 24,
+      maxHeight: "88%",
+    },
+
+    emergencyModalHeader: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 16,
+    },
+
+    emergencyModalIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#FEF2F2",
+    },
+
+    emergencyModalHeaderText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    emergencyModalTitle: {
+      color: "#0F172A",
+      fontSize: 20,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    emergencyModalSubtitle: {
+      marginTop: 4,
+      color: "#64748B",
+      fontSize: 12,
+      fontWeight: "600",
+      textAlign: "right",
+    },
+
+    emergencyReasonsList: {
+      maxHeight: 310,
+    },
+
+    emergencyReason: {
+      minHeight: 58,
+      borderRadius: 15,
+      borderWidth: 1,
+      borderColor: "#E2E8F0",
+      backgroundColor: "#FFFFFF",
+      paddingHorizontal: 12,
+      marginBottom: 9,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 10,
+    },
+
+    emergencyReasonSelected: {
+      borderColor: "#FCA5A5",
+      backgroundColor: "#FFF7F7",
+    },
+
+    emergencyReasonIcon: {
+      width: 38,
+      height: 38,
+      borderRadius: 12,
+      backgroundColor: "#FEF2F2",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    emergencyReasonIconSelected: {
+      backgroundColor: "#DC2626",
+    },
+
+    emergencyReasonText: {
+      flex: 1,
+      color: "#334155",
+      fontSize: 14,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    emergencyReasonTextSelected: {
+      color: "#991B1B",
+    },
+
+    emergencyInputLabel: {
+      marginTop: 10,
+      marginBottom: 7,
+      color: "#0F172A",
+      fontSize: 13,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    emergencyInput: {
+      minHeight: 94,
+      borderRadius: 15,
+      borderWidth: 1,
+      borderColor: "#CBD5E1",
+      backgroundColor: "#F8FAFC",
+      paddingHorizontal: 13,
+      paddingVertical: 12,
+      color: "#0F172A",
+      fontSize: 14,
+      lineHeight: 22,
+    },
+
+    emergencyModalActions: {
+      flexDirection: "row-reverse",
+      gap: 10,
+      marginTop: 14,
+    },
+
+    emergencyCancelButton: {
+      flex: 1,
+      minHeight: 52,
+      borderRadius: 15,
+      borderWidth: 1,
+      borderColor: "#CBD5E1",
+      backgroundColor: "#FFFFFF",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    emergencyCancelText: {
+      color: "#475569",
+      fontSize: 14,
+      fontWeight: "900",
+    },
+
+    emergencySendButton: {
+      flex: 1.35,
+      minHeight: 52,
+      borderRadius: 15,
+      backgroundColor: "#DC2626",
+      alignItems: "center",
+      justifyContent: "center",
+      flexDirection: "row-reverse",
+      gap: 8,
+    },
+
+    emergencySendText: {
+      color: "#FFFFFF",
+      fontSize: 14,
+      fontWeight: "900",
+    },
+
+    durationRow: {
+      minHeight: 52,
+      flexDirection: "row-reverse",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+
+    durationBorder: {
+      borderBottomWidth: 1,
+      borderBottomColor: appTheme.borderColor,
+    },
+
+    durationTitle: {
+      color: appTheme.textColor,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
+    durationValue: {
+      color: appTheme.primaryDarkColor,
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    mapCard: {
+      overflow: "hidden",
+      borderRadius: 18,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+    },
+
+    map: {
+      width: "100%",
+      height: 240,
+    },
+
+    mapInfo: {
+      paddingHorizontal: 14,
+      paddingTop: 12,
+      gap: 6,
+    },
+
+    mapMetricText: {
+      color: appTheme.textColor,
+      fontSize: 13,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    mapButton: {
+      marginHorizontal: 14,
+      marginTop: 12,
+      marginBottom: 14,
+    },
+
+    proofCard: {
+      marginTop: 14,
+      padding: 16,
+      borderRadius: 18,
+      backgroundColor: "#FFFFFF",
+      borderWidth: 1,
+      borderColor: "#E2E8F0",
+    },
+
+    proofHeader: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 10,
+      marginBottom: 12,
+    },
+
+    proofTitle: {
+      fontSize: 16,
+      fontWeight: "900",
+      color: "#0F172A",
+      textAlign: "right",
+    },
+
+    proofDescription: {
+      marginTop: 4,
+      fontSize: 12,
+      color: "#64748B",
+      textAlign: "right",
+      lineHeight: 19,
+    },
+
+    proofSuccess: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 8,
+      padding: 12,
+      borderRadius: 12,
+      backgroundColor: "#F0FDF4",
+    },
+
+    proofSuccessText: {
+      color: "#15803D",
+      fontSize: 13,
+      fontWeight: "800",
+      textAlign: "right",
+    },
+
+    actions: {
+      marginTop: 22,
+      gap: 10,
+    },
+  });

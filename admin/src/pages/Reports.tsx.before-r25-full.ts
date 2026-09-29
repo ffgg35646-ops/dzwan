@@ -1,0 +1,211 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  ArrowRight,
+  BarChart3,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
+import { api, getApiErrorMessage } from "../lib/api";
+import HomeBackButton from "../components/admin/HomeBackButton";
+type ReportsData = {
+  totals: {
+    users: number;
+    customers: number;
+    captains: number;
+    leaders: number;
+    establishments: number;
+    products: number;
+    orders: number;
+  };
+  orders: {
+    pending: number;
+    active: number;
+    delivered: number;
+    cancelled: number;
+  };
+  recentOrders: Array<{
+    _id: string;
+    orderNumber?: string;
+    status?: string;
+    totalAmount?: number;
+    createdAt?: string;
+  }>;
+};
+
+function unwrap(data: any): ReportsData {
+  return data?.data ?? data;
+}
+
+const statusLabels: Record<string, string> = {
+  pending: "قيد الانتظار",
+  confirmed: "تم التأكيد",
+  preparing: "جاري التحضير",
+  ready_for_pickup: "جاهز للاستلام",
+  assigned: "تم تعيين المندوب",
+  picked_up: "تم الاستلام",
+  on_the_way: "في الطريق",
+  delivered: "تم التسليم",
+  cancelled: "ملغي",
+  rejected: "مرفوض",
+};
+
+export default function Reports() {
+  const [reports, setReports] = useState<ReportsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function load() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get("/reports");
+      setReports(unwrap(response.data));
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+      setReports(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="page-loading">
+        <Loader2 className="spin" size={22} />
+        جاري تحميل التقارير...
+      </div>
+    );
+  }
+
+  if (error || !reports) {
+    return (
+      <div className="page-state">
+        <p>{error || "تعذر تحميل التقارير."}</p>
+        <button type="button" onClick={load}>
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+  }
+
+  const cards = [
+    ["المستخدمون", reports.totals.users],
+    ["العملاء", reports.totals.customers],
+    ["المندوبون", reports.totals.captains],
+    ["القادة", reports.totals.leaders],
+    ["المنشآت", reports.totals.establishments],
+    ["المنتجات", reports.totals.products],
+    ["إجمالي الطلبات", reports.totals.orders],
+  ];
+
+  return (
+    <div className="page">
+
+      <HomeBackButton />
+      <div className="page-header">
+        <div>
+          <Link to="/dashboard" className="back-link">
+            <ArrowRight size={18} />
+            العودة إلى لوحة التحكم
+          </Link>
+          <h1>التقارير</h1>
+        </div>
+
+        <button
+          type="button"
+          onClick={load}
+          disabled={loading}
+          className="secondary-button"
+        >
+          <RefreshCw size={17} />
+          تحديث
+        </button>
+      </div>
+
+      <section className="stats-grid">
+        {cards.map(([label, value]) => (
+          <div className="stat-card reports-stat-card" key={String(label)}>
+            <div className="reports-stat-icon">
+              <BarChart3 size={20} />
+            </div>
+            <div className="reports-stat-content">
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </div>
+          </div>
+        ))}
+      </section>
+
+      <section className="details-card">
+        <h2>حالة الطلبات</h2>
+        <div className="details-grid">
+          <div>
+            <strong>قيد الانتظار</strong>
+            <span>{reports.orders.pending}</span>
+          </div>
+          <div>
+            <strong>نشطة</strong>
+            <span>{reports.orders.active}</span>
+          </div>
+          <div>
+            <strong>تم التسليم</strong>
+            <span>{reports.orders.delivered}</span>
+          </div>
+          <div>
+            <strong>ملغاة</strong>
+            <span>{reports.orders.cancelled}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="details-card">
+        <h2>آخر الطلبات</h2>
+
+        {reports.recentOrders.length === 0 ? (
+          <p>لا توجد طلبات.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>رقم الطلب</th>
+                  <th>الحالة</th>
+                  <th>الإجمالي</th>
+                  <th>التاريخ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reports.recentOrders.map((order) => (
+                  <tr key={order._id}>
+                    <td>{order.orderNumber || order._id}</td>
+                    <td>
+                      {statusLabels[order.status || ""] ||
+                        order.status ||
+                        "—"}
+                    </td>
+                    <td>
+                      {order.totalAmount === undefined
+                        ? "—"
+                        : Number(order.totalAmount).toFixed(2)}
+                    </td>
+                    <td>
+                      {order.createdAt
+                        ? new Date(order.createdAt).toLocaleString("ar-EG-u-nu-latn")
+                        : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}

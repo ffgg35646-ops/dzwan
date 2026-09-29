@@ -1,0 +1,112 @@
+import { Types } from "mongoose";
+import { OrderModel } from "../models/Order.js";
+import { CaptainRatingModel } from "../models/CaptainRating.js";
+import { getCaptainRatingSummary } from "./captain-rating.service.js";
+import CaptainAttendanceModel from "../models/CaptainAttendance.js";
+
+export async function getCaptainKpi(
+  captainId: Types.ObjectId,
+  from: Date,
+  to: Date,
+) {
+  const orders = await OrderModel.find({
+    captainId,
+    createdAt: {
+      $gte: from,
+      $lte: to,
+    },
+  }).lean();
+
+  const ratings = await CaptainRatingModel.find({
+    captainId,
+    createdAt: {
+      $gte: from,
+      $lte: to,
+    },
+  }).lean();
+
+  const attendance = await CaptainAttendanceModel.find({
+    captainId,
+    checkInAt: {
+      $gte: from,
+      $lte: to,
+    },
+  }).lean();
+
+  const completed = orders.filter(
+    (x) => x.status === "delivered",
+  );
+
+  const cancelled = orders.filter(
+    (x) => x.status === "cancelled",
+  );
+
+  const durations = completed
+    .filter(
+      (x) =>
+        x.createdAt &&
+        x.deliveredAt,
+    )
+    .map(
+      (x) =>
+        (
+          x.deliveredAt!.getTime() -
+          x.createdAt.getTime()
+        ) / 60000,
+    );
+
+  const averageDeliveryMinutes =
+    durations.length > 0
+      ? Number(
+          (
+            durations.reduce(
+              (a, b) => a + b,
+              0,
+            ) / durations.length
+          ).toFixed(2),
+        )
+      : 0;
+
+  const ratingSummary =
+    await getCaptainRatingSummary(captainId);
+
+  let workedMinutes = 0;
+
+  for (const item of attendance) {
+    if (item.checkInAt && item.checkOutAt) {
+      workedMinutes +=
+        (
+          item.checkOutAt.getTime() -
+          item.checkInAt.getTime()
+        ) / 60000;
+    }
+  }
+
+  return {
+    period: {
+      from,
+      to,
+    },
+
+    orders: {
+      total: orders.length,
+      completed: completed.length,
+      cancelled: cancelled.length,
+    },
+
+    averageDeliveryMinutes,
+
+    ratings: {
+      total: ratingSummary.total,
+      average: ratingSummary.average,
+    },
+
+    attendance: {
+      records: attendance.length,
+      workedMinutes,
+      workedHours: Number(
+        (workedMinutes / 60).toFixed(2),
+      ),
+    },
+  };
+}

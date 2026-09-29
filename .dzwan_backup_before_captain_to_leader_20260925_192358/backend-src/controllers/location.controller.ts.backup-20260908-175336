@@ -1,0 +1,360 @@
+import type { Response } from "express";
+import { z } from "zod";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { LocationModel } from "../models/Location.js";
+
+const locationSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+});
+
+const updateSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  isActive: z.boolean().optional(),
+  captainsEnabled: z.boolean().optional(),
+  establishmentsEnabled: z.boolean().optional(),
+});
+
+const areaSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+});
+
+const areaUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  isActive: z.boolean().optional(),
+  captainsEnabled: z.boolean().optional(),
+  establishmentsEnabled: z.boolean().optional(),
+});
+
+function handleError(res: Response, error: unknown): void {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === 11000
+  ) {
+    res.status(409).json({
+      success: false,
+      message: "المحافظة موجودة بالفعل.",
+    });
+    return;
+  }
+
+  console.error("Location error:", error);
+
+  res.status(500).json({
+    success: false,
+    message: "حدث خطأ داخلي في الخادم.",
+  });
+}
+
+export async function listLocations(
+  _req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const locations = await LocationModel.find()
+      .sort({ name: 1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      locations,
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+export async function createLocation(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = locationSchema.parse(req.body);
+
+    const location = await LocationModel.create({
+      name: data.name,
+      isActive: true,
+      captainsEnabled: true,
+      establishmentsEnabled: true,
+      areas: [],
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "تمت إضافة المحافظة بنجاح.",
+      location,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "اسم المحافظة غير صحيح.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    handleError(res, error);
+  }
+}
+
+export async function updateLocation(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = updateSchema.parse(req.body);
+
+    const location = await LocationModel.findByIdAndUpdate(
+      req.params.id,
+      { $set: data },
+      {
+        new: true,
+        runValidators: true,
+      },
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "تم تحديث المحافظة بنجاح.",
+      location,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "البيانات المرسلة غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    handleError(res, error);
+  }
+}
+
+export async function deleteLocation(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const location = await LocationModel.findByIdAndDelete(
+      req.params.id,
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "تم حذف المحافظة بنجاح.",
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}
+
+export async function addArea(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = areaSchema.parse(req.body);
+
+    const location = await LocationModel.findById(
+      req.params.id,
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    const exists = location.areas.some(
+      (area) =>
+        area.name.trim().toLowerCase() ===
+        data.name.trim().toLowerCase(),
+    );
+
+    if (exists) {
+      res.status(409).json({
+        success: false,
+        message: "المنطقة موجودة بالفعل داخل هذه المحافظة.",
+      });
+      return;
+    }
+
+    location.areas.push({
+      name: data.name,
+      isActive: true,
+      captainsEnabled: true,
+      establishmentsEnabled: true,
+    } as never);
+
+    await location.save();
+
+    res.status(201).json({
+      success: true,
+      message: "تمت إضافة المنطقة بنجاح.",
+      location,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "اسم المنطقة غير صحيح.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    handleError(res, error);
+  }
+}
+
+export async function updateArea(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = areaUpdateSchema.parse(req.body);
+
+    const location = await LocationModel.findById(
+      req.params.id,
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    const area = location.areas.find(
+      (item) =>
+        item._id?.toString() === req.params.areaId,
+    );
+
+    if (!area) {
+      res.status(404).json({
+        success: false,
+        message: "المنطقة غير موجودة.",
+      });
+      return;
+    }
+
+    if (data.name) {
+      const duplicate = location.areas.some(
+        (item) =>
+          item._id.toString() !== req.params.areaId &&
+          item.name.trim().toLowerCase() ===
+            data.name!.trim().toLowerCase(),
+      );
+
+      if (duplicate) {
+        res.status(409).json({
+          success: false,
+          message: "اسم المنطقة موجود بالفعل.",
+        });
+        return;
+      }
+
+      area.name = data.name;
+    }
+
+    if (typeof data.isActive === "boolean") {
+      area.isActive = data.isActive;
+    }
+
+    if (typeof data.captainsEnabled === "boolean") {
+      area.captainsEnabled = data.captainsEnabled;
+    }
+
+    if (typeof data.establishmentsEnabled === "boolean") {
+      area.establishmentsEnabled = data.establishmentsEnabled;
+    }
+
+    await location.save();
+
+    res.status(200).json({
+      success: true,
+      message: "تم تحديث المنطقة بنجاح.",
+      location,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "البيانات المرسلة غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    handleError(res, error);
+  }
+}
+
+export async function deleteArea(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const location = await LocationModel.findById(
+      req.params.id,
+    );
+
+    if (!location) {
+      res.status(404).json({
+        success: false,
+        message: "المحافظة غير موجودة.",
+      });
+      return;
+    }
+
+    const areaExists = location.areas.some(
+      (item) =>
+        item._id?.toString() === req.params.areaId,
+    );
+
+    if (!areaExists) {
+      res.status(404).json({
+        success: false,
+        message: "المنطقة غير موجودة.",
+      });
+      return;
+    }
+
+    location.areas = location.areas.filter(
+      (item) =>
+        item._id?.toString() !== req.params.areaId,
+    );
+
+    await location.save();
+
+    res.status(200).json({
+      success: true,
+      message: "تم حذف المنطقة بنجاح.",
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+}

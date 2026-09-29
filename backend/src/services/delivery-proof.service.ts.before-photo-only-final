@@ -1,0 +1,205 @@
+import crypto from "node:crypto";
+import { Types } from "mongoose";
+import { DeliveryProofModel } from "../models/DeliveryProof.js";
+import { OrderModel } from "../models/Order.js";
+import { getSystemSettings } from "./system-settings.service.js";
+
+function hashOtp(otp: string): string {
+  return crypto
+    .createHash("sha256")
+    .update(otp)
+    .digest("hex");
+}
+
+export async function createDeliveryOtp(
+  orderId: Types.ObjectId,
+  captainId: Types.ObjectId,
+) {
+  const settings = await getSystemSettings();
+
+  const otp = crypto
+    .randomInt(100000, 1000000)
+    .toString();
+
+  const expiresAt = new Date(
+    Date.now() +
+      Number(settings.deliveryOtpExpirationMinutes ?? 10) *
+        60 *
+        1000,
+  );
+
+  const proof =
+    (await DeliveryProofModel.findOne({ orderId })) ??
+    new DeliveryProofModel({
+      orderId,
+      captainId,
+    });
+
+  proof.captainId = captainId;
+  proof.otpHash = hashOtp(otp);
+  proof.otpExpiresAt = expiresAt;
+  proof.otpVerifiedAt = null;
+  proof.otpAttempts = 0;
+
+  await proof.save();
+
+  return {
+    otp,
+    expiresAt,
+  };
+}
+
+export async function verifyDeliveryOtp(
+  orderId: Types.ObjectId,
+  captainId: Types.ObjectId,
+  otp: string,
+) {
+  const settings = await getSystemSettings();
+
+  const proof = await DeliveryProofModel.findOne({
+    orderId,
+    captainId,
+  }).select("+otpHash");
+
+  if (!proof) {
+    throw new Error("DELIVERY_PROOF_NOT_FOUND");
+  }
+
+  if (proof.otpVerifiedAt) {
+    return true;
+  }
+
+  if (
+    proof.otpExpiresAt &&
+    proof.otpExpiresAt.getTime() < Date.now()
+  ) {
+    throw new Error("DELIVERY_OTP_EXPIRED");
+  }
+
+  const maxAttempts =
+    Number(settings.deliveryOtpMaxAttempts ?? 5);
+
+  if (proof.otpAttempts >= maxAttempts) {
+    throw new Error("DELIVERY_OTP_MAX_ATTEMPTS");
+  }
+
+  proof.otpAttempts += 1;
+
+  if (
+    !proof.otpHash ||
+    hashOtp(otp.trim()) !== proof.otpHash
+  ) {
+    await proof.save();
+    throw new Error("DELIVERY_OTP_INVALID");
+  }
+
+  proof.otpVerifiedAt = new Date();
+
+  await proof.save();
+
+  return true;
+}
+
+export async function setDeliveryPhoto(
+  orderId: Types.ObjectId,
+  captainId: Types.ObjectId,
+  photoUrl: string,
+) {
+  const order = await OrderModel.findOne({
+    _id: orderId,
+    captainId,
+  }).select("_id captainId status");
+
+  if (!order) {
+    throw new Error(
+      "CAPTAIN_NOT_ASSIGNED_TO_ORDER",
+    );
+  }
+
+  if (order.status !== "on_the_way") {
+    throw new Error(
+      "DELIVERY_PROOF_STAGE_REQUIRED",
+    );
+  }
+
+  if (!photoUrl.trim()) {
+    throw new Error(
+      "DELIVERY_PHOTO_REQUIRED",
+    );
+  }
+
+  const proof =
+    (await DeliveryProofModel.findOne({
+      orderId,
+    })) ??
+    new DeliveryProofModel({
+      orderId,
+      captainId,
+    });
+
+  if (
+    proof.captainId.toString() !==
+    captainId.toString()
+  ) {
+    throw new Error("DELIVERY_CAPTAIN_MISMATCH");
+  }
+
+  proof.photoUrl = photoUrl.trim();
+  proof.photoUploadedAt = new Date();
+
+  await proof.save();
+
+  return proof;
+}
+
+export async function assertDeliveryProof(
+  orderId: Types.ObjectId,
+  captainId: Types.ObjectId,
+) {
+  const settings = await getSystemSettings();
+
+  const proof = await DeliveryProofModel.findOne({
+    orderId,
+    captainId,
+  }).lean();
+
+  if (settings.requireDeliveryOtp) {
+    if (!proof?.otpVerifiedAt) {
+      throw new Error("DELIVERY_OTP_REQUIRED");
+    }
+  }
+
+  if (settings.requireDeliveryPhoto) {
+    if (!proof?.photoUrl) {
+      throw new Error("DELIVERY_PHOTO_REQUIRED");
+    }
+  }
+
+  return true;
+}
+
+export async function getDeliveryProof(
+  orderId: Types.ObjectId,
+) {
+  return DeliveryProofModel.findOne({
+    orderId,
+  })
+    .select("-otpHash")
+    .lean();
+}
+
+export async function ensureOrderCaptain(
+  orderId: Types.ObjectId,
+  captainId: Types.ObjectId,
+) {
+  const order = await OrderModel.findOne({
+    _id: orderId,
+    captainId,
+  }).select("_id captainId");
+
+  if (!order) {
+    throw new Error("CAPTAIN_NOT_ASSIGNED_TO_ORDER");
+  }
+
+  return order;
+}

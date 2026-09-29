@@ -1,0 +1,874 @@
+
+/* =========================================================
+   DZWAN — Premium Pricing Page
+   UI only. No API/business logic touched.
+   ========================================================= */
+
+.pricing-page{
+  --p-bg:#f5f2ee;
+  --p-surface:#ffffff;
+  --p-surface-soft:#fbf8f5;
+  --p-border:#e7ddd3;
+  --p-border-strong:#d8c9bb;
+  --p-text:#24150b;
+  --p-muted:#806f61;
+  --p-orange:#df641f;
+  --p-orange-dark:#b94a11;
+  --p-orange-soft:#fff0e5;
+  --p-green:#27744b;
+  --p-red:#b9483e;
+
+  width:100%;
+  min-height:100%;
+  padding:28px;
+  background:
+    radial-gradient(
+      circle at 100% 0%,
+      rgba(223,100,31,.08),
+      transparent 25%
+    ),
+    radial-gradient(
+      circle at 0% 40%,
+      rgba(86,58,36,.035),
+      transparent 22%
+    ),
+    var(--p-bg);
+  color:var(--p-text);
+}
+
+/* ---------- Main header ---------- */
+
+.pricing-page .page-header{
+  position:relative;
+  overflow:hidden;
+
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px;
+
+  min-height:190px;
+  margin:0 0 22px;
+  padding:30px 32px;
+
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:28px;
+
+  background:
+    radial-gradient(
+      circle at 88% 22%,
+      rgba(255,184,117,.18),
+      transparent 26%
+    ),
+    radial-gradient(
+      circle at 8% 120%,
+      rgba(255,255,255,.06),
+      transparent 30%
+    ),
+    linear-gradient(
+      135deg,
+      #24150b 0%,
+      #48200f 56%,
+      #773517 100%
+    );
+
+  box-shadow:
+    0 24px 60px rgba(36,21,11,.14),
+    inset 0 1px rgba(255,255,255,.06);
+
+  color:#fff;
+}
+
+.pricing-page .page-header::after{
+  content:"";
+  position:absolute;
+  width:210px;
+  height:210px;
+  left:-75px;
+  bottom:-120px;
+
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:50%;
+}
+
+.pricing-page .page-header > div:first-child{
+  position:relative;
+  z-index:2;
+}
+
+.pricing-page .page-header h1{
+  margin:17px 0 8px !important;
+  font-size:31px !important;
+  line-height:1.2 !important;
+  font-weight:900 !important;
+  letter-spacing:-.4px;
+  color:#fff !important;
+}
+
+.pricing-page .page-header p{
+  max-width:720px;
+  margin:0 !important;
+  color:rgba(255,255,255,.69) !important;
+  font-size:13px !important;
+  line-height:1.95 !important;
+}
+
+.pricing-page .page-header .btn{
+  position:relative;
+  z-index:3;
+
+  min-height:44px;
+  border:1px solid rgba(255,255,255,.16) !important;
+  border-radius:13px !important;
+
+  background:rgba(255,255,255,.08) !important;
+  color:#fff !important;
+
+  backdrop-filter:blur(10px);
+  box-shadow:none !important;
+}
+
+.pricing-page .page-header .btn:hover{
+  background:rgba(255,255,255,.14) !important;
+}
+
+/* ---------- Generic cards ---------- */
+
+.pricing-page .panel{
+  margin:0 0 20px !important;
+  padding:0 !important;
+
+  overflow:hidden;
+
+  border:1px solid var(--p-border) !important;
+  border-radius:24px !important;
+
+  background:var(--p-surface) !important;
+
+  box-shadow:
+    0 13px 34px rgba(36,21,11,.055) !important;
+}
+
+.pricing-page .panel > .page-section-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:18px;
+
+  padding:22px 24px;
+
+  border-bottom:1px solid #eee6df;
+
+  background:
+    linear-gradient(
+      180deg,
+      #fffdfb 0%,
+      #fbf8f5 100%
+    );
+}
+
+.pricing-page .page-section-title h2{
+  margin:0 !important;
+  color:var(--p-text) !important;
+  font-size:18px !important;
+  font-weight:900 !important;
+}
+
+.pricing-page .page-section-title p{
+  margin:6px 0 0 !important;
+  color:var(--p-muted) !important;
+  font-size:12px !important;
+  line-height:1.7 !important;
+}
+
+/* ---------- Status ---------- */
+
+.pricing-page .status{
+  margin:0 !important;
+  padding:14px 18px !important;
+
+  border:0 !important;
+  border-radius:0 !important;
+
+  font-size:12px !important;
+  font-weight:800 !important;
+}
+
+.pricing-page .status + .status{
+  border-top:1px solid #eee5dd !important;
+}
+
+.pricing-page .status-active{
+  background:#f0f9f3 !important;
+  color:var(--p-green) !important;
+}
+
+.pricing-page .status-inactive{
+  background:#fff3f1 !important;
+  color:var(--p-red) !important;
+}
+
+/* ---------- Form ---------- */
+
+.pricing-page .form-grid{
+  display:grid !important;
+  grid-template-columns:
+    repeat(2,minmax(0,1fr)) !important;
+  gap:18px !important;
+
+  padding:24px !important;
+
+  background:#fff !important;
+}
+
+.pricing-page .form-grid label{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+
+  min-width:0;
+
+  color:#5d4a3b !important;
+  font-size:12px !important;
+  font-weight:850 !important;
+}
+
+.pricing-page .form-grid input,
+.pricing-page .form-grid select{
+  width:100% !important;
+  min-height:50px !important;
+
+  padding:0 14px !important;
+
+  border:1px solid #e3d8ce !important;
+  border-radius:14px !important;
+
+  outline:none !important;
+
+  background:#fcfaf8 !important;
+  color:var(--p-text) !important;
+
+  font-family:inherit !important;
+  font-size:13px !important;
+  font-weight:650 !important;
+
+  transition:
+    border-color .16s ease,
+    box-shadow .16s ease,
+    background .16s ease;
+}
+
+.pricing-page .form-grid input::placeholder{
+  color:#b09f91 !important;
+  font-weight:500;
+}
+
+.pricing-page .form-grid input:hover,
+.pricing-page .form-grid select:hover{
+  border-color:#d2c0b0 !important;
+  background:#fff !important;
+}
+
+.pricing-page .form-grid input:focus,
+.pricing-page .form-grid select:focus{
+  border-color:var(--p-orange) !important;
+  background:#fff !important;
+
+  box-shadow:
+    0 0 0 4px rgba(223,100,31,.10) !important;
+}
+
+/* Disabled selects */
+
+.pricing-page .form-grid select:disabled{
+  opacity:.55 !important;
+  cursor:not-allowed;
+  background:#f3efeb !important;
+}
+
+/* ---------- Form actions ---------- */
+
+.pricing-page .form-actions{
+  display:flex !important;
+  align-items:center;
+  gap:10px;
+
+  padding:0 24px 24px !important;
+}
+
+.pricing-page .btn{
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  gap:8px !important;
+
+  min-height:44px;
+
+  padding:0 15px !important;
+
+  border:1px solid var(--p-border) !important;
+  border-radius:13px !important;
+
+  background:#fff !important;
+  color:#5b4638 !important;
+
+  font-family:inherit !important;
+  font-size:12px !important;
+  font-weight:850 !important;
+
+  cursor:pointer;
+
+  box-shadow:0 4px 12px rgba(36,21,11,.035) !important;
+
+  transition:
+    transform .15s ease,
+    background .15s ease,
+    border-color .15s ease,
+    box-shadow .15s ease;
+}
+
+.pricing-page .btn:hover{
+  transform:translateY(-1px);
+  border-color:#d3c0b0 !important;
+  background:#fffaf6 !important;
+}
+
+.pricing-page .btn:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  transform:none;
+}
+
+.pricing-page .btn-primary{
+  padding-inline:19px !important;
+  border-color:transparent !important;
+
+  background:
+    linear-gradient(
+      135deg,
+      var(--p-orange),
+      var(--p-orange-dark)
+    ) !important;
+
+  color:#fff !important;
+
+  box-shadow:
+    0 10px 24px rgba(185,74,17,.20) !important;
+}
+
+.pricing-page .btn-primary:hover{
+  border-color:transparent !important;
+  background:
+    linear-gradient(
+      135deg,
+      #ea7028,
+      #b94a11
+    ) !important;
+  color:#fff !important;
+}
+
+.pricing-page .btn-danger{
+  border-color:#e7c8c1 !important;
+  background:#fff8f7 !important;
+  color:#ad493d !important;
+}
+
+.pricing-page .btn-danger:hover{
+  background:#fff0ed !important;
+}
+
+/* ---------- Rule cards ---------- */
+
+.pricing-page .cards-grid{
+  display:grid !important;
+
+  grid-template-columns:
+    repeat(2,minmax(0,1fr)) !important;
+
+  gap:18px !important;
+
+  padding:24px !important;
+
+  background:#fbf9f7;
+}
+
+.pricing-page .data-card{
+  position:relative;
+
+  padding:20px !important;
+
+  border:1px solid var(--p-border) !important;
+  border-radius:20px !important;
+
+  background:#fff !important;
+
+  box-shadow:
+    0 8px 24px rgba(36,21,11,.045) !important;
+
+  transition:
+    transform .16s ease,
+    box-shadow .16s ease,
+    border-color .16s ease;
+}
+
+.pricing-page .data-card:hover{
+  transform:translateY(-2px);
+
+  border-color:#dccbbb !important;
+
+  box-shadow:
+    0 15px 32px rgba(36,21,11,.075) !important;
+}
+
+.pricing-page .data-card-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+
+  padding-bottom:17px;
+
+  border-bottom:1px solid #eee6df;
+}
+
+.pricing-page .data-card-header strong{
+  display:block;
+
+  color:var(--p-text);
+
+  font-size:15px;
+  font-weight:900;
+}
+
+.pricing-page .data-card-header p{
+  margin:6px 0 0;
+
+  color:var(--p-muted);
+
+  font-size:11px;
+  line-height:1.8;
+}
+
+.pricing-page .pricing-rule-body{
+  display:grid !important;
+
+  grid-template-columns:
+    repeat(2,minmax(0,1fr));
+
+  gap:14px;
+
+  padding:18px 0 !important;
+}
+
+.pricing-page .pricing-rule-body > div{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+
+  min-width:0;
+}
+
+.pricing-page .pricing-rule-body span{
+  color:#9a897b;
+  font-size:10px;
+  font-weight:750;
+}
+
+.pricing-page .pricing-rule-body strong{
+  overflow:hidden;
+
+  color:#49382c;
+
+  font-size:12px;
+  font-weight:850;
+
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+.pricing-page .pricing-main-amount{
+  grid-column:1/-1;
+
+  padding:14px;
+
+  border:1px solid #f1e0d4;
+  border-radius:15px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #fff8f2,
+      #fffdfb
+    );
+}
+
+.pricing-page .pricing-main-amount strong{
+  margin-top:2px;
+
+  color:var(--p-orange);
+
+  font-size:26px;
+  font-weight:950;
+}
+
+/* ---------- Status pills ---------- */
+
+.pricing-page .status-active,
+.pricing-page .status-inactive{
+  width:max-content;
+
+  padding:6px 10px !important;
+
+  border-radius:999px !important;
+
+  white-space:nowrap;
+
+  font-size:10px !important;
+  font-weight:900 !important;
+}
+
+.pricing-page .data-card .status-active{
+  background:#edf8f1 !important;
+  color:#28764c !important;
+}
+
+.pricing-page .data-card .status-inactive{
+  background:#fff1ef !important;
+  color:#ae4a40 !important;
+}
+
+/* ---------- Card actions ---------- */
+
+.pricing-page .data-card-actions{
+  display:flex !important;
+  align-items:center;
+  gap:8px;
+
+  padding-top:15px;
+
+  border-top:1px solid #eee6df;
+}
+
+.pricing-page .data-card-actions .btn{
+  min-height:39px;
+  padding-inline:12px !important;
+  font-size:11px !important;
+}
+
+/* ---------- Empty state ---------- */
+
+.pricing-page .empty-state{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  min-height:180px;
+
+  padding:30px 20px;
+
+  color:var(--p-muted);
+
+  background:#fbf9f7;
+
+  font-size:13px;
+  font-weight:750;
+}
+
+/* ---------- Responsive ---------- */
+
+@media (max-width:1050px){
+  .pricing-page{
+    padding:20px;
+  }
+
+  .pricing-page .page-header{
+    align-items:flex-start;
+  }
+
+  .pricing-page .cards-grid{
+    grid-template-columns:1fr !important;
+  }
+}
+
+@media (max-width:760px){
+  .pricing-page{
+    padding:12px;
+  }
+
+  .pricing-page .page-header{
+    flex-direction:column;
+    align-items:stretch;
+    min-height:auto;
+    padding:22px;
+    border-radius:20px;
+  }
+
+  .pricing-page .page-header h1{
+    font-size:24px !important;
+  }
+
+  .pricing-page .page-header .btn{
+    width:max-content;
+  }
+
+  .pricing-page .panel{
+    border-radius:19px !important;
+  }
+
+  .pricing-page .form-grid{
+    grid-template-columns:1fr !important;
+    padding:18px !important;
+  }
+
+  .pricing-page .form-actions{
+    padding:0 18px 18px !important;
+    flex-wrap:wrap;
+  }
+
+  .pricing-page .cards-grid{
+    padding:14px !important;
+  }
+
+  .pricing-page .pricing-rule-body{
+    grid-template-columns:1fr !important;
+  }
+
+  .pricing-page .pricing-main-amount{
+    grid-column:auto;
+  }
+
+  .pricing-page .data-card-actions{
+    flex-wrap:wrap;
+  }
+
+  .pricing-page .data-card-actions .btn{
+    flex:1;
+  }
+}
+
+
+/* =========================================================
+   Pricing — Interactive Geofencing Map
+   ========================================================= */
+
+.pricing-page .pricing-map-editor{
+  overflow:hidden;
+  margin-bottom:22px;
+  border:1px solid #e6dbd1;
+  border-radius:26px;
+  background:#fff;
+  box-shadow:0 16px 42px rgba(36,21,11,.07);
+}
+
+.pricing-page .pricing-map-editor-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:20px;
+  padding:25px 28px;
+  border-bottom:1px solid #eee5dd;
+  background:linear-gradient(180deg,#fffdfa,#faf7f4);
+}
+
+.pricing-page .pricing-map-kicker{
+  display:inline-flex;
+  margin-bottom:8px;
+  padding:6px 10px;
+  border-radius:999px;
+  background:#fff0e5;
+  color:#c75016;
+  font-size:10px;
+  font-weight:900;
+}
+
+.pricing-page .pricing-map-editor-header h2{
+  margin:0;
+  color:#24150b;
+  font-size:22px;
+  font-weight:950;
+}
+
+.pricing-page .pricing-map-editor-header p{
+  max-width:760px;
+  margin:7px 0 0;
+  color:#806f61;
+  font-size:12px;
+  line-height:1.9;
+}
+
+.pricing-page .pricing-map-count{
+  min-width:110px;
+  padding:13px;
+  border:1px solid #ebded3;
+  border-radius:16px;
+  background:#fff;
+  text-align:center;
+}
+
+.pricing-page .pricing-map-count strong{
+  display:block;
+  color:#d85b18;
+  font-size:24px;
+  font-weight:950;
+}
+
+.pricing-page .pricing-map-count span{
+  color:#8a786a;
+  font-size:10px;
+  font-weight:800;
+}
+
+.pricing-page .pricing-map-layout{
+  display:grid;
+  grid-template-columns:minmax(0,1.8fr) minmax(280px,.7fr);
+  gap:0;
+}
+
+.pricing-page .pricing-map-canvas-wrap{
+  position:relative;
+  min-height:560px;
+  background:#e9e5df;
+}
+
+.pricing-page .pricing-map-canvas{
+  width:100%;
+  height:560px;
+  z-index:1;
+}
+
+.pricing-page .pricing-map-loading{
+  position:absolute;
+  inset:0;
+  z-index:10;
+  display:grid;
+  place-items:center;
+  background:#f3eee9;
+  color:#725f50;
+  font-size:13px;
+  font-weight:900;
+}
+
+.pricing-page .pricing-map-hint{
+  position:absolute;
+  z-index:500;
+  top:16px;
+  right:16px;
+  padding:9px 12px;
+  border-radius:12px;
+  background:rgba(36,21,11,.88);
+  color:#fff;
+  font-size:10px;
+  font-weight:800;
+  box-shadow:0 7px 18px rgba(0,0,0,.16);
+}
+
+.pricing-page .pricing-map-form{
+  display:flex;
+  flex-direction:column;
+  gap:17px;
+  padding:24px;
+  border-right:1px solid #eee5dd;
+  background:#fff;
+}
+
+.pricing-page .pricing-map-form-title{
+  color:#24150b;
+  font-size:17px;
+  font-weight:950;
+}
+
+.pricing-page .pricing-map-form label{
+  display:flex;
+  flex-direction:column;
+  gap:7px;
+  color:#5b4738;
+  font-size:11px;
+  font-weight:900;
+}
+
+.pricing-page .pricing-map-form input,
+.pricing-page .pricing-map-form textarea{
+  width:100%;
+  border:1px solid #e2d6cc;
+  border-radius:13px;
+  outline:none;
+  background:#fcfaf8;
+  color:#24150b;
+  padding:11px 12px;
+  font-family:inherit;
+  font-size:12px;
+  resize:vertical;
+}
+
+.pricing-page .pricing-map-form input{
+  min-height:46px;
+}
+
+.pricing-page .pricing-map-form input:focus,
+.pricing-page .pricing-map-form textarea:focus{
+  border-color:#d85b18;
+  background:#fff;
+  box-shadow:0 0 0 4px rgba(216,91,24,.09);
+}
+
+.pricing-page .pricing-map-existing{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:13px 14px;
+  border:1px solid #ece2d9;
+  border-radius:13px;
+  background:#faf7f4;
+}
+
+.pricing-page .pricing-map-existing span{
+  color:#7d6b5d;
+  font-size:10px;
+  font-weight:800;
+}
+
+.pricing-page .pricing-map-existing strong{
+  color:#d85b18;
+  font-size:17px;
+  font-weight:950;
+}
+
+.pricing-page .pricing-map-actions{
+  display:flex;
+  gap:8px;
+  margin-top:auto;
+}
+
+.pricing-page .pricing-map-actions .btn{
+  flex:1;
+}
+
+@media (max-width:900px){
+  .pricing-page .pricing-map-layout{
+    grid-template-columns:1fr;
+  }
+
+  .pricing-page .pricing-map-canvas-wrap{
+    min-height:460px;
+  }
+
+  .pricing-page .pricing-map-canvas{
+    height:460px;
+  }
+
+  .pricing-page .pricing-map-form{
+    border-right:0;
+    border-top:1px solid #eee5dd;
+  }
+}
+
+@media (max-width:600px){
+  .pricing-page .pricing-map-editor-header{
+    align-items:flex-start;
+    flex-direction:column;
+  }
+
+  .pricing-page .pricing-map-canvas{
+    height:400px;
+  }
+}

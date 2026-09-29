@@ -1,0 +1,539 @@
+
+import { Types } from "mongoose";
+import { OrderModel } from "../models/Order.js";
+import OrderTimelineModel from "../models/OrderTimeline.js";
+import { OrderStageTimerModel } from "../models/OrderStageTimer.js";
+import { StuckOrderAlertModel } from "../models/StuckOrderAlert.js";
+import { CaptainEmergencyModel } from "../models/CaptainEmergency.js";
+import { SecurityEventModel } from "../models/SecurityEvent.js";
+import { UserModel } from "../models/User.js";
+import { EstablishmentModel } from "../models/Establishment.js";
+import { LocationModel } from "../models/Location.js";
+import AppVersionModel from "../models/AppVersion.js";
+import { MaintenanceSettingsModel } from "../models/MaintenanceSettings.js";
+import { CancellationRecordModel } from "../models/CancellationRecord.js";
+import ComplaintModel from "../models/Complaint.js";
+import { StaffPermissionModel } from "../models/StaffPermission.js";
+import { OperationsSettingsModel } from "../models/OperationsSettings.js";
+import { createNotifications } from "./notification.service.js";
+import { dispatchOrder } from "./dispatch-manager.service.js";
+
+export async function addTimeline(input: {
+  orderId: Types.ObjectId;
+  actorId?: Types.ObjectId | null;
+  actorRole?: string | null;
+  type: string;
+  fromStatus?: string | null;
+  toStatus?: string | null;
+  title: string;
+  description?: string | null;
+  metadata?: Record<string, unknown> | null;
+}) {
+  return OrderTimelineModel.create(input);
+}
+
+export async function getTimeline(orderId: Types.ObjectId) {
+  return OrderTimelineModel.find({ orderId })
+    .sort({ createdAt: 1 })
+    .lean();
+}
+
+export async function startStageTimer(input: {
+  orderId: Types.ObjectId;
+  stage: string;
+  seconds?: number;
+}) {
+  const existing = await OrderStageTimerModel.findOne({
+    orderId: input.orderId,
+    stage: input.stage,
+    endedAt: null,
+  }).sort({ startedAt: -1 });
+
+  if (existing) {
+    return existing;
+  }
+
+  const now = new Date();
+
+  return OrderStageTimerModel.create({
+    orderId: input.orderId,
+    stage: input.stage,
+    startedAt: now,
+    deadlineAt: input.seconds
+      ? new Date(now.getTime() + input.seconds * 1000)
+      : null,
+  });
+}
+
+export async function closeStageTimer(
+  orderId: Types.ObjectId,
+  stage: string,
+) {
+  const timer = await OrderStageTimerModel.findOne({
+    orderId,
+    stage,
+    endedAt: null,
+  }).sort({ startedAt: -1 });
+
+  if (!timer) return null;
+
+  const now = new Date();
+  timer.endedAt = now;
+  timer.durationSeconds = Math.max(
+    0,
+    Math.floor(
+      (now.getTime() - timer.startedAt.getTime()) / 1000,
+    ),
+  );
+
+  if (timer.deadlineAt) {
+    timer.breached = now > timer.deadlineAt;
+  }
+
+  await timer.save();
+  return timer;
+}
+
+export async function detectStuckOrders(
+  minutes?: number,
+) {
+  const settings =
+    (await OperationsSettingsModel.findOne().lean()) ??
+    (await OperationsSettingsModel.create({})).toObject();
+
+  const thresholdMinutes = Math.min(
+    1440,
+    Math.max(
+      1,
+      Number(
+        minutes ??
+          settings.stuckOrderMinutes ??
+          10,
+      ),
+    ),
+  );
+
+  const cutoff = new Date(
+    Date.now() - thresholdMinutes * 60 * 1000,
+  );
+
+  const orders = await OrderModel.find({
+    status: {
+      $in: [
+        "pending",
+        "confirmed",
+        "preparing",
+        "ready_for_pickup",
+        "assigned",
+        "picked_up",
+        "on_the_way",
+      ],
+    },
+    updatedAt: { $lt: cutoff },
+  }).select(
+    "_id orderNumber status captainId updatedAt establishmentId",
+  );
+
+  let created = 0;
+  const newAlerts: Array<{
+    orderId: string;
+    orderNumber?: string;
+    status: string;
+    reason: string;
+  }> = [];
+
+  for (const order of orders) {
+    const isPendingWithoutCaptain =
+      order.status === "pending" &&
+      !order.captainId;
+
+    const reason = isPendingWithoutCaptain
+      ? `الطلب #${order.orderNumber ?? order._id.toString()} لم يتم تعيين كابتن له منذ أكثر من ${thresholdMinutes} دقيقة.`
+      : `الطلب #${order.orderNumber ?? order._id.toString()} لم يتم تحديثه منذ أكثر من ${thresholdMinutes} دقيقة. الحالة الحالية: ${order.status}.`;
+
+    const existing =
+      await StuckOrderAlertModel.findOne({
+        orderId: order._id,
+        status: {
+          $in: ["open", "acknowledged"],
+        },
+      });
+
+    if (existing) continue;
+
+    await StuckOrderAlertModel.create({
+      orderId: order._id,
+      reason,
+    });
+
+    created++;
+
+    // الطلب النشط تجاوز المدة المحددة:
+    // نفصل الكابتن الحالي ونعيده تلقائيًا إلى قائمة الطلبات المتاحة.
+    if (order.captainId) {
+      const previousStatus = order.status;
+
+      await OrderModel.updateOne(
+        { _id: order._id },
+        {
+          $set: {
+            status: "pending",
+            captainId: null,
+            assignedAt: null,
+            updatedAt: new Date(),
+          },
+        },
+      );
+
+      try {
+        await dispatchOrder(order._id);
+
+        await StuckOrderAlertModel.updateOne(
+          { orderId: order._id, status: "open" },
+          {
+            $set: {
+              status: "resolved",
+              resolvedAt: new Date(),
+              resolutionNote:
+                `تمت إعادة الطلب تلقائيًا إلى الطلبات المتاحة بعد تجاوز مدة الطلب النشط (${thresholdMinutes} دقيقة).`,
+            },
+          },
+        );
+
+        console.log(
+          `AUTO ACTIVE ORDER RELEASE: #${order.orderNumber ?? order._id} ` +
+            `(${previousStatus}) -> available`,
+        );
+      } catch (dispatchError) {
+        console.error(
+          "AUTO ACTIVE ORDER RELEASE DISPATCH ERROR:",
+          order._id.toString(),
+          dispatchError,
+        );
+      }
+    }
+
+    newAlerts.push({
+      orderId: order._id.toString(),
+      orderNumber: order.orderNumber,
+      status: order.status,
+      reason,
+    });
+  }
+
+  // إرسال إشعار للإدارة فقط عند إنشاء Alert جديد.
+  if (newAlerts.length > 0) {
+    const admins = await UserModel.find({
+      role: {
+        $in: ["admin", "super_admin"],
+      },
+      status: "active",
+    })
+      .select("_id")
+      .lean();
+
+    const adminIds = admins.map(
+      (admin) => admin._id,
+    );
+
+    if (adminIds.length > 0) {
+      for (const alert of newAlerts) {
+        await createNotifications(
+          adminIds,
+          {
+            type: "admin",
+            title: "⚠️ طلب عالق",
+            message: alert.reason,
+            orderId: alert.orderId,
+          },
+        );
+      }
+    }
+  }
+
+  return {
+    detected: created,
+    minutes: thresholdMinutes,
+  };
+}
+
+export async function resolveStuckAlert(
+  id: Types.ObjectId,
+  userId: Types.ObjectId,
+) {
+  return StuckOrderAlertModel.findOneAndUpdate(
+    { _id: id, status: { $ne: "resolved" } },
+    {
+      status: "resolved",
+      resolvedAt: new Date(),
+      resolvedBy: userId,
+    },
+    { returnDocument: "after" },
+  );
+}
+
+export async function createEmergency(input: {
+  captainId: Types.ObjectId;
+  orderId?: Types.ObjectId | null;
+  type: string;
+  description: string;
+  latitude?: number | null;
+  longitude?: number | null;
+}) {
+  return CaptainEmergencyModel.create(input);
+}
+
+export async function resolveEmergency(
+  id: Types.ObjectId,
+  userId: Types.ObjectId,
+) {
+  return CaptainEmergencyModel.findOneAndUpdate(
+    { _id: id, status: { $ne: "resolved" } },
+    {
+      status: "resolved",
+      resolvedBy: userId,
+      resolvedAt: new Date(),
+    },
+    { returnDocument: "after" },
+  );
+}
+
+export async function checkVersion(
+  platform: "android" | "ios" | "captain" | "shop",
+  buildNumber: number,
+) {
+  const latest = await AppVersionModel.findOne({
+    platform,
+    isActive: true,
+  })
+    .sort({ buildNumber: -1 })
+    .lean();
+
+  if (!latest) {
+    return {
+      updateRequired: false,
+      forceUpdate: false,
+      blocked: false,
+      minimumSupportedBuild: null,
+      latest: null,
+    };
+  }
+
+  const minimumSupportedBuild =
+    Number(latest.minimumSupportedBuild ?? 1);
+
+  const latestBuild =
+    Number(latest.buildNumber ?? 0);
+
+  const updateRequired =
+    buildNumber < latestBuild;
+
+  const blocked =
+    buildNumber < minimumSupportedBuild;
+
+  const forceUpdate =
+    Boolean(latest.forceUpdate) || blocked;
+
+  return {
+    updateRequired,
+    forceUpdate,
+    blocked,
+    minimumSupportedBuild,
+    latest,
+  };
+}
+
+export async function getMaintenance() {
+  return (
+    (await MaintenanceSettingsModel.findOne()) ??
+    (await MaintenanceSettingsModel.create({}))
+  );
+}
+
+export async function searchSystem(term: string) {
+  const value = term.trim();
+
+  if (value.length < 2) {
+    return {
+      orders: [],
+      captains: [],
+      establishments: [],
+      locations: [],
+      complaints: [],
+      emergencies: [],
+    };
+  }
+
+  const regex = new RegExp(
+    value.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&"),
+    "i",
+  );
+
+  // البحث عن التاريخ بصيغة YYYY-MM-DD
+  let dateFilter:
+    | {
+        createdAt: {
+          $gte: Date;
+          $lt: Date;
+        };
+      }
+    | null = null;
+
+  if (/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) {
+    const start = new Date(`${value}T00:00:00.000Z`);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+
+    if (!Number.isNaN(start.getTime())) {
+      dateFilter = {
+        createdAt: {
+          $gte: start,
+          $lt: end,
+        },
+      };
+    }
+  }
+
+  const [captains, establishments, locations, customers, orders, complaints, emergencies] =
+    await Promise.all([
+      UserModel.find({
+        role: "captain",
+        $or: [
+          { fullName: regex },
+          { phone: regex },
+          { email: regex },
+        ],
+      })
+        .select("_id fullName phone email status governorateId areaId")
+        .limit(30)
+        .lean(),
+
+      EstablishmentModel.find({
+        $or: [
+          { name: regex },
+          { phone: regex },
+          { email: regex },
+        ],
+      })
+        .select("_id name type phone email status governorateId areaId")
+        .limit(30)
+        .lean(),
+
+      LocationModel.find({
+        $or: [
+          { name: regex },
+          { "areas.name": regex },
+        ],
+      })
+        .select("_id name isActive captainsEnabled establishmentsEnabled areas")
+        .limit(30)
+        .lean(),
+
+      UserModel.find({
+        $or: [
+          { fullName: regex },
+          { phone: regex },
+          { email: regex },
+        ],
+      })
+        .select("_id fullName phone email role status")
+        .limit(30)
+        .lean(),
+
+      OrderModel.find(
+        dateFilter
+          ? dateFilter
+          : {
+              $or: [
+                { orderNumber: regex },
+                { customerNote: regex },
+                { cancellationReason: regex },
+              ],
+            },
+      )
+        .populate("captainId", "fullName phone")
+        .populate("establishmentId", "name type phone")
+        .limit(30)
+        .lean(),
+
+      ComplaintModel.find({
+        $or: [
+          { subject: regex },
+          { description: regex },
+          { category: regex },
+        ],
+      })
+        .limit(30)
+        .lean(),
+
+      CaptainEmergencyModel.find({
+        $or: [
+          { type: regex },
+          { description: regex },
+        ],
+      })
+        .limit(30)
+        .lean(),
+    ]);
+
+  const normalizedLocations = locations.map((location) => ({
+    ...location,
+    matchedAreas: location.areas?.filter((area) =>
+      regex.test(String(area.name ?? "")),
+    ) ?? [],
+  }));
+
+  return {
+    query: value,
+    orders,
+    captains,
+    establishments,
+    locations: normalizedLocations,
+    customers,
+    complaints,
+    emergencies,
+  };
+}
+
+export async function saveCancellation(input: {
+  orderId: Types.ObjectId;
+  cancelledBy: Types.ObjectId;
+  cancelledByRole: string;
+  reason: string;
+}) {
+  return CancellationRecordModel.findOneAndUpdate(
+    {
+      orderId: input.orderId,
+    },
+    {
+      $setOnInsert: {
+        ...input,
+      },
+    },
+    {
+      new: true,
+      upsert: true,
+      setDefaultsOnInsert: true,
+    },
+  );
+}
+
+export async function getPermissions(
+  userId: Types.ObjectId,
+) {
+  return StaffPermissionModel.findOne({ userId }).lean();
+}
+
+export async function logSecurity(input: {
+  userId?: Types.ObjectId | null;
+  type: string;
+  severity: "info" | "warning" | "critical";
+  ip?: string | null;
+  userAgent?: string | null;
+  path?: string | null;
+  method?: string | null;
+  message: string;
+  metadata?: Record<string, unknown> | null;
+}) {
+  return SecurityEventModel.create(input);
+}

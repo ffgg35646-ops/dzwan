@@ -1,0 +1,875 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { apiGet } from "../../api/request";
+
+type AnyRow = Record<string, any>;
+
+type AreaStat = {
+  key: string;
+  name: string;
+  orders: number;
+  restaurants: number;
+  restaurantIds: Set<string>;
+};
+
+type RestaurantStat = {
+  key: string;
+  name: string;
+  orders: number;
+  areaName: string;
+};
+
+function unwrap(payload: any): any {
+  return payload?.data ?? payload?.result ?? payload;
+}
+
+function toArray(payload: any): AnyRow[] {
+  const root = unwrap(payload);
+
+  if (Array.isArray(root)) return root;
+  if (Array.isArray(root?.orders)) return root.orders;
+  if (Array.isArray(root?.establishments)) return root.establishments;
+  if (Array.isArray(root?.restaurants)) return root.restaurants;
+  if (Array.isArray(root?.items)) return root.items;
+  if (Array.isArray(root?.rows)) return root.rows;
+  if (Array.isArray(root?.data)) return root.data;
+
+  return [];
+}
+
+function idOf(value: any): string {
+  if (!value) return "";
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+
+  return String(
+    value?._id ??
+      value?.id ??
+      value?.value ??
+      ""
+  );
+}
+
+function nameOf(value: any, fallback = ""): string {
+  if (!value) return fallback;
+
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+
+  return String(
+    value?.name ??
+      value?.fullName ??
+      value?.title ??
+      value?.label ??
+      fallback
+  );
+}
+
+function establishmentId(order: AnyRow): string {
+  return idOf(
+    order?.establishmentId ??
+      order?.restaurantId ??
+      order?.shopId ??
+      order?.establishment?._id ??
+      order?.restaurant?._id ??
+      order?.shop?._id
+  );
+}
+
+function establishmentName(order: AnyRow, map: Map<string, AnyRow>): string {
+  const direct =
+    nameOf(order?.establishment) ||
+    nameOf(order?.restaurant) ||
+    nameOf(order?.shop);
+
+  if (direct) return direct;
+
+  const id = establishmentId(order);
+  const row = map.get(id);
+
+  return nameOf(row, "مطعم / محل");
+}
+
+function areaNameFromValue(value: any): string {
+  return nameOf(value);
+}
+
+function orderAreaName(order: AnyRow, est: AnyRow | undefined): string {
+  const directCandidates = [
+    order?.area,
+    order?.deliveryArea,
+    order?.serviceArea,
+    order?.areaName,
+    order?.deliveryAreaName,
+    order?.location?.area,
+    order?.address?.area,
+    order?.establishment?.area,
+    order?.restaurant?.area,
+    order?.shop?.area,
+  ];
+
+  for (const candidate of directCandidates) {
+    const name = areaNameFromValue(candidate);
+    if (name) return name;
+  }
+
+  const estCandidates = [
+    est?.area,
+    est?.areaId,
+    est?.serviceArea,
+    est?.deliveryArea,
+    est?.areaName,
+  ];
+
+  for (const candidate of estCandidates) {
+    const name = areaNameFromValue(candidate);
+    if (name) return name;
+  }
+
+  return "منطقة غير محددة";
+}
+
+function isCountableOrder(order: AnyRow): boolean {
+  const status = String(
+    order?.status ??
+      order?.stage ??
+      order?.state ??
+      ""
+  ).toLowerCase();
+
+  if (
+    status.includes("cancel") ||
+    status.includes("reject")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export default function LeaderActivitySection() {
+  const [orders, setOrders] = useState<AnyRow[]>([]);
+  const [establishments, setEstablishments] = useState<AnyRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [selectedArea, setSelectedArea] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    try {
+      setError("");
+
+      const [ordersResult, establishmentsResult] = await Promise.all([
+        apiGet("/leaders/me/orders?limit=5000"),
+        apiGet("/leaders/me/establishments?limit=5000"),
+      ]);
+
+      setOrders(toArray(ordersResult));
+      setEstablishments(toArray(establishmentsResult));
+    } catch (err) {
+      console.warn("Leader activity load failed:", err);
+      setError("تعذر تحديث بيانات النشاط حاليًا.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+
+    const timer = setInterval(() => {
+      load();
+    }, 30000);
+
+    return () => clearInterval(timer);
+  }, [load]);
+
+  const establishmentMap = useMemo(() => {
+    const map = new Map<string, AnyRow>();
+
+    for (const row of establishments) {
+      const id = idOf(row);
+      if (id) map.set(id, row);
+    }
+
+    return map;
+  }, [establishments]);
+
+  const areaStats = useMemo<AreaStat[]>(() => {
+    const map = new Map<string, AreaStat>();
+
+    for (const order of orders) {
+      if (!isCountableOrder(order)) continue;
+
+      const estId = establishmentId(order);
+      const est = establishmentMap.get(estId);
+      const areaName = orderAreaName(order, est);
+      const key = areaName.trim() || "منطقة غير محددة";
+
+      let row = map.get(key);
+
+      if (!row) {
+        row = {
+          key,
+          name: key,
+          orders: 0,
+          restaurants: 0,
+          restaurantIds: new Set<string>(),
+        };
+
+        map.set(key, row);
+      }
+
+      row.orders += 1;
+
+      if (estId) {
+        row.restaurantIds.add(estId);
+      }
+    }
+
+    // أضف المطاعم حتى لو ما عندهاش أوردرات،
+    // عشان عدد المطاعم في المنطقة يفضل صحيح.
+    for (const est of establishments) {
+      const name = nameOf(est, "مطعم / محل");
+      const areaName = orderAreaName({}, est);
+      const key = areaName.trim() || "منطقة غير محددة";
+
+      let row = map.get(key);
+
+      if (!row) {
+        row = {
+          key,
+          name: key,
+          orders: 0,
+          restaurants: 0,
+          restaurantIds: new Set<string>(),
+        };
+
+        map.set(key, row);
+      }
+
+      const estId = idOf(est);
+
+      if (estId) {
+        row.restaurantIds.add(estId);
+      } else {
+        row.restaurantIds.add(`${key}:${name}`);
+      }
+    }
+
+    return [...map.values()]
+      .map((row) => ({
+        ...row,
+        restaurants: row.restaurantIds.size,
+      }))
+      .sort(
+        (a, b) =>
+          b.orders - a.orders ||
+          b.restaurants - a.restaurants
+      )
+      .slice(0, 12);
+  }, [orders, establishments, establishmentMap]);
+
+  const restaurantStats = useMemo<RestaurantStat[]>(() => {
+    const map = new Map<string, RestaurantStat>();
+
+    for (const order of orders) {
+      if (!isCountableOrder(order)) continue;
+
+      const id = establishmentId(order);
+      const name = establishmentName(order, establishmentMap);
+      const areaName = orderAreaName(
+        order,
+        establishmentMap.get(id)
+      );
+
+      const key = id || `${name}:${areaName}`;
+
+      let row = map.get(key);
+
+      if (!row) {
+        row = {
+          key,
+          name,
+          areaName,
+          orders: 0,
+        };
+
+        map.set(key, row);
+      }
+
+      row.orders += 1;
+    }
+
+    return [...map.values()]
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 8);
+  }, [orders, establishmentMap]);
+
+  const selectedRestaurantStats = useMemo(() => {
+    if (!selectedArea) return [];
+
+    const map = new Map<string, RestaurantStat>();
+
+    for (const order of orders) {
+      if (!isCountableOrder(order)) continue;
+
+      const id = establishmentId(order);
+      const est = establishmentMap.get(id);
+      const areaName = orderAreaName(order, est);
+
+      if (areaName !== selectedArea) continue;
+
+      const name = establishmentName(order, establishmentMap);
+      const key = id || `${name}:${areaName}`;
+
+      let row = map.get(key);
+
+      if (!row) {
+        row = {
+          key,
+          name,
+          areaName,
+          orders: 0,
+        };
+
+        map.set(key, row);
+      }
+
+      row.orders += 1;
+    }
+
+    // أضف المطاعم التابعة للمنطقة حتى لو أوردراتها = 0.
+    for (const est of establishments) {
+      const areaName = orderAreaName({}, est);
+      if (areaName !== selectedArea) continue;
+
+      const id = idOf(est);
+      const name = nameOf(est, "مطعم / محل");
+      const key = id || `${name}:${areaName}`;
+
+      if (!map.has(key)) {
+        map.set(key, {
+          key,
+          name,
+          areaName,
+          orders: 0,
+        });
+      }
+    }
+
+    return [...map.values()]
+      .sort((a, b) => b.orders - a.orders)
+      .slice(0, 20);
+  }, [
+    selectedArea,
+    orders,
+    establishments,
+    establishmentMap,
+  ]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingCard}>
+        <ActivityIndicator size="small" />
+        <Text style={styles.loadingText}>
+          جاري تحميل نشاط المناطق والمطاعم...
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.wrap}>
+      <View style={styles.headerRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>
+            المناطق الأكثر نشاطًا
+          </Text>
+          <Text style={styles.subtitle}>
+            النشاط محسوب من حركة الطلبات داخل نطاقك
+          </Text>
+        </View>
+
+        <Pressable
+          onPress={() => {
+            setRefreshing(true);
+            load();
+          }}
+          style={styles.refreshButton}
+        >
+          <Text style={styles.refreshText}>تحديث</Text>
+        </Pressable>
+      </View>
+
+      {error ? (
+        <Text style={styles.errorText}>{error}</Text>
+      ) : null}
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.areaRow}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={load}
+          />
+        }
+      >
+        {areaStats.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyTitle}>
+              لا توجد بيانات نشاط حتى الآن
+            </Text>
+            <Text style={styles.emptyText}>
+              ستظهر المناطق والمطاعم هنا مع وصول الطلبات.
+            </Text>
+          </View>
+        ) : (
+          areaStats.map((area, index) => {
+            const selected = selectedArea === area.name;
+
+            return (
+              <Pressable
+                key={area.key}
+                onPress={() =>
+                  setSelectedArea(
+                    selected ? null : area.name
+                  )
+                }
+                style={[
+                  styles.areaCard,
+                  selected && styles.areaCardSelected,
+                ]}
+              >
+                <View style={styles.rankCircle}>
+                  <Text style={styles.rankText}>
+                    {index + 1}
+                  </Text>
+                </View>
+
+                <Text style={styles.areaName}>
+                  {area.name}
+                </Text>
+
+                <View style={styles.metricLine}>
+                  <Text style={styles.metricNumber}>
+                    {area.restaurants}
+                  </Text>
+                  <Text style={styles.metricLabel}>
+                    مطعم
+                  </Text>
+                </View>
+
+                <View style={styles.metricLine}>
+                  <Text style={styles.metricNumber}>
+                    {area.orders}
+                  </Text>
+                  <Text style={styles.metricLabel}>
+                    طلب
+                  </Text>
+                </View>
+
+                <Text style={styles.tapHint}>
+                  {selected
+                    ? "إغلاق المطاعم"
+                    : "عرض المطاعم"}
+                </Text>
+              </Pressable>
+            );
+          })
+        )}
+      </ScrollView>
+
+      {selectedArea ? (
+        <View style={styles.detailCard}>
+          <View style={styles.detailHeader}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.detailTitle}>
+                مطاعم {selectedArea}
+              </Text>
+              <Text style={styles.detailSubtitle}>
+                مرتبة حسب عدد الطلبات
+              </Text>
+            </View>
+
+            <Pressable
+              onPress={() => setSelectedArea(null)}
+            >
+              <Text style={styles.closeText}>إغلاق</Text>
+            </Pressable>
+          </View>
+
+          {selectedRestaurantStats.length === 0 ? (
+            <Text style={styles.emptyText}>
+              لا توجد مطاعم مسجلة في هذه المنطقة.
+            </Text>
+          ) : (
+            selectedRestaurantStats.map(
+              (restaurant, index) => (
+                <View
+                  key={restaurant.key}
+                  style={styles.restaurantRow}
+                >
+                  <View style={styles.restaurantIndex}>
+                    <Text style={styles.restaurantIndexText}>
+                      {index + 1}
+                    </Text>
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.restaurantName}>
+                      {restaurant.name}
+                    </Text>
+                    <Text style={styles.restaurantArea}>
+                      {restaurant.areaName}
+                    </Text>
+                  </View>
+
+                  <View style={styles.orderPill}>
+                    <Text style={styles.orderPillNumber}>
+                      {restaurant.orders}
+                    </Text>
+                    <Text style={styles.orderPillLabel}>
+                      طلب
+                    </Text>
+                  </View>
+                </View>
+              )
+            )
+          )}
+        </View>
+      ) : null}
+
+      <View style={styles.detailCard}>
+        <View style={styles.detailHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detailTitle}>
+              المطاعم الأكثر طلبًا
+            </Text>
+            <Text style={styles.detailSubtitle}>
+              تظهر مباشرة بدون فتح أي منطقة
+            </Text>
+          </View>
+        </View>
+
+        {restaurantStats.length === 0 ? (
+          <Text style={styles.emptyText}>
+            لا توجد بيانات مطاعم حاليًا.
+          </Text>
+        ) : (
+          restaurantStats.map(
+            (restaurant, index) => (
+              <View
+                key={restaurant.key}
+                style={styles.restaurantRow}
+              >
+                <View style={styles.restaurantIndex}>
+                  <Text style={styles.restaurantIndexText}>
+                    {index + 1}
+                  </Text>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.restaurantName}>
+                    {restaurant.name}
+                  </Text>
+                  <Text style={styles.restaurantArea}>
+                    {restaurant.areaName}
+                  </Text>
+                </View>
+
+                <View style={styles.orderPill}>
+                  <Text style={styles.orderPillNumber}>
+                    {restaurant.orders}
+                  </Text>
+                  <Text style={styles.orderPillLabel}>
+                    طلب
+                  </Text>
+                </View>
+              </View>
+            )
+          )
+        )}
+      </View>
+
+      <Text style={styles.autoRefreshText}>
+        يتم تحديث النشاط تلقائيًا كل 30 ثانية
+      </Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: {
+    marginTop: 16,
+    marginBottom: 20,
+  },
+
+  loadingCard: {
+    marginTop: 16,
+    padding: 20,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    gap: 10,
+  },
+
+  loadingText: {
+    fontSize: 13,
+    color: "#667085",
+    textAlign: "center",
+  },
+
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 12,
+  },
+
+  title: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#101828",
+    textAlign: "right",
+  },
+
+  subtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    color: "#667085",
+    textAlign: "right",
+  },
+
+  refreshButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: "#EFF6FF",
+  },
+
+  refreshText: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#2563EB",
+  },
+
+  errorText: {
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    color: "#B42318",
+    fontSize: 12,
+    textAlign: "right",
+  },
+
+  areaRow: {
+    gap: 12,
+    paddingVertical: 4,
+  },
+
+  areaCard: {
+    width: 180,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+  },
+
+  areaCardSelected: {
+    borderColor: "#2563EB",
+    backgroundColor: "#F8FBFF",
+  },
+
+  rankCircle: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#EFF6FF",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+
+  rankText: {
+    color: "#2563EB",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  areaName: {
+    fontSize: 16,
+    fontWeight: "900",
+    color: "#101828",
+    textAlign: "right",
+    marginBottom: 10,
+  },
+
+  metricLine: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "flex-end",
+    gap: 5,
+    marginTop: 2,
+  },
+
+  metricNumber: {
+    fontSize: 20,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  metricLabel: {
+    fontSize: 11,
+    color: "#667085",
+    fontWeight: "700",
+  },
+
+  tapHint: {
+    marginTop: 12,
+    fontSize: 11,
+    color: "#2563EB",
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  detailCard: {
+    marginTop: 14,
+    borderRadius: 20,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+    padding: 16,
+  },
+
+  detailHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    gap: 10,
+  },
+
+  detailTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#101828",
+    textAlign: "right",
+  },
+
+  detailSubtitle: {
+    marginTop: 2,
+    color: "#667085",
+    fontSize: 11,
+    textAlign: "right",
+  },
+
+  closeText: {
+    color: "#2563EB",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+
+  restaurantRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F2F4F7",
+    gap: 10,
+  },
+
+  restaurantIndex: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "#F2F4F7",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  restaurantIndexText: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#475467",
+  },
+
+  restaurantName: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#101828",
+    textAlign: "right",
+  },
+
+  restaurantArea: {
+    marginTop: 2,
+    fontSize: 10,
+    color: "#667085",
+    textAlign: "right",
+  },
+
+  orderPill: {
+    minWidth: 54,
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: "#F8FAFC",
+    alignItems: "center",
+  },
+
+  orderPillNumber: {
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#111827",
+  },
+
+  orderPillLabel: {
+    fontSize: 9,
+    color: "#667085",
+    fontWeight: "700",
+  },
+
+  emptyCard: {
+    width: 300,
+    minHeight: 130,
+    padding: 20,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E4E7EC",
+    justifyContent: "center",
+  },
+
+  emptyTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#101828",
+    textAlign: "right",
+  },
+
+  emptyText: {
+    marginTop: 5,
+    fontSize: 12,
+    color: "#667085",
+    textAlign: "right",
+  },
+
+  autoRefreshText: {
+    marginTop: 8,
+    fontSize: 10,
+    color: "#98A2B3",
+    textAlign: "center",
+  },
+});

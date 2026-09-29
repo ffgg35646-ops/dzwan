@@ -1,0 +1,1260 @@
+{
+  "backend": "/home/mohamed/Downloads/dzwan/backend",
+  "routes": [
+    {
+      "file": "src/routes/audit.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/audit.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "method": "GET",
+      "path": "/me"
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "method": "POST",
+      "path": "/login"
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "method": "POST",
+      "path": "/logout"
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "method": "POST",
+      "path": "/refresh"
+    },
+    {
+      "file": "src/routes/captain-attendance.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/captain-attendance.routes.ts",
+      "method": "GET",
+      "path": "/me"
+    },
+    {
+      "file": "src/routes/captain-attendance.routes.ts",
+      "method": "POST",
+      "path": "/check-in"
+    },
+    {
+      "file": "src/routes/captain-attendance.routes.ts",
+      "method": "POST",
+      "path": "/check-out"
+    },
+    {
+      "file": "src/routes/captain-document.routes.ts",
+      "method": "GET",
+      "path": "/captain/:captainId"
+    },
+    {
+      "file": "src/routes/captain-document.routes.ts",
+      "method": "GET",
+      "path": "/me"
+    },
+    {
+      "file": "src/routes/captain-document.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/review"
+    },
+    {
+      "file": "src/routes/captain-document.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/captain-ledger.routes.ts",
+      "method": "GET",
+      "path": "/:captainId"
+    },
+    {
+      "file": "src/routes/captain-ledger.routes.ts",
+      "method": "GET",
+      "path": "/me"
+    },
+    {
+      "file": "src/routes/captain-registration.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/captain-registration.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/captain-registration.routes.ts",
+      "method": "POST",
+      "path": "/:id/approve"
+    },
+    {
+      "file": "src/routes/captain-registration.routes.ts",
+      "method": "POST",
+      "path": "/:id/reject"
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "GET",
+      "path": "/current/check"
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "POST",
+      "path": "/weekly/change"
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "POST",
+      "path": "/weekly/select"
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "GET",
+      "path": "/:captainId"
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "GET",
+      "path": "/me"
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/toggle"
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "POST",
+      "path": "/:captainId"
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "POST",
+      "path": "/me"
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "POST",
+      "path": "/:id/approve"
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "POST",
+      "path": "/:id/reject"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/audit"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/cash/:captainId"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/kpi/captains/:captainId"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/notification-rules"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/ratings/:captainId"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/settings"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/sub-admins"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "PATCH",
+      "path": "/settings"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "PATCH",
+      "path": "/sub-admins/:id"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "POST",
+      "path": "/audit"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "POST",
+      "path": "/cash"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "POST",
+      "path": "/ratings"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "POST",
+      "path": "/sub-admins"
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "PUT",
+      "path": "/notification-rules/:event"
+    },
+    {
+      "file": "src/routes/core-operations-settings.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/core-operations-settings.routes.ts",
+      "method": "PATCH",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/core11-establishment.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/location"
+    },
+    {
+      "file": "src/routes/core11-establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/reactivate"
+    },
+    {
+      "file": "src/routes/core11-establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/suspend"
+    },
+    {
+      "file": "src/routes/core11-settings.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/core11-settings.routes.ts",
+      "method": "PATCH",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "DELETE",
+      "path": "/addresses/:id"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "GET",
+      "path": "/:customerId/addresses"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "PATCH",
+      "path": "/addresses/:id"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "POST",
+      "path": "/:customerId/addresses"
+    },
+    {
+      "file": "src/routes/delivery-proof.routes.ts",
+      "method": "GET",
+      "path": "/:orderId"
+    },
+    {
+      "file": "src/routes/delivery-proof.routes.ts",
+      "method": "POST",
+      "path": "/:orderId/otp"
+    },
+    {
+      "file": "src/routes/delivery-proof.routes.ts",
+      "method": "POST",
+      "path": "/:orderId/otp/verify"
+    },
+    {
+      "file": "src/routes/delivery-proof.routes.ts",
+      "method": "POST",
+      "path": "/:orderId/photo"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "DELETE",
+      "path": "/shifts/:id"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "GET",
+      "path": "/assignments"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "GET",
+      "path": "/queue"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "GET",
+      "path": "/settings"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "GET",
+      "path": "/shifts"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "PATCH",
+      "path": "/settings"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "POST",
+      "path": "/orders/:id/accept"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "POST",
+      "path": "/orders/:id/dispatch"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "POST",
+      "path": "/process"
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "POST",
+      "path": "/shifts"
+    },
+    {
+      "file": "src/routes/establishment-report.routes.ts",
+      "method": "GET",
+      "path": "/establishments/:establishmentId"
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/location"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/approve"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/reactivate"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/reject"
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/suspend"
+    },
+    {
+      "file": "src/routes/geofence.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/geofence.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/geofence.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/geofence.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "POST",
+      "path": "/:id/approve"
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "POST",
+      "path": "/:id/reject"
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "DELETE",
+      "path": "/:id/areas/:areaId"
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/areas/:areaId"
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "POST",
+      "path": "/:id/areas"
+    },
+    {
+      "file": "src/routes/notification.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/notification.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/read"
+    },
+    {
+      "file": "src/routes/notification.routes.ts",
+      "method": "POST",
+      "path": "/read-all"
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/toggle"
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "POST",
+      "path": "/validate"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/app-version-check"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/app-versions"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/complaints"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/emergencies"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/maintenance"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/orders/:orderId/timeline"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/permissions/:userId"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/search"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/stuck"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/complaints/:id"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/emergencies/:id/resolve"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/maintenance"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/permissions/:userId"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/stuck/:id/resolve"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/app-versions"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/complaints"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/emergencies"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/cancel"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/re-dispatch"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/timeline"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/timers"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/timers/:stage/finish"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/security-events"
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/stuck/process"
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/status"
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "POST",
+      "path": "/:id/assign-captain"
+    },
+    {
+      "file": "src/routes/pricing.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/pricing.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/pricing.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/pricing.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "POST",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/reports.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/capacity"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/cash-statement"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/kpi"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/rating"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/work-areas"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/complaints/:id"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/dashboard/operations"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/orders/:orderId/timeline"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/orders/:orderId/timeline/full"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/reports/admin"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/reports/establishments/:establishmentId"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/shift/check"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "PATCH",
+      "path": "/captains/:captainId/online"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/captains/:captainId/attendance/in"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/captains/:captainId/attendance/out"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/complaints"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/cash/:captainId"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/events"
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/rating"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/geofence/resolve"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/maintenance"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/orders/:orderId/timeline"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/settings"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/stuck-orders"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/versions/:app"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "PATCH",
+      "path": "/emergencies/:id"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/complaints"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/emergencies"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/cancel"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/events"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/reassign"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/security-log"
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "PUT",
+      "path": "/settings"
+    },
+    {
+      "file": "src/routes/scoped-location.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/settings.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/staff.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/staff.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/staff.routes.ts",
+      "method": "POST",
+      "path": "/:userId"
+    },
+    {
+      "file": "src/routes/system-settings.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/system-settings.routes.ts",
+      "method": "PATCH",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/user.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/user.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/user.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/user.routes.ts",
+      "method": "PATCH",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "DELETE",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "GET",
+      "path": "/:id"
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/role"
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/status"
+    }
+  ],
+  "mounts": [
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/requirements-30-46",
+      "router": "requirements3046Routes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/auth",
+      "router": "authRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/users",
+      "router": "usersRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/staff",
+      "router": "staffRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/locations",
+      "router": "locationRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/users",
+      "router": "userRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captains",
+      "router": "captainRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/leaders",
+      "router": "leaderRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/scoped/locations",
+      "router": "scopedLocationRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/establishments",
+      "router": "establishmentRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/establishment-users",
+      "router": "establishmentUserRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/customers",
+      "router": "customerRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/products",
+      "router": "productRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/orders",
+      "router": "orderRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/pricing",
+      "router": "pricingRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/geofences",
+      "router": "geofenceRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/notifications",
+      "router": "notificationRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/audit-logs",
+      "router": "auditRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/settings",
+      "router": "settingsRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/dispatch",
+      "router": "dispatchRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/system-settings",
+      "router": "systemSettingsRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/delivery-proof",
+      "router": "deliveryProofRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-ledger",
+      "router": "captainLedgerRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-work-areas",
+      "router": "captainWorkAreaRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-documents",
+      "router": "captainDocumentRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-registration",
+      "router": "captainRegistrationRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-attendance",
+      "router": "captainAttendanceRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/reports",
+      "router": "reportsRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/completion",
+      "router": "completionRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/ops",
+      "router": "ops3147Routes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/offers",
+      "router": "offerRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/reports",
+      "router": "establishmentReportRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/core11/establishments",
+      "router": "core11EstablishmentRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/core11/settings",
+      "router": "core11SettingsRoutes"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/requirements",
+      "router": "requirements1129Router"
+    }
+  ],
+  "authFiles": [
+    "src/controllers/user.controller.ts",
+    "src/controllers/captain.controller.ts",
+    "src/controllers/users.controller.ts",
+    "src/controllers/settings.controller.ts",
+    "src/controllers/leader.controller.ts",
+    "src/controllers/staff.controller.ts",
+    "src/controllers/auth.controller.ts",
+    "src/models/User.ts",
+    "src/routes/auth.routes.ts",
+    "src/middleware/loginRateLimit.middleware.ts",
+    "src/services/auth.service.ts"
+  ]
+}

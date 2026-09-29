@@ -1,0 +1,1244 @@
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+import Screen from "../../components/Screen";
+import AppButton from "../../components/AppButton";
+import { useAppTheme } from "../../theme/useAppTheme";
+import { useAuthStore } from "../../store/authStore";
+import {
+  checkShift,
+  attendanceIn,
+  attendanceOut,
+  getAvailableShifts,
+  selectWeeklyShift,
+  changeWeeklyShift,
+} from "../../api/captain";
+
+const DAYS = [
+  "الأحد",
+  "الاثنين",
+  "الثلاثاء",
+  "الأربعاء",
+  "الخميس",
+  "الجمعة",
+  "السبت",
+];
+
+export default function ShiftScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+
+  const user = useAuthStore((s) => s.user);
+
+  const [data, setData] = useState<any>(null);
+  const [availableShifts, setAvailableShifts] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [shiftModalOpen, setShiftModalOpen] = useState(false);
+
+  async function load() {
+    try {
+      setLoading(true);
+
+      // تحميل الشفتات المتاحة بشكل مستقل
+      // حتى لو فشل فحص الشفت الحالي لا تختفي قائمة الشفتات.
+      const shiftsResult = await getAvailableShifts();
+
+      setAvailableShifts(
+        Array.isArray(shiftsResult?.data)
+          ? shiftsResult.data
+          : []
+      );
+
+      // فحص الشفت الحالي بشكل مستقل
+      try {
+        const result = await checkShift();
+        setData(result);
+      } catch (e) {
+        console.warn("checkShift failed:", e);
+      }
+    } catch (e: any) {
+      setAvailableShifts([]);
+
+      Alert.alert(
+        "تعذر تحميل الشفتات",
+        e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          "تعذر الاتصال بالخادم.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+
+    const timer = setInterval(load, 60_000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  const assignment = data?.assignment || null;
+
+  const selectedShiftId = assignment?.shiftId
+    ? String(assignment.shiftId)
+    : "";
+
+  const changeUsed =
+    Number(assignment?.changeCount || 0) >= 2;
+
+  async function chooseShift(
+    shiftId: string,
+    changing = false
+  ) {
+    console.log(
+      "SHIFT BUTTON PRESSED",
+      { shiftId, changing, busy }
+    );
+
+    if (!shiftId || busy) {
+      console.log("SHIFT SELECTION BLOCKED");
+      return false;
+    }
+
+    setBusy(true);
+
+    try {
+      console.log(
+        "SHIFT REQUEST START",
+        { shiftId, changing }
+      );
+      if (changing) {
+        await changeWeeklyShift(shiftId);
+
+        Alert.alert(
+          "تم تغيير الشفت",
+          "تم تغيير شفت هذا الأسبوع بنجاح."
+        );
+      } else {
+        console.log(
+          "CALLING selectWeeklyShift",
+          shiftId
+        );
+
+        await selectWeeklyShift(shiftId);
+
+        console.log(
+          "SELECT WEEKLY SHIFT SUCCESS",
+          shiftId
+        );
+
+        Alert.alert(
+          "تم اختيار الشفت",
+          "تم اختيار شفت هذا الأسبوع بنجاح."
+        );
+      }
+
+      await load();
+    } catch (e: any) {
+      Alert.alert(
+        changing
+          ? "تعذر تغيير الشفت"
+          : "تعذر اختيار الشفت",
+        e?.response?.data?.message ||
+          "تعذر تنفيذ العملية الآن."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startWork() {
+    if (!user?.id) return;
+
+    setBusy(true);
+
+    try {
+      await attendanceIn(user.id);
+      await load();
+
+      Alert.alert(
+        "تم تسجيل الحضور",
+        "تم تسجيل بداية العمل بنجاح.",
+      );
+    } catch (e: any) {
+      Alert.alert(
+        "تعذر بدء العمل",
+        e?.response?.data?.message ||
+          "لا يمكن بدء العمل الآن.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function endWork() {
+    if (!user?.id) return;
+
+    setBusy(true);
+
+    try {
+      await attendanceOut(user.id);
+      await load();
+
+      Alert.alert(
+        "تم تسجيل الانصراف",
+        "تم تسجيل نهاية العمل بنجاح.",
+      );
+    } catch (e: any) {
+      Alert.alert(
+        "تعذر إنهاء العمل",
+        e?.response?.data?.message ||
+          "تعذر تسجيل الانصراف.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const insideShift = Boolean(
+    data?.insideShift,
+  );
+
+  const currentShift = data?.shift || null;
+
+  const start =
+    currentShift?.startTime ??
+    data?.start ??
+    "—";
+
+  const end =
+    currentShift?.endTime ??
+    data?.end ??
+    "—";
+
+  const dayIndex = new Date().getDay();
+
+  const dayName =
+    DAYS[dayIndex] || "اليوم";
+
+  const statusText = useMemo(() => {
+    if (!assignment || !currentShift) {
+      return "لم يتم اختيار شفت لهذا الأسبوع";
+    }
+
+    if (insideShift) {
+      return `✅ تم اختيار ${currentShift.name || "الشفت"} — أنت الآن داخل وقت الشفت`;
+    }
+
+    return `✅ تم اختيار ${currentShift.name || "الشفت"} — أنت الآن خارج وقت الشفت`;
+  }, [assignment, currentShift, insideShift]);
+
+  return (
+    <Screen>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.eyebrow}>
+              إدارة العمل
+            </Text>
+
+            <Text style={styles.title}>
+              الشفت والحضور
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.headerIcon,
+              {
+                backgroundColor: insideShift
+                  ? `${appTheme.successColor}18`
+                  : `${appTheme.secondaryTextColor}14`,
+              },
+            ]}
+          >
+            <Ionicons
+              name="time-outline"
+              size={25}
+              color={
+                insideShift
+                  ? appTheme.successColor
+                  : appTheme.secondaryTextColor
+              }
+            />
+          </View>
+        </View>
+
+        {loading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator
+              size="small"
+              color={appTheme.primaryColor}
+            />
+
+            <Text style={styles.loadingText}>
+              جاري تحميل بيانات الشفت...
+            </Text>
+          </View>
+        ) : (
+          <>
+            
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                شفت الأسبوع
+              </Text>
+
+              <View style={styles.shiftMainCard}>
+                <View style={styles.shiftMainTop}>
+                  <View style={styles.shiftMainIcon}>
+                    <Ionicons
+                      name="time-outline"
+                      size={24}
+                      color={appTheme.primaryColor}
+                    />
+                  </View>
+
+                  <View style={styles.shiftMainText}>
+                    <Text style={styles.cardLabel}>
+                      الشفت الحالي
+                    </Text>
+
+                    <Text style={styles.shiftMainTitle}>
+                      {assignment
+                        ? currentShift?.name || "الشفت المختار"
+                        : "لم يتم اختيار شفت بعد"}
+                    </Text>
+
+                    {assignment && (
+                      <Text style={styles.shiftMainTime}>
+                        {start} - {end}
+                      </Text>
+                    )}
+                  </View>
+
+                  <View style={styles.shiftBadge}>
+                    <Text style={styles.shiftBadgeText}>
+                      {assignment ? "مثبت" : "غير محدد"}
+                    </Text>
+                  </View>
+                </View>
+
+                {assignment ? (
+                  <>
+                    <View style={styles.shiftSelectedBanner}>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={21}
+                        color={appTheme.successColor}
+                      />
+
+                      <Text style={styles.shiftSelectedBannerText}>
+                        تم اختيار {currentShift?.name || "الشفت"}
+                      </Text>
+                    </View>
+
+                    <View style={styles.shiftTimeBanner}>
+                      <Ionicons
+                        name="time-outline"
+                        size={19}
+                        color={appTheme.primaryColor}
+                      />
+
+                      <Text style={styles.shiftTimeBannerText}>
+                        {start} - {end}
+                      </Text>
+                    </View>
+
+                    {insideShift ? (
+                      <View style={styles.shiftStateBanner}>
+                        <Text style={styles.shiftStateBannerText}>
+                          🟢 أنت الآن داخل وقت الشفت
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.shiftStateBannerOutside}>
+                        <Text style={styles.shiftStateBannerOutsideText}>
+                          🔴 أنت الآن خارج وقت الشفت
+                        </Text>
+                      </View>
+                    )}
+
+
+                    <View style={styles.selectedShiftNotice}>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color={appTheme.successColor}
+                      />
+                      <Text style={styles.selectedShiftNoticeText}>
+                        تم اختيار هذا الشفت لهذا الأسبوع
+                      </Text>
+                    </View>
+
+                    <AppButton
+                      title={
+                        changeUsed
+                          ? "تم استخدام تغيير هذا الأسبوع"
+                          : "تغيير الشفت"
+                      }
+                      secondary
+                      disabled={changeUsed}
+                      onPress={() => {
+                        if (!changeUsed) {
+                          setShiftModalOpen(true);
+                        }
+                      }}
+                      loading={busy}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.shiftHelpText}>
+                      اختر شفت الأسبوع لبدء العمل واستقبال الطلبات.
+                    </Text>
+
+                    <AppButton
+                      title="اختيار شفت الأسبوع"
+                      onPress={() => setShiftModalOpen(true)}
+                    />
+                  </>
+                )}
+              </View>
+            </View>
+
+            <Modal
+              visible={shiftModalOpen}
+              transparent
+              animationType="slide"
+              onRequestClose={() => setShiftModalOpen(false)}
+            >
+              <Pressable
+                style={styles.modalBackdrop}
+                onPress={() => setShiftModalOpen(false)}
+              >
+                <Pressable
+                  style={styles.shiftModal}
+                  onPress={(e) => e.stopPropagation()}
+                >
+                  <View style={styles.modalHandle} />
+
+                  <View style={styles.modalHeader}>
+                    <View>
+                      <Text style={styles.modalTitle}>
+                        اختر شفت الأسبوع
+                      </Text>
+                      <Text style={styles.modalSubtitle}>
+                        اختر الوقت المناسب لك
+                      </Text>
+                    </View>
+
+                    <Pressable
+                      onPress={() => setShiftModalOpen(false)}
+                      style={styles.modalClose}
+                    >
+                      <Ionicons
+                        name="close"
+                        size={22}
+                        color={appTheme.secondaryTextColor}
+                      />
+                    </Pressable>
+                  </View>
+
+                  <View style={styles.modalList}>
+                    {availableShifts.length === 0 ? (
+                      <View style={styles.modalEmpty}>
+                        <Ionicons
+                          name="calendar-outline"
+                          size={34}
+                          color={appTheme.secondaryTextColor}
+                        />
+                        <Text style={styles.emptyText}>
+                          لا توجد شفتات متاحة حاليًا.
+                        </Text>
+                      </View>
+                    ) : (
+                      availableShifts
+                        .filter(
+                          (shift) =>
+                            !assignment ||
+                            String(shift._id) !== selectedShiftId
+                        )
+                        .map((shift) => (
+                          <View
+                            key={String(shift._id)}
+                            style={styles.shiftOptionCard}
+                          >
+                            <View style={styles.shiftOptionIcon}>
+                              <Ionicons
+                                name="briefcase-outline"
+                                size={22}
+                                color={appTheme.primaryColor}
+                              />
+                            </View>
+
+                            <View style={styles.shiftOptionContent}>
+                              <Text style={styles.shiftOptionTitle}>
+                                {shift.name || "شفت"}
+                              </Text>
+
+                              <Text style={styles.shiftOptionTime}>
+                                {shift.startTime} - {shift.endTime}
+                              </Text>
+                            </View>
+
+                            <Pressable
+                              disabled={busy}
+                              style={styles.shiftOptionButton}
+                              onPress={async () => {
+                                await chooseShift(
+                                  String(shift._id),
+                                  Boolean(assignment)
+                                );
+                                setShiftModalOpen(false);
+                              }}
+                            >
+                              <Text style={styles.shiftOptionButtonText}>
+                                اختيار
+                              </Text>
+                              <Ionicons
+                                name="chevron-forward"
+                                size={17}
+                                color="#fff"
+                              />
+                            </Pressable>
+                          </View>
+                        ))
+                    )}
+                  </View>
+                </Pressable>
+              </Pressable>
+            </Modal>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                الحضور والانصراف
+              </Text>
+
+              <View style={styles.attendanceCard}>
+                <View style={styles.attendanceTop}>
+                  <View style={styles.attendanceStatusIcon}>
+                    <Ionicons
+                      name={
+                        insideShift
+                          ? "radio-button-on"
+                          : "pause-circle-outline"
+                      }
+                      size={25}
+                      color={
+                        insideShift
+                          ? appTheme.successColor
+                          : appTheme.secondaryTextColor
+                      }
+                    />
+                  </View>
+
+                  <View style={styles.attendanceText}>
+                    <Text style={styles.cardLabel}>
+                      حالة العمل الآن
+                    </Text>
+
+                    <Text style={styles.attendanceTitle}>
+                      {insideShift
+                        ? "أنت داخل وقت الشفت"
+                        : assignment
+                          ? "خارج وقت الشفت"
+                          : "اختر شفت أولًا"}
+                    </Text>
+
+                    <Text style={styles.attendanceDescription}>
+                      {!assignment
+                        ? "اختر شفت الأسبوع أولًا."
+                        : insideShift
+                          ? `شفتك الحالي: ${currentShift?.name || "الشفت"} (${start} - ${end}). يمكنك الآن تسجيل الحضور واستقبال الطلبات.`
+                          : `شفتك الحالي: ${currentShift?.name || "الشفت"} (${start} - ${end}). أنت خارج وقت الشفت حاليًا.`}
+                    </Text>
+                  </View>
+                </View>
+
+                {assignment && insideShift && (
+                  <AppButton
+                    title="تسجيل الحضور"
+                    onPress={startWork}
+                    loading={busy}
+                  />
+                )}
+
+                {!assignment && (
+                  <Text style={styles.attendanceHint}>
+                    لا يمكن تسجيل الحضور قبل اختيار شفت الأسبوع.
+                  </Text>
+                )}
+
+                {assignment && !insideShift && (
+                  <Text style={styles.attendanceHint}>
+                    لا يمكنك تسجيل الحضور أو استقبال طلبات جديدة خارج وقت الشفت.
+                  </Text>
+                )}
+              </View>
+            </View>
+
+<View
+              style={[
+                styles.statusCard,
+                {
+                  borderColor: insideShift
+                    ? `${appTheme.successColor}35`
+                    : appTheme.borderColor,
+                },
+              ]}
+            >
+              <View
+                style={[
+                  styles.statusIcon,
+                  {
+                    backgroundColor: insideShift
+                      ? `${appTheme.successColor}18`
+                      : `${appTheme.secondaryTextColor}12`,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={
+                    insideShift
+                      ? "checkmark-circle"
+                      : "pause-circle-outline"
+                  }
+                  size={30}
+                  color={
+                    insideShift
+                      ? appTheme.successColor
+                      : appTheme.secondaryTextColor
+                  }
+                />
+              </View>
+
+              <View style={styles.statusContent}>
+                <Text style={styles.cardLabel}>
+                  حالة الشفت الآن
+                </Text>
+
+                <Text style={styles.statusTitle}>
+                  {statusText}
+                </Text>
+
+                <Text style={styles.statusDescription}>
+                  {insideShift
+                    ? "يمكنك العمل واستقبال الطلبات حسب قواعد النظام."
+                    : "لن يتم توزيع طلبات جديدة عليك خارج وقت الشفت."}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                شفت اليوم
+              </Text>
+
+              <View style={styles.dayCard}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={20}
+                  color={appTheme.primaryColor}
+                />
+
+                <Text style={styles.dayText}>
+                  {dayName}
+                </Text>
+              </View>
+
+              <View style={styles.timeCard}>
+                <View style={styles.timeItem}>
+                  <View
+                    style={[
+                      styles.timeIcon,
+                      {
+                        backgroundColor:
+                          `${appTheme.primaryColor}12`,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="log-in-outline"
+                      size={21}
+                      color={appTheme.primaryColor}
+                    />
+                  </View>
+
+                  <View>
+                    <Text style={styles.timeLabel}>
+                      بداية الشفت
+                    </Text>
+
+                    <Text style={styles.timeValue}>
+                      {start}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.timeDivider} />
+
+                <View style={styles.timeItem}>
+                  <View
+                    style={[
+                      styles.timeIcon,
+                      {
+                        backgroundColor:
+                          `${appTheme.dangerColor}10`,
+                      },
+                    ]}
+                  >
+                    <Ionicons
+                      name="log-out-outline"
+                      size={21}
+                      color={appTheme.dangerColor}
+                    />
+                  </View>
+
+                  <View>
+                    <Text style={styles.timeLabel}>
+                      نهاية الشفت
+                    </Text>
+
+                    <Text style={styles.timeValue}>
+                      {end}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.actions}>
+              {insideShift && (
+                <AppButton
+                  title="بدء العمل"
+                  onPress={startWork}
+                  loading={busy}
+                />
+              )}
+
+              <AppButton
+                title="إنهاء العمل"
+                secondary
+                onPress={endWork}
+                loading={busy}
+              />
+            </View>
+
+            {!insideShift && (
+              <View style={styles.warningCard}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={22}
+                  color={appTheme.warningColor}
+                />
+
+                <Text style={styles.warningText}>
+                  لا يمكن استقبال الطلبات خارج وقت الشفت.
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+      </View>
+    </Screen>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>,
+) =>
+  StyleSheet.create({
+    shiftSelectedBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: `${appTheme.successColor}10`,
+    },
+    shiftSelectedBannerText: {
+      flex: 1,
+      fontSize: 14,
+      fontWeight: "800",
+      color: appTheme.successColor,
+    },
+    shiftTimeBanner: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: `${appTheme.primaryColor}10`,
+    },
+    shiftTimeBannerText: {
+      fontSize: 15,
+      fontWeight: "800",
+      color: appTheme.primaryColor,
+    },
+    shiftStateBanner: {
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: `${appTheme.successColor}10`,
+    },
+    shiftStateBannerText: {
+      fontSize: 13,
+      fontWeight: "800",
+      color: appTheme.successColor,
+    },
+    shiftStateBannerOutside: {
+      padding: 12,
+      borderRadius: 14,
+      backgroundColor: `${appTheme.warningColor}12`,
+    },
+    shiftStateBannerOutsideText: {
+      fontSize: 13,
+      fontWeight: "800",
+      color: appTheme.warningColor,
+    },
+    attendanceHint: {
+      fontSize: 13,
+      lineHeight: 20,
+      textAlign: "center",
+      color: appTheme.secondaryTextColor,
+    },
+    shiftMainCard: {
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      borderRadius: 20,
+      padding: 18,
+      gap: 14,
+    },
+    shiftMainTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    shiftMainIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.primaryColor}12`,
+    },
+    shiftMainText: {
+      flex: 1,
+      gap: 3,
+    },
+    shiftMainTitle: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: appTheme.textColor,
+    },
+    shiftMainTime: {
+      fontSize: 14,
+      color: appTheme.secondaryTextColor,
+      fontWeight: "700",
+    },
+    shiftBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 7,
+      borderRadius: 999,
+      backgroundColor: `${appTheme.successColor}18`,
+    },
+    shiftBadgeText: {
+      fontSize: 12,
+      fontWeight: "800",
+      color: appTheme.successColor,
+    },
+    selectedShiftNotice: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      borderRadius: 14,
+      padding: 12,
+      backgroundColor: `${appTheme.successColor}10`,
+    },
+    selectedShiftNoticeText: {
+      flex: 1,
+      fontSize: 13,
+      fontWeight: "700",
+      color: appTheme.successColor,
+    },
+    shiftHelpText: {
+      fontSize: 13,
+      lineHeight: 20,
+      color: appTheme.secondaryTextColor,
+    },
+    modalBackdrop: {
+      flex: 1,
+      justifyContent: "flex-end",
+      backgroundColor: "rgba(0,0,0,0.45)",
+    },
+    shiftModal: {
+      backgroundColor: appTheme.backgroundColor,
+      borderTopLeftRadius: 28,
+      borderTopRightRadius: 28,
+      padding: 20,
+      paddingBottom: 28,
+      maxHeight: "82%",
+    },
+    modalHandle: {
+      width: 42,
+      height: 5,
+      borderRadius: 999,
+      alignSelf: "center",
+      backgroundColor: appTheme.borderColor,
+      marginBottom: 16,
+    },
+    modalHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 18,
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: "800",
+      color: appTheme.textColor,
+    },
+    modalSubtitle: {
+      marginTop: 4,
+      fontSize: 13,
+      color: appTheme.secondaryTextColor,
+    },
+    modalClose: {
+      width: 40,
+      height: 40,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: appTheme.borderColor,
+    },
+    modalList: {
+      gap: 12,
+    },
+    modalEmpty: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 30,
+      gap: 12,
+    },
+    shiftOptionCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      borderRadius: 18,
+      padding: 14,
+    },
+    shiftOptionIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.primaryColor}12`,
+    },
+    shiftOptionContent: {
+      flex: 1,
+      gap: 4,
+    },
+    shiftOptionTitle: {
+      fontSize: 15,
+      fontWeight: "800",
+      color: appTheme.textColor,
+    },
+    shiftOptionTime: {
+      fontSize: 13,
+      color: appTheme.secondaryTextColor,
+      fontWeight: "700",
+    },
+    shiftOptionButton: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 13,
+      paddingVertical: 10,
+      borderRadius: 12,
+      backgroundColor: appTheme.primaryColor,
+    },
+    shiftOptionButtonText: {
+      color: "#fff",
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    attendanceCard: {
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      borderRadius: 20,
+      padding: 18,
+      gap: 16,
+    },
+    attendanceTop: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 12,
+    },
+    attendanceStatusIcon: {
+      width: 50,
+      height: 50,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.secondaryTextColor}14`,
+    },
+    attendanceText: {
+      flex: 1,
+      gap: 4,
+    },
+    attendanceTitle: {
+      fontSize: 17,
+      fontWeight: "800",
+      color: appTheme.textColor,
+    },
+    attendanceDescription: {
+      fontSize: 13,
+      lineHeight: 19,
+      color: appTheme.secondaryTextColor,
+    },
+
+    container: {
+      flex: 1,
+      padding: 20,
+      gap: 18,
+    },
+    selectedShiftCard: {
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      borderRadius: 16,
+      padding: 16,
+      gap: 10,
+    },
+
+    selectedShiftTitle: {
+      fontSize: 13,
+      color: appTheme.secondaryTextColor,
+    },
+
+    selectedShiftValue: {
+      fontSize: 18,
+      fontWeight: "800",
+      color: appTheme.textColor,
+    },
+
+    selectedShiftMeta: {
+      fontSize: 14,
+      fontWeight: "700",
+      color: appTheme.primaryColor,
+    },
+
+    changeHint: {
+      fontSize: 13,
+      color: appTheme.secondaryTextColor,
+    },
+
+    emptyText: {
+      textAlign: "center",
+      paddingVertical: 12,
+      color: appTheme.secondaryTextColor,
+    },
+
+
+    header: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "space-between",
+    },
+
+    eyebrow: {
+      color: appTheme.primaryColor,
+      fontSize: 13,
+      fontWeight: "800",
+      textAlign: "right",
+      marginBottom: 4,
+    },
+
+    title: {
+      color: appTheme.textColor,
+      fontSize: 29,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    headerIcon: {
+      width: 54,
+      height: 54,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    loadingCard: {
+      minHeight: 130,
+      borderRadius: 22,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+
+    loadingText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 14,
+      fontWeight: "700",
+    },
+
+    statusCard: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 14,
+      backgroundColor: appTheme.cardColor,
+      borderRadius: 24,
+      borderWidth: 1,
+      padding: 18,
+    },
+
+    statusIcon: {
+      width: 58,
+      height: 58,
+      borderRadius: 20,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    statusContent: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    cardLabel: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
+    statusTitle: {
+      color: appTheme.textColor,
+      fontSize: 19,
+      fontWeight: "900",
+      marginTop: 3,
+      textAlign: "right",
+    },
+
+    statusDescription: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 13,
+      lineHeight: 20,
+      marginTop: 5,
+      textAlign: "right",
+    },
+
+    section: {
+      gap: 10,
+    },
+
+    sectionTitle: {
+      color: appTheme.textColor,
+      fontSize: 16,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    dayCard: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "flex-end",
+      gap: 8,
+      backgroundColor: appTheme.cardColor,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      padding: 15,
+    },
+
+    dayText: {
+      color: appTheme.textColor,
+      fontSize: 15,
+      fontWeight: "900",
+    },
+
+    timeCard: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      backgroundColor: appTheme.cardColor,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      padding: 17,
+    },
+
+    timeItem: {
+      flex: 1,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 10,
+    },
+
+    timeIcon: {
+      width: 43,
+      height: 43,
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    timeLabel: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      textAlign: "right",
+    },
+
+    timeValue: {
+      color: appTheme.textColor,
+      fontSize: 18,
+      fontWeight: "900",
+      marginTop: 3,
+      textAlign: "right",
+    },
+
+    timeDivider: {
+      width: 1,
+      height: 42,
+      backgroundColor: appTheme.borderColor,
+      marginHorizontal: 12,
+    },
+
+    actions: {
+      gap: 10,
+    },
+
+    warningCard: {
+      flexDirection: "row-reverse",
+      alignItems: "flex-start",
+      gap: 10,
+      padding: 15,
+      borderRadius: 18,
+      backgroundColor: `${appTheme.warningColor}0D`,
+      borderWidth: 1,
+      borderColor: `${appTheme.warningColor}25`,
+    },
+
+    warningText: {
+      flex: 1,
+      color: appTheme.textColor,
+      fontSize: 13,
+      fontWeight: "700",
+      lineHeight: 21,
+      textAlign: "right",
+    },
+  });

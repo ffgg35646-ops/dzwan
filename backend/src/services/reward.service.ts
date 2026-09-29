@@ -1,0 +1,273 @@
+
+import { Types } from "mongoose";
+import RewardRule from "../models/RewardRule.js";
+import RewardRecord from "../models/RewardRecord.js";
+import { OrderModel } from "../models/Order.js";
+import { CaptainRatingModel } from "../models/CaptainRating.js";
+import CaptainAttendance from "../models/CaptainAttendance.js";
+import { addCaptainLedgerEntry } from "./captain-ledger.service.js";
+
+function activeNow(rule: any, now: Date) {
+  if (!rule.isActive) return false;
+
+  if (rule.startsAt && now < new Date(rule.startsAt)) {
+    return false;
+  }
+
+  if (rule.endsAt && now > new Date(rule.endsAt)) {
+    return false;
+  }
+
+  return true;
+}
+
+async function calculateMetric(
+  rule: any,
+  targetId: Types.ObjectId,
+) {
+  if (rule.conditionType === "orders_count") {
+    const field =
+      rule.target === "captain"
+        ? "captainId"
+        : "establishmentId";
+
+    const query: any = {
+      status: "delivered",
+      [field]: targetId,
+    };
+
+    if (rule.startsAt) {
+      query.deliveredAt = {
+        $gte: new Date(rule.startsAt),
+      };
+    }
+
+    if (rule.endsAt) {
+      query.deliveredAt = {
+        ...(query.deliveredAt ?? {}),
+        $lte: new Date(rule.endsAt),
+      };
+    }
+
+    return await OrderModel.countDocuments(query);
+  }
+
+  if (
+    rule.conditionType === "rating"
+  ) {
+    if (rule.target !== "captain") {
+      return 0;
+    }
+
+    const rows =
+      await CaptainRatingModel.find({
+        captainId: targetId,
+      }).lean();
+
+    if (!rows.length) {
+      return 0;
+    }
+
+    let total = 0;
+
+    for (const row of rows as any[]) {
+      total += Number(
+        row.rating ??
+          row.stars ??
+          row.score ??
+          0,
+      );
+    }
+
+    return total / rows.length;
+  }
+
+  if (
+    rule.conditionType === "attendance"
+  ) {
+    if (rule.target !== "captain") {
+      return 0;
+    }
+
+    const query: any = {
+      captainId: targetId,
+    };
+
+    if (rule.startsAt) {
+      query.checkInAt = {
+        $gte: new Date(rule.startsAt),
+      };
+    }
+
+    if (rule.endsAt) {
+      query.checkInAt = {
+        ...(query.checkInAt ?? {}),
+        $lte: new Date(rule.endsAt),
+      };
+    }
+
+    return await CaptainAttendance.countDocuments(
+      query,
+    );
+  }
+
+  return 0;
+}
+
+export async function evaluateRewardsForDeliveredOrder(
+  orderId: Types.ObjectId,
+) {
+  const order =
+    await OrderModel.findById(orderId).lean();
+
+  if (
+    !order ||
+    order.status !== "delivered"
+  ) {
+    return [];
+  }
+
+  const rules =
+    await RewardRule.find({
+      isActive: true,
+    }).lean();
+
+  const now = new Date();
+  const created: any[] = [];
+
+  for (const rule of rules) {
+    if (!activeNow(rule, now)) {
+      continue;
+    }
+
+    const targetId =
+      rule.target === "captain"
+        ? order.captainId
+        : order.establishmentId;
+
+    if (!targetId) {
+      continue;
+    }
+
+    // عند اختيار مستفيدين محددين، لا تطبق القاعدة إلا عليهم.
+    if (
+      rule.recipientMode === "selected"
+    ) {
+      const allowedIds =
+        rule.target === "captain"
+          ? (rule.captainIds ?? [])
+          : (rule.establishmentIds ?? []);
+
+      const allowedIdStrings =
+        allowedIds.map(
+          (id: any) => String(id),
+        );
+
+      if (
+        !allowedIdStrings.includes(
+          String(targetId),
+        )
+      ) {
+        continue;
+      }
+    }
+
+    const metric =
+      await calculateMetric(
+        rule,
+        targetId,
+      );
+
+    if (
+      Number(metric) <
+      Number(rule.threshold)
+    ) {
+      continue;
+    }
+
+    const already =
+      await RewardRecord.findOne({
+        ruleId: rule._id,
+        targetId,
+      });
+
+    if (already) {
+      continue;
+    }
+
+    const record =
+      await RewardRecord.create({
+        ruleId: rule._id,
+        target: rule.target,
+        targetId,
+        orderId: order._id,
+        metricValue: Number(metric),
+        threshold: Number(rule.threshold),
+        rewardValue: Number(rule.rewardValue),
+        status: "pending",
+        reason:
+          `تحقق شرط المكافأة: ${rule.name}`,
+        earnedAt: new Date(),
+      });
+
+    created.push(record);
+  }
+
+  return created;
+}
+
+export async function listRewardRecords() {
+  return RewardRecord.find()
+    .sort({
+      earnedAt: -1,
+      createdAt: -1,
+    })
+    .lean();
+}
+
+export async function updateRewardRecordStatus(
+  id: string,
+  status:
+    | "pending"
+    | "approved"
+    | "paid"
+    | "cancelled",
+) {
+  const record = await RewardRecord.findById(id);
+
+  if (!record) {
+    return null;
+  }
+
+  // إذا كانت المكافأة مدفوعة بالفعل، لا نضيفها مرة أخرى.
+  if (status === "paid" && record.status === "paid") {
+    return record.toObject();
+  }
+
+  // عند الدفع الفعلي، نضيف قيمة المكافأة إلى Ledger الكابتن.
+  if (
+    status === "paid" &&
+    record.target === "captain"
+  ) {
+    await addCaptainLedgerEntry({
+      captainId: record.targetId,
+      type: "bonus",
+      amount: Number(record.rewardValue),
+      referenceType: "reward",
+      referenceId: record._id,
+      description: `مكافأة: ${record.reason}`,
+    });
+  }
+
+  record.status = status;
+
+  if (status === "paid") {
+    record.paidAt = new Date();
+  } else {
+    record.paidAt = null;
+  }
+
+  await record.save();
+
+  return record.toObject();
+}

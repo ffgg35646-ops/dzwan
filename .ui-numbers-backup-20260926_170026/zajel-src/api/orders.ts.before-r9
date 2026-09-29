@@ -1,0 +1,92 @@
+import { api } from "./client";
+
+export type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "preparing"
+  | "ready_for_pickup"
+  | "assigned"
+  | "picked_up"
+  | "on_the_way"
+  | "delivered"
+  | "cancelled"
+  | "rejected";
+
+export async function getOrders(params?: Record<string, string>) {
+  const response = await api.get("/orders", { params });
+  return response.data;
+}
+
+export async function getOrder(orderId: string) {
+  const response = await api.get(`/orders/${orderId}`);
+  return response.data;
+}
+
+export async function createOrder(payload: Record<string, unknown>) {
+  const response = await api.post("/orders", payload);
+  return response.data;
+}
+
+export async function updateOrderStatus(
+  orderId: string,
+  status: OrderStatus
+) {
+  const response = await api.patch(
+    `/orders/${orderId}/status`,
+    { status }
+  );
+  return response.data;
+}
+
+export async function assignCaptain(
+  orderId: string,
+  captainId: string
+) {
+  const response = await api.patch(
+    `/orders/${orderId}/assign-captain`,
+    { captainId }
+  );
+  return response.data;
+}
+
+export async function getTimeline(orderId: string) {
+  const response = await api.get(
+    `/requirements-30-46/orders/${orderId}/timeline`
+  );
+  return response.data;
+}
+
+export async function sendEmergency(
+  orderId: string,
+  message: string,
+  severity: "normal" | "high" | "critical" = "high"
+) {
+  const response = await api.post(
+    "/requirements-30-46/emergencies",
+    {
+      orderId,
+      message,
+      severity,
+    }
+  );
+
+  return response.data;
+}
+
+export async function cancelOrder(
+  orderId: string,
+  reason: string
+) {
+  const response = await api.post(
+    `/requirements-30-46/orders/${orderId}/cancel`,
+    { reason }
+  );
+
+  return response.data;
+}
+
+
+export async function getOrderDestinations() {
+  const response = await api.get("/locations/order-destinations");
+  return response.data;
+}

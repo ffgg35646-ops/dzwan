@@ -1,0 +1,1389 @@
+import { EstablishmentModel } from "../models/Establishment.js";
+import { OrderModel } from "../models/Order.js";
+import CaptainRatingFinalModel from "../models/CaptainRatingFinal.js";
+import type { Request, Response } from "express";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { Types } from "mongoose";
+import { z } from "zod";
+
+import CaptainCashTransactionModel from "../models/CaptainCashTransaction.js";
+import { AuditLogModel } from "../models/AuditLog.js";
+import { OperationsSettingsModel } from "../models/OperationsSettings.js";
+import { NotificationRuleModel } from "../models/NotificationRule.js";
+import { UserModel } from "../models/User.js";
+import { StaffPermissionModel } from "../models/StaffPermission.js";
+
+import {
+  recordCaptainCash,
+  getCaptainCashStatement,
+} from "../services/captain-cash.service.js";
+
+import { getCaptainKpi } from "../services/captain-kpi.service.js";
+
+import {
+  createAuditLog,
+  getAuditLogs,
+} from "../services/audit-log.service.js";
+
+function oid(value: string) {
+  return Types.ObjectId.isValid(value)
+    ? new Types.ObjectId(value)
+    : null;
+}
+
+function period(req: AuthenticatedRequest) {
+  const to =
+    req.query.to
+      ? new Date(String(req.query.to))
+      : new Date();
+
+  const from =
+    req.query.from
+      ? new Date(String(req.query.from))
+      : new Date(
+          to.getTime() -
+            30 * 24 * 60 * 60 * 1000,
+        );
+
+  return { from, to };
+}
+
+// -------------------------
+// Ratings
+// -------------------------
+export async function createCaptainRating(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const data = z.object({
+      establishmentId: z.string(),
+      orderId: z.string(),
+      captainId: z.string(),
+      stars: z.number().int().min(1).max(5),
+      comment: z.string().max(2000).optional(),
+    }).parse(req.body);
+
+    const captainId = oid(data.captainId);
+    const establishmentId = oid(data.establishmentId);
+    const orderId = oid(data.orderId);
+
+    if (!captainId || !establishmentId || !orderId) {
+      return res.status(400).json({
+        message: "معرفات التقييم غير صحيحة.",
+      });
+    }
+
+    const exists =
+      await CaptainRatingFinalModel.findOne({
+        orderId,
+      });
+
+    if (exists) {
+      return res.status(409).json({
+        message: "تم تقييم هذا الطلب مسبقًا.",
+      });
+    }
+
+    const rating =
+      await CaptainRatingFinalModel.create({
+        captainId,
+        establishmentId,
+        orderId,
+        stars: data.stars,
+        review: data.comment?.trim() || null,
+      });
+
+    return res.status(201).json({
+      message: "تم حفظ التقييم.",
+      rating,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر حفظ التقييم.",
+    });
+  }
+}
+
+async function buildCaptainRatingsResponse(
+  captainId: Types.ObjectId,
+  req: AuthenticatedRequest,
+) {
+  const pageRaw = Number(req.query.page || 1);
+  const limitRaw = Number(req.query.limit || 4);
+
+  const page = Number.isFinite(pageRaw)
+    ? Math.max(1, Math.floor(pageRaw))
+    : 1;
+
+  const limit = Number.isFinite(limitRaw)
+    ? Math.min(20, Math.max(1, Math.floor(limitRaw)))
+    : 4;
+
+  const [summaryRows, ratings] = await Promise.all([
+    CaptainRatingFinalModel.aggregate([
+      {
+        $match: {
+          captainId,
+        },
+      },
+      {
+        $group: {
+          _id: "$captainId",
+          total: { $sum: 1 },
+          average: { $avg: "$stars" },
+        },
+      },
+    ]),
+    CaptainRatingFinalModel.find({
+      captainId,
+    })
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate({
+        path: "orderId",
+        model: "Order",
+        select: "orderNumber shortOrderNumber createdAt",
+      })
+      .populate({
+        path: "establishmentId",
+        model: "Establishment",
+        select: "name",
+      })
+      .lean(),
+  ]);
+
+  const total = Number(summaryRows[0]?.total || 0);
+  const average = Number(
+    Number(summaryRows[0]?.average || 0).toFixed(2),
+  );
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(total / limit),
+  );
+
+  return {
+    total,
+    average,
+    page,
+    limit,
+    totalPages,
+    ratings: ratings.map((rating: any) => ({
+      _id: String(rating._id),
+      stars: Number(rating.stars || 0),
+      comment: rating.review ?? null,
+      createdAt: rating.createdAt ?? null,
+      orderId:
+        rating.orderId?._id
+          ? String(rating.orderId._id)
+          : rating.orderId
+            ? String(rating.orderId)
+            : null,
+      orderNumber:
+        rating.orderId?.shortOrderNumber ||
+        rating.orderId?.orderNumber ||
+        "—",
+      restaurantName:
+        rating.establishmentId?.name ||
+        "—",
+    })),
+  };
+}
+
+async function getCaptainRatingsData(
+  captainId: Types.ObjectId,
+  pageInput: unknown,
+  limitInput: unknown,
+) {
+  const parsedPage = Number(pageInput ?? 1);
+  const parsedLimit = Number(limitInput ?? 4);
+
+  const page = Number.isFinite(parsedPage)
+    ? Math.max(1, Math.floor(parsedPage))
+    : 1;
+
+  const limit = Number.isFinite(parsedLimit)
+    ? Math.min(20, Math.max(1, Math.floor(parsedLimit)))
+    : 4;
+
+  const skip = (page - 1) * limit;
+
+  const [summary, ratings] = await Promise.all([
+    CaptainRatingFinalModel.aggregate([
+      {
+        $match: {
+          captainId,
+        },
+      },
+      {
+        $group: {
+          _id: "$captainId",
+          total: { $sum: 1 },
+          average: { $avg: "$stars" },
+        },
+      },
+    ]),
+
+    CaptainRatingFinalModel.find({
+      captainId,
+    })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate({
+        path: "orderId",
+        model: "Order",
+        select: "_id orderNumber shortOrderNumber createdAt",
+      })
+      .populate({
+        path: "establishmentId",
+        model: "Establishment",
+        select: "_id name",
+      })
+      .lean(),
+  ]);
+
+  const total = Number(summary[0]?.total || 0);
+
+  const average = Number(
+    Number(summary[0]?.average || 0).toFixed(2),
+  );
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(total / limit),
+  );
+
+  return {
+    total,
+    average,
+    page,
+    limit,
+    totalPages,
+
+    ratings: ratings.map((item: any) => ({
+      _id: String(item._id),
+
+      orderId:
+        item.orderId?._id
+          ? String(item.orderId._id)
+          : item.orderId
+            ? String(item.orderId)
+            : null,
+
+      orderNumber:
+        item.orderId?.shortOrderNumber ||
+        item.orderId?.orderNumber ||
+        "—",
+
+      restaurantName:
+        item.establishmentId?.name ||
+        "—",
+
+      createdAt:
+        item.createdAt ||
+        item.orderId?.createdAt ||
+        null,
+
+      stars: Number(item.stars || 0),
+
+      comment:
+        typeof item.review === "string"
+          ? item.review.trim() || null
+          : null,
+    })),
+  };
+}
+
+
+export async function captainRatings(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const captainId = String(req.params.captainId || "").trim();
+
+    if (!Types.ObjectId.isValid(captainId)) {
+      return res.status(400).json({
+        message: "معرف الكابتن غير صحيح.",
+      });
+    }
+
+    const captainObjectId = new Types.ObjectId(captainId);
+
+    const ratings = await CaptainRatingFinalModel.find({
+      captainId: captainObjectId,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const [orders, establishments, summary] = await Promise.all([
+      OrderModel.find({
+        _id: {
+          $in: ratings
+            .map((rating: any) => rating.orderId)
+            .filter(Boolean),
+        },
+      })
+        .select("_id orderNumber shortOrderNumber createdAt")
+        .lean(),
+
+      EstablishmentModel.find({
+        _id: {
+          $in: ratings
+            .map((rating: any) => rating.establishmentId)
+            .filter(Boolean),
+        },
+      })
+        .select("_id name")
+        .lean(),
+
+      CaptainRatingFinalModel.aggregate([
+        {
+          $match: {
+            captainId: captainObjectId,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: 1 },
+            average: { $avg: "$stars" },
+          },
+        },
+      ]),
+    ]);
+
+    const orderMap = new Map(
+      orders.map((order: any) => [
+        String(order._id),
+        order,
+      ]),
+    );
+
+    const establishmentMap = new Map(
+      establishments.map((item: any) => [
+        String(item._id),
+        item,
+      ]),
+    );
+
+    const total = Number(summary[0]?.total || ratings.length || 0);
+
+    const average = Number(
+      Number(summary[0]?.average || 0).toFixed(2),
+    );
+
+    const mappedRatings = ratings.map((rating: any) => {
+      const order = orderMap.get(
+        String(rating.orderId),
+      );
+
+      const establishment = establishmentMap.get(
+        String(rating.establishmentId),
+      );
+
+      return {
+        _id: String(rating._id),
+        orderId: rating.orderId
+          ? String(rating.orderId)
+          : null,
+
+        orderNumber:
+          order?.orderNumber ||
+          order?.shortOrderNumber ||
+          String(rating.orderId || "—"),
+
+        restaurantName:
+          establishment?.name ||
+          "المطعم / المحل",
+
+        establishmentName:
+          establishment?.name ||
+          "المطعم / المحل",
+
+        stars: Number(rating.stars || 0),
+
+        comment:
+          rating.review ||
+          rating.comment ||
+          "",
+
+        createdAt: rating.createdAt || null,
+      };
+    });
+
+    return res.json({
+      success: true,
+      total,
+      average,
+      page: 1,
+      limit: total || 0,
+      totalPages: 1,
+      ratings: mappedRatings,
+    });
+  } catch (error) {
+    console.error(
+      "captainRatings error:",
+      error,
+    );
+
+    return res.status(500).json({
+      message: "تعذر تحميل تقييمات الكابتن.",
+    });
+  }
+}
+
+
+export async function myCaptainRatings(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const captainId = oid(
+    String(req.user?.sub || ""),
+  );
+
+  if (!captainId) {
+    return res.status(401).json({
+      message: "جلسة الكابتن غير صالحة.",
+    });
+  }
+
+  const captain = await UserModel.findById(
+    captainId,
+  )
+    .select("_id role")
+    .lean();
+
+  if (!captain || captain.role !== "captain") {
+    return res.status(403).json({
+      message: "هذا المسار مخصص للكابتن فقط.",
+    });
+  }
+
+  try {
+    return res.json(
+      await getCaptainRatingsData(
+        captainId,
+        req.query.page,
+        req.query.limit,
+      ),
+    );
+  } catch (error) {
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر تحميل تقييمات الكابتن.",
+    });
+  }
+}
+
+export async function captainRatingSummaries(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const captains =
+      await UserModel.find({
+        role: "captain",
+      })
+        .select("_id fullName phone")
+        .sort({ fullName: 1 })
+        .lean();
+
+    const rows =
+      await CaptainRatingFinalModel.aggregate([
+        {
+          $group: {
+            _id: "$captainId",
+            total: { $sum: 1 },
+            average: { $avg: "$stars" },
+          },
+        },
+      ]);
+
+    const map = new Map<
+      string,
+      {
+        total: number;
+        average: number;
+      }
+    >();
+
+    for (const row of rows) {
+      map.set(String(row._id), {
+        total: Number(row.total || 0),
+        average: Number(
+          Number(row.average || 0).toFixed(2),
+        ),
+      });
+    }
+
+    return res.json({
+      captains: captains.map(
+        (captain: any) => {
+          const summary =
+            map.get(String(captain._id)) || {
+              total: 0,
+              average: 0,
+            };
+
+          return {
+            _id: String(captain._id),
+            name:
+              captain.fullName ||
+              "كابتن",
+            phone:
+              captain.phone || "—",
+            total: summary.total,
+            average: summary.average,
+          };
+        },
+      ),
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر تحميل تقييمات الكباتن.",
+    });
+  }
+}
+
+// -------------------------
+// Cash
+// -------------------------
+export async function addCashTransaction(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const data = z.object({
+      captainId: z.string(),
+      orderId: z.string().optional(),
+      type: z.enum([
+        "paid_to_establishment",
+        "collected_from_customer",
+        "delivery_fee",
+        "adjustment",
+      ]),
+      amount: z.number().min(0),
+      description: z.string().max(1000).optional(),
+    }).parse(req.body);
+
+    const captainId = oid(data.captainId);
+
+    if (!captainId) {
+      return res.status(400).json({
+        message: "معرف الكابتن غير صحيح.",
+      });
+    }
+
+    const transaction =
+      await recordCaptainCash({
+        captainId,
+        orderId: data.orderId
+          ? oid(data.orderId)
+          : null,
+        type: data.type,
+        amount: data.amount,
+        description:
+          data.description ?? null,
+      });
+
+    return res.status(201).json({
+      message: "تم تسجيل الحركة النقدية.",
+      transaction,
+    });
+  } catch (error) {
+    return res.status(400).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "تعذر تسجيل الحركة النقدية.",
+    });
+  }
+}
+
+export async function captainCash(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const captainId = oid(
+    String(req.params.captainId),
+  );
+
+  if (!captainId) {
+    return res.status(400).json({
+      message: "معرف الكابتن غير صحيح.",
+    });
+  }
+
+  const { from, to } = period(req);
+
+  return res.json(
+    await getCaptainCashStatement(
+      captainId,
+      from,
+      to,
+    ),
+  );
+}
+
+// -------------------------
+// KPI
+// -------------------------
+export async function captainKpi(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const captainId = oid(
+    String(req.params.captainId),
+  );
+
+  if (!captainId) {
+    return res.status(400).json({
+      message: "معرف الكابتن غير صحيح.",
+    });
+  }
+
+  const { from, to } = period(req);
+
+  return res.json(
+    await getCaptainKpi(
+      captainId,
+      from,
+      to,
+    ),
+  );
+}
+
+// -------------------------
+// Audit
+// -------------------------
+export async function auditLogs(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  return res.json({
+    logs: await getAuditLogs(),
+  });
+}
+
+export async function auditLog(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const actorId: import("mongoose").Types.ObjectId | null = req.user?.sub ? oid(String(req.user.sub)) : null;
+
+  const data = z.object({
+    action: z.string().min(2).max(120),
+    entityType: z.string().min(2).max(120),
+    entityId: z.string().optional(),
+    before: z.record(z.string(), z.unknown()).optional(),
+    after: z.record(z.string(), z.unknown()).optional(),
+    description: z.string().max(3000).optional(),
+  }).parse(req.body);
+
+  const row = await createAuditLog({
+    actorId,
+    actorRole: req.user?.role ?? null,
+    action: data.action,
+    entityType: data.entityType,
+    entityId: data.entityId
+      ? oid(data.entityId)
+      : null,
+    before: data.before ?? null,
+    after: data.after ?? null,
+    ip: req.ip,
+    userAgent:
+      req.get("user-agent") ?? null,
+    description:
+      data.description ?? null,
+  });
+
+  return res.status(201).json({
+    log: row,
+  });
+}
+
+// -------------------------
+// Operations Settings
+// -------------------------
+export async function getOperationsSettings(
+  _req: AuthenticatedRequest,
+  res: Response,
+) {
+  const settings =
+    (await OperationsSettingsModel.findOne()) ??
+    (await OperationsSettingsModel.create({}));
+
+  return res.json({
+    settings,
+  });
+}
+
+export async function updateOperationsSettings(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const data = z.object({
+    pricingMode: z.enum([
+      "geofencing",
+      "area_to_area",
+    ]).optional(),
+
+    stuckOrderMinutes: z.number().int().min(1).max(1440).optional(),
+
+    activeOrderMinutes: z.number().int().min(1).max(1440).optional(),
+
+    requireCompleteCaptainDocuments: z.boolean().optional(),
+    requirePickupPhoto: z.boolean().optional(),
+    requireDeliveryOtp: z.boolean().optional(),
+    requireDeliveryPhoto: z.boolean().optional(),
+
+    shopCanCancel: z.boolean().optional(),
+    captainCanCancel: z.boolean().optional(),
+    adminCanCancel: z.boolean().optional(),
+
+    ratingEnabled: z.boolean().optional(),
+  }).parse(req.body);
+
+  const before =
+    await OperationsSettingsModel.findOne()
+      .lean();
+
+  const settings =
+    await OperationsSettingsModel.findOneAndUpdate(
+      {},
+      { $set: data },
+      {
+        upsert: true,
+        returnDocument: "after",
+        setDefaultsOnInsert: true,
+      },
+    );
+
+  const actorId: import("mongoose").Types.ObjectId | null = req.user?.sub ? oid(String(req.user.sub)) : null;
+
+  await createAuditLog({
+    actorId,
+    actorRole: req.user?.role ?? null,
+    action: "operations_settings.update",
+    entityType: "OperationsSettings",
+    before: before as Record<string, unknown> | null,
+    after: settings?.toObject() as Record<string, unknown> | undefined,
+    ip: req.ip,
+    userAgent:
+      req.get("user-agent") ?? null,
+  });
+
+  return res.json({
+    message: "تم تحديث الإعدادات المركزية.",
+    settings,
+  });
+}
+
+// -------------------------
+// Notification Rules
+// -------------------------
+export async function listNotificationRules(
+  _req: AuthenticatedRequest,
+  res: Response,
+) {
+  return res.json({
+    rules: await NotificationRuleModel.find()
+      .sort({ event: 1 })
+      .lean(),
+  });
+}
+
+export async function upsertNotificationRule(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const data = z.object({
+    event: z.string().min(2).max(120),
+    enabled: z.boolean().default(true),
+    recipients: z.array(z.string()).default([]),
+    title: z.string().min(2).max(200),
+    message: z.string().min(2).max(1000),
+  }).parse(req.body);
+
+  const rule =
+    await NotificationRuleModel.findOneAndUpdate(
+      { event: data.event },
+      data,
+      {
+        upsert: true,
+        returnDocument: "after",
+      },
+    );
+
+  return res.json({
+    message: "تم حفظ قاعدة الإشعار.",
+    rule,
+  });
+}
+
+// -------------------------
+// Sub-admins
+// -------------------------
+
+async function assertCanManageSubAdmins(
+  req: AuthenticatedRequest,
+  res: Response,
+  requestedPermissions?: string[],
+) {
+  const role = req.user?.role;
+
+  if (role === "super_admin") {
+    return true;
+  }
+
+  if (role !== "admin") {
+    res.status(403).json({
+      success: false,
+      message: "ليس لديك صلاحية إدارة الأدمنات الفرعية.",
+    });
+    return false;
+  }
+
+  const actorId = String(req.user?.sub ?? "");
+
+  if (!Types.ObjectId.isValid(actorId)) {
+    res.status(403).json({
+      success: false,
+      message: "تعذر التحقق من صلاحيات الحساب الحالي.",
+    });
+    return false;
+  }
+
+  const permissionRow = await StaffPermissionModel.findOne({
+    userId: new Types.ObjectId(actorId),
+  }).lean();
+
+  const actorPermissions = Array.isArray(permissionRow?.permissions)
+    ? permissionRow.permissions
+    : [];
+
+  if (!actorPermissions.includes("page:/sub-admins")) {
+    res.status(403).json({
+      success: false,
+      message: "ليس لديك صلاحية إدارة الأدمنات الفرعية.",
+    });
+    return false;
+  }
+
+  if (requestedPermissions) {
+    const forbidden = requestedPermissions.find(
+      (permission) => !actorPermissions.includes(permission),
+    );
+
+    if (forbidden) {
+      res.status(403).json({
+        success: false,
+        message: "لا يمكنك منح صلاحية غير موجودة في صلاحياتك.",
+      });
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export async function createSubAdmin(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const data = z.object({
+    fullName: z.string().trim().min(2).max(120),
+    phone: z.string().trim().min(5).max(30),
+    email: z.string().email().optional(),
+    password: z.string().min(8).max(100),
+
+    governorateId: z.string().nullable().optional(),
+    areaId: z.string().nullable().optional(),
+
+    permissions: z.array(z.string()).default([]),
+    governorateIds: z.array(z.string()).default([]),
+    areaIds: z.array(z.string()).default([]),
+    establishmentIds: z.array(z.string()).default([]),
+  }).parse(req.body);
+
+  if (!(await assertCanManageSubAdmins(req, res, data.permissions))) {
+    return;
+  }
+
+
+  const allIds = [
+    ...(data.governorateId ? [data.governorateId] : []),
+    ...(data.areaId ? [data.areaId] : []),
+    ...data.governorateIds,
+    ...data.areaIds,
+    ...data.establishmentIds,
+  ];
+
+  const invalidId = allIds.find((id) => !Types.ObjectId.isValid(id));
+
+  if (invalidId) {
+    return res.status(400).json({
+      success: false,
+      message: "يوجد معرف غير صحيح في الصلاحيات أو النطاق.",
+    });
+  }
+
+  const bcrypt = await import("bcryptjs");
+
+  const exists = await UserModel.findOne({
+    $or: [
+      { phone: data.phone },
+      ...(data.email ? [{ email: data.email }] : []),
+    ],
+  });
+
+  if (exists) {
+    return res.status(409).json({
+      success: false,
+      message: "رقم الهاتف أو البريد مستخدم بالفعل.",
+    });
+  }
+
+  const passwordHash = await bcrypt.hash(data.password, 12);
+
+  const user = await UserModel.create({
+    role: "admin",
+    status: "active",
+    fullName: data.fullName,
+    phone: data.phone,
+    email: data.email,
+    passwordHash,
+    governorateId: data.governorateId
+      ? new Types.ObjectId(data.governorateId)
+      : null,
+    areaId: data.areaId
+      ? new Types.ObjectId(data.areaId)
+      : null,
+    isOnline: false,
+  });
+
+  const permission = await StaffPermissionModel.create({
+    userId: user._id,
+    permissions: data.permissions,
+    governorateIds: data.governorateIds.map(
+      (id) => new Types.ObjectId(id),
+    ),
+    areaIds: data.areaIds.map(
+      (id) => new Types.ObjectId(id),
+    ),
+    establishmentIds: data.establishmentIds.map(
+      (id) => new Types.ObjectId(id),
+    ),
+  });
+
+  const actorId = Types.ObjectId.isValid(String(req.user?.sub))
+    ? new Types.ObjectId(String(req.user?.sub))
+    : null;
+
+  await createAuditLog({
+    actorId,
+    actorRole: req.user?.role ?? null,
+    action: "create",
+    entityType: "user",
+    entityId: user._id,
+    before: null,
+    after: {
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      governorateId: user.governorateId?.toString() ?? null,
+      areaId: user.areaId?.toString() ?? null,
+      permissions: permission.permissions,
+      governorateIds: permission.governorateIds.map((x) => x.toString()),
+      areaIds: permission.areaIds.map((x) => x.toString()),
+      establishmentIds: permission.establishmentIds.map((x) => x.toString()),
+    },
+    ip: req.ip,
+    userAgent: req.get("user-agent") ?? null,
+    description: `تم إنشاء أدمن فرعي: ${user.fullName}`,
+  });
+
+  return res.status(201).json({
+    success: true,
+    message: "تم إنشاء الأدمن الفرعي.",
+    user: {
+      id: user._id,
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+    },
+    permissions: permission,
+  });
+}
+export async function listSubAdmins(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  if (!(await assertCanManageSubAdmins(req, res))) {
+    return;
+  }
+  const admins = await UserModel.find({
+    role: "admin",
+  })
+    .select(
+      "_id fullName phone email role status governorateId areaId createdAt",
+    )
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const ids = admins.map((admin) => admin._id);
+
+  const permissionRows = await StaffPermissionModel.find({
+    userId: { $in: ids },
+  })
+    .lean();
+
+  const permissionMap = new Map(
+    permissionRows.map((row) => [row.userId.toString(), row]),
+  );
+
+  const result = admins.map((admin) => ({
+    ...admin,
+    staffPermission:
+      permissionMap.get(admin._id.toString()) ?? {
+        permissions: [],
+        governorateIds: [],
+        areaIds: [],
+        establishmentIds: [],
+      },
+  }));
+
+  return res.json({
+    success: true,
+    admins: result,
+  });
+}
+export async function updateSubAdmin(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const id = String(req.params.id);
+
+  if (!Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "معرف الأدمن غير صحيح.",
+    });
+  }
+
+  const data = z.object({
+    fullName: z.string().trim().min(2).max(120).optional(),
+    status: z.enum([
+      "active",
+      "suspended",
+      "inactive",
+    ]).optional(),
+    governorateId: z.string().nullable().optional(),
+    areaId: z.string().nullable().optional(),
+
+    permissions: z.array(z.string()).optional(),
+    governorateIds: z.array(z.string()).optional(),
+    areaIds: z.array(z.string()).optional(),
+    establishmentIds: z.array(z.string()).optional(),
+  }).parse(req.body);
+
+  if (!(await assertCanManageSubAdmins(req, res, data.permissions))) {
+    return;
+  }
+
+
+  const allIds = [
+    ...(data.governorateId ? [data.governorateId] : []),
+    ...(data.areaId ? [data.areaId] : []),
+    ...(data.governorateIds ?? []),
+    ...(data.areaIds ?? []),
+    ...(data.establishmentIds ?? []),
+  ];
+
+  const invalidId = allIds.find((value) => !Types.ObjectId.isValid(value));
+
+  if (invalidId) {
+    return res.status(400).json({
+      success: false,
+      message: "يوجد معرف غير صحيح.",
+    });
+  }
+
+  const user = await UserModel.findOne({
+    _id: id,
+    role: "admin",
+  });
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "الأدمن الفرعي غير موجود.",
+    });
+  }
+
+  const beforeUser = {
+    fullName: user.fullName,
+    phone: user.phone,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    governorateId: user.governorateId?.toString() ?? null,
+    areaId: user.areaId?.toString() ?? null,
+  };
+
+  if (data.fullName !== undefined) {
+    user.fullName = data.fullName;
+  }
+
+  if (data.status !== undefined) {
+    user.status = data.status;
+  }
+
+  if (data.governorateId !== undefined) {
+    user.governorateId = data.governorateId
+      ? new Types.ObjectId(data.governorateId)
+      : null;
+  }
+
+  if (data.areaId !== undefined) {
+    user.areaId = data.areaId
+      ? new Types.ObjectId(data.areaId)
+      : null;
+  }
+
+  await user.save();
+
+  const afterUser = {
+    fullName: user.fullName,
+    phone: user.phone,
+    email: user.email,
+    role: user.role,
+    status: user.status,
+    governorateId: user.governorateId?.toString() ?? null,
+    areaId: user.areaId?.toString() ?? null,
+  };
+
+  const actorId = Types.ObjectId.isValid(String(req.user?.sub))
+    ? new Types.ObjectId(String(req.user?.sub))
+    : null;
+
+  if (JSON.stringify(beforeUser) !== JSON.stringify(afterUser)) {
+    await createAuditLog({
+      actorId,
+      actorRole: req.user?.role ?? null,
+      action: "update",
+      entityType: "user",
+      entityId: user._id,
+      before: beforeUser,
+      after: afterUser,
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+      description: `تم تعديل الأدمن الفرعي: ${user.fullName}`,
+    });
+  }
+
+  const permissionChanged =
+    data.permissions !== undefined ||
+    data.governorateIds !== undefined ||
+    data.areaIds !== undefined ||
+    data.establishmentIds !== undefined;
+
+  if (permissionChanged) {
+    const beforePermission =
+      await StaffPermissionModel.findOne({
+        userId: user._id,
+      }).lean();
+
+    const nextPermissions =
+      data.permissions ??
+      beforePermission?.permissions ??
+      [];
+
+    const nextGovernorateIds =
+      data.governorateIds ??
+      (beforePermission?.governorateIds ?? []).map((x) => x.toString());
+
+    const nextAreaIds =
+      data.areaIds ??
+      (beforePermission?.areaIds ?? []).map((x) => x.toString());
+
+    const nextEstablishmentIds =
+      data.establishmentIds ??
+      (beforePermission?.establishmentIds ?? []).map((x) => x.toString());
+
+    const permissionValue =
+      await StaffPermissionModel.findOneAndUpdate(
+        { userId: user._id },
+        {
+          userId: user._id,
+          permissions: nextPermissions,
+          governorateIds: nextGovernorateIds.map(
+            (x) => new Types.ObjectId(x),
+          ),
+          areaIds: nextAreaIds.map(
+            (x) => new Types.ObjectId(x),
+          ),
+          establishmentIds: nextEstablishmentIds.map(
+            (x) => new Types.ObjectId(x),
+          ),
+        },
+        {
+          upsert: true,
+          new: true,
+          setDefaultsOnInsert: true,
+        },
+      );
+
+    await createAuditLog({
+      actorId,
+      actorRole: req.user?.role ?? null,
+      action: "update",
+      entityType: "staff_permission",
+      entityId: user._id,
+      before: beforePermission
+        ? {
+            permissions: beforePermission.permissions ?? [],
+            governorateIds: (beforePermission.governorateIds ?? []).map(
+              (x) => x.toString(),
+            ),
+            areaIds: (beforePermission.areaIds ?? []).map(
+              (x) => x.toString(),
+            ),
+            establishmentIds: (
+              beforePermission.establishmentIds ?? []
+            ).map((x) => x.toString()),
+          }
+        : null,
+      after: permissionValue
+        ? {
+            permissions: permissionValue.permissions ?? [],
+            governorateIds: (
+              permissionValue.governorateIds ?? []
+            ).map((x) => x.toString()),
+            areaIds: (permissionValue.areaIds ?? []).map(
+              (x) => x.toString(),
+            ),
+            establishmentIds: (
+              permissionValue.establishmentIds ?? []
+            ).map((x) => x.toString()),
+          }
+        : null,
+      ip: req.ip,
+      userAgent: req.get("user-agent") ?? null,
+      description: `تم تعديل صلاحيات الأدمن الفرعي: ${user.fullName}`,
+    });
+  }
+
+  const finalPermission =
+    await StaffPermissionModel.findOne({
+      userId: user._id,
+    }).lean();
+
+  return res.json({
+    success: true,
+    message: "تم تحديث الأدمن الفرعي.",
+    user,
+    staffPermission:
+      finalPermission ?? {
+        permissions: [],
+        governorateIds: [],
+        areaIds: [],
+        establishmentIds: [],
+      },
+  });
+}
+
+
+export async function deleteSubAdmin(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  if (!(await assertCanManageSubAdmins(req, res))) {
+    return;
+  }
+
+  const id = String(req.params.id);
+
+  if (!Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "معرف الأدمن غير صحيح.",
+    });
+  }
+
+  if (String(req.user?.sub ?? "") === id) {
+    return res.status(403).json({
+      success: false,
+      message: "لا يمكنك حذف حسابك من هذه الصفحة.",
+    });
+  }
+
+  const user = await UserModel.findOne({
+    _id: id,
+    role: "admin",
+  });
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "الأدمن الفرعي غير موجود.",
+    });
+  }
+
+  const permission = await StaffPermissionModel.findOne({
+    userId: user._id,
+  }).lean();
+
+  await UserModel.deleteOne({
+    _id: user._id,
+  });
+
+  await StaffPermissionModel.deleteOne({
+    userId: user._id,
+  });
+
+  const actorId = Types.ObjectId.isValid(String(req.user?.sub))
+    ? new Types.ObjectId(String(req.user?.sub))
+    : null;
+
+  await createAuditLog({
+    actorId,
+    actorRole: req.user?.role ?? null,
+    action: "delete",
+    entityType: "user",
+    entityId: user._id,
+    before: {
+      fullName: user.fullName,
+      phone: user.phone,
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      permissions: permission?.permissions ?? [],
+    },
+    after: null,
+    ip: req.ip,
+    userAgent: req.get("user-agent") ?? null,
+    description: `تم حذف الأدمن الفرعي: ${user.fullName}`,
+  });
+
+  return res.json({
+    success: true,
+    message: "تم حذف الأدمن الفرعي بنجاح.",
+  });
+}

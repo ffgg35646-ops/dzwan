@@ -1,0 +1,121 @@
+import { Types } from "mongoose";
+import OfferModel from "../models/Offer.js";
+
+function isOfferCurrentlyValid(
+  offer: {
+    isActive: boolean;
+    startsAt?: Date | null;
+    endsAt?: Date | null;
+    usageLimit?: number | null;
+    usageCount?: number | null;
+  },
+  now = new Date(),
+) {
+  if (!offer.isActive) return false;
+
+  if (offer.startsAt && now < offer.startsAt) {
+    return false;
+  }
+
+  if (offer.endsAt && now > offer.endsAt) {
+    return false;
+  }
+
+  if (
+    offer.usageLimit !== null &&
+    offer.usageLimit !== undefined &&
+    Number(offer.usageCount ?? 0) >= offer.usageLimit
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export async function findValidOffer(input: {
+  establishmentId?: Types.ObjectId | null;
+  code: string;
+}) {
+  const code = input.code.trim().toUpperCase();
+
+  const offer = await OfferModel.findOne({
+    code,
+    $or: [
+      { establishmentId: input.establishmentId ?? null },
+      { establishmentId: null },
+    ],
+  }).sort({
+    establishmentId: 1,
+  }).lean();
+
+  if (!offer) {
+    throw new Error("العرض غير موجود.");
+  }
+
+  if (!isOfferCurrentlyValid(offer)) {
+    throw new Error("العرض غير متاح حاليًا.");
+  }
+
+  return offer;
+}
+
+export async function calculateOfferDiscount(
+  offer: {
+    type: "percentage" | "fixed";
+    value: number;
+    minOrderAmount: number;
+    maxDiscount?: number | null;
+  },
+  orderAmount: number,
+) {
+  if (orderAmount < offer.minOrderAmount) {
+    throw new Error(
+      `الحد الأدنى للاستفادة من العرض هو ${offer.minOrderAmount}.`,
+    );
+  }
+
+  let discount =
+    offer.type === "percentage"
+      ? orderAmount * (offer.value / 100)
+      : offer.value;
+
+  if (
+    offer.maxDiscount !== null &&
+    offer.maxDiscount !== undefined
+  ) {
+    discount = Math.min(discount, offer.maxDiscount);
+  }
+
+  discount = Math.min(discount, orderAmount);
+
+  return Number(discount.toFixed(2));
+}
+
+export async function consumeOffer(
+  offerId: Types.ObjectId,
+) {
+  const offer = await OfferModel.findOneAndUpdate(
+    {
+      _id: offerId,
+      isActive: true,
+      $or: [
+        { usageLimit: null },
+        { $expr: { $lt: ["$usageCount", "$usageLimit"] } },
+      ],
+    },
+    {
+      $inc: {
+        usageCount: 1,
+      },
+    },
+    {
+      returnDocument: "after",
+    },
+  );
+
+  if (!offer) {
+    throw new Error("تعذر استخدام العرض.");
+  }
+
+  return offer;
+}

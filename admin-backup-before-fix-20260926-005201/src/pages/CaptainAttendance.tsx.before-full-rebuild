@@ -1,0 +1,711 @@
+
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../lib/api";
+
+type Attendance = {
+  _id?: string;
+  captainId?:
+    | string
+    | {
+        _id?: string;
+        fullName?: string;
+        name?: string;
+        phone?: string;
+      };
+
+  captainName?: string;
+  fullName?: string;
+
+  shiftId?:
+    | string
+    | {
+        _id?: string;
+        name?: string;
+        startTime?: string;
+        endTime?: string;
+      };
+
+  shiftName?: string;
+  startTime?: string;
+  endTime?: string;
+  checkIn?: string;
+  checkOut?: string;
+  durationMinutes?: number;
+  workDurationMinutes?: number;
+  status?: string;
+  date?: string;
+};
+
+function formatDate(value?: string) {
+  if (!value) return "—";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+
+  return d.toLocaleDateString("ar-IQ", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function formatTime(value?: string) {
+  if (!value) return "—";
+
+  const d = new Date(value);
+
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleTimeString("ar-IQ", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  return value;
+}
+
+function formatShiftTime(value?: string) {
+  if (!value) return "";
+
+  const parts = String(value).split(":");
+
+  if (parts.length < 2) {
+    return String(value);
+  }
+
+  const hour = Number(parts[0]);
+  const minute = Number(parts[1]);
+
+  if (!Number.isFinite(hour)) {
+    return String(value);
+  }
+
+  const h12 =
+    hour === 0
+      ? 12
+      : hour > 12
+        ? hour - 12
+        : hour;
+
+  const suffix =
+    hour >= 12
+      ? "م"
+      : "ص";
+
+  return `${h12}:${String(
+    Number.isFinite(minute)
+      ? minute
+      : 0,
+  ).padStart(2, "0")} ${suffix}`;
+}
+
+function buildShiftName(
+  shift: any,
+) {
+  if (!shift) return "";
+
+  if (
+    typeof shift.name === "string" &&
+    shift.name.trim()
+  ) {
+    return shift.name;
+  }
+
+  const start = formatShiftTime(
+    shift.startTime,
+  );
+
+  const end = formatShiftTime(
+    shift.endTime,
+  );
+
+  if (start && end) {
+    return `${start} – ${end}`;
+  }
+
+  return "";
+}
+
+function duration(minutes?: number) {
+  if (!minutes || minutes < 1) return "—";
+
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+
+  if (!h) return `${m} دقيقة`;
+  if (!m) return `${h} ساعة`;
+
+  return `${h} ساعة و${m} دقيقة`;
+}
+
+export default function CaptainAttendance() {
+  const [items, setItems] = useState<Attendance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [captain, setCaptain] = useState("");
+  const [date, setDate] = useState("");
+
+  async function load() {
+    setLoading(true);
+
+    try {
+      // 1) الحضور بالكامل.
+      // البحث باسم الكابتن سيتم في الواجهة لحظيًا،
+      // لذلك لا نرسل captainId هنا ونقصّ النتائج.
+      const candidates = [
+        "/captain-attendance",
+        "/captain-attendance/all",
+        "/attendance",
+      ];
+
+      let data: any = null;
+
+      for (
+        const endpoint of candidates
+      ) {
+        try {
+          const response =
+            await api.get(
+              endpoint,
+              {
+                params: {
+                  date:
+                    date ||
+                    undefined,
+
+                  // نطلب أكبر عدد ممكن لو الـAPI يدعمه.
+                  limit: 10000,
+                },
+              },
+            );
+
+          if (response?.data) {
+            data =
+              response.data;
+            break;
+          }
+        } catch {
+          // جرّب الـendpoint التالي.
+        }
+      }
+
+      const list =
+        data?.data ||
+        data?.items ||
+        data?.attendance ||
+        data?.records ||
+        [];
+
+      let attendanceList =
+        Array.isArray(list)
+          ? list
+          : [];
+
+      // 2) جلب الكباتن.
+      let captainsList: any[] = [];
+
+      try {
+        const response =
+          await api.get(
+            "/captains",
+            {
+              params: {
+                limit: 10000,
+              },
+            },
+          );
+
+        captainsList =
+          Array.isArray(
+            response.data?.captains,
+          )
+            ? response.data.captains
+            : Array.isArray(
+                response.data?.data,
+              )
+              ? response.data.data
+              : Array.isArray(
+                  response.data,
+                )
+                ? response.data
+                : [];
+      } catch {
+        // نستخدم بيانات captainId المضمنة لو موجودة.
+      }
+
+      // 3) جلب تعريفات الشفتات.
+      // يدعم أكثر من مسار حسب الـrouter الحالي.
+      let shiftsList: any[] = [];
+
+      const shiftEndpoints = [
+        "/shifts",
+        "/dispatch/shifts",
+        "/captain-shifts",
+      ];
+
+      for (
+        const endpoint of shiftEndpoints
+      ) {
+        try {
+          const response =
+            await api.get(
+              endpoint,
+              {
+                params: {
+                  limit: 10000,
+                },
+              },
+            );
+
+          const candidate =
+            response.data?.data ||
+            response.data?.shifts ||
+            response.data?.items ||
+            response.data;
+
+          if (
+            Array.isArray(candidate)
+          ) {
+            shiftsList =
+              candidate;
+            break;
+          }
+        } catch {
+          // جرّب المسار التالي.
+        }
+      }
+
+      const captainMap =
+        new Map<string, string>();
+
+      for (
+        const captainItem of captainsList
+      ) {
+        const id =
+          captainItem?._id ||
+          captainItem?.id;
+
+        const name =
+          captainItem?.fullName ||
+          captainItem?.name ||
+          captainItem?.phone;
+
+        if (id && name) {
+          captainMap.set(
+            String(id),
+            String(name),
+          );
+        }
+      }
+
+      const shiftMap =
+        new Map<string, string>();
+
+      for (
+        const shiftItem of shiftsList
+      ) {
+        const id =
+          shiftItem?._id ||
+          shiftItem?.id;
+
+        const name =
+          buildShiftName(
+            shiftItem,
+          );
+
+        if (id && name) {
+          shiftMap.set(
+            String(id),
+            name,
+          );
+        }
+      }
+
+      // 4) تركيب اسم الكابتن والشفت على كل سجل حضور.
+      attendanceList =
+        attendanceList.map(
+          (item: any) => {
+            const captainObject =
+              item?.captainId &&
+              typeof item.captainId ===
+                "object"
+                ? item.captainId
+                : null;
+
+            const shiftObject =
+              item?.shiftId &&
+              typeof item.shiftId ===
+                "object"
+                ? item.shiftId
+                : null;
+
+            const captainId =
+              captainObject?._id ||
+              item?.captainId;
+
+            const shiftId =
+              shiftObject?._id ||
+              item?.shiftId;
+
+            const resolvedCaptainName =
+              item?.captainName ||
+              item?.fullName ||
+              captainObject?.fullName ||
+              captainObject?.name ||
+              captainObject?.phone ||
+              (captainId
+                ? captainMap.get(
+                    String(captainId),
+                  )
+                : "") ||
+              "كابتن";
+
+            const resolvedShiftName =
+              item?.shiftName ||
+              shiftObject?.name ||
+              buildShiftName(
+                shiftObject,
+              ) ||
+              (shiftId
+                ? shiftMap.get(
+                    String(shiftId),
+                  )
+                : "") ||
+              buildShiftName({
+                startTime:
+                  item?.startTime,
+                endTime:
+                  item?.endTime,
+              }) ||
+              "—";
+
+            return {
+              ...item,
+              captainId:
+                captainId ||
+                item?.captainId,
+              shiftId:
+                shiftId ||
+                item?.shiftId,
+              captainName:
+                resolvedCaptainName,
+              shiftName:
+                resolvedShiftName,
+            };
+          },
+        );
+
+      setItems(
+        attendanceList,
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    return items.filter((item) => {
+      const captainObject =
+        item?.captainId &&
+        typeof item.captainId ===
+          "object"
+          ? item.captainId
+          : null;
+
+      const captainSearchText = [
+        item.captainName,
+        item.fullName,
+        captainObject?.fullName,
+        captainObject?.name,
+        captainObject?.phone,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const matchesCaptain =
+        !captain.trim() ||
+        captainSearchText.includes(
+          captain.trim().toLowerCase(),
+        );
+
+      const itemDate =
+        item.date ||
+        item.checkIn ||
+        "";
+
+      const matchesDate =
+        !date ||
+        itemDate.startsWith(date);
+
+      return matchesCaptain && matchesDate;
+    });
+  }, [items, captain, date]);
+
+  return (
+    <div
+      dir="rtl"
+      style={{
+        minHeight: "100%",
+        padding: 24,
+        background: "#f7f8fa",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1400,
+          margin: "0 auto",
+        }}
+      >
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              color: "#f97316",
+              fontSize: 12,
+              fontWeight: 900,
+            }}
+          >
+            OPERATIONS
+          </div>
+
+          <h1
+            style={{
+              margin: "4px 0",
+              fontSize: 30,
+              fontWeight: 900,
+            }}
+          >
+            حضور الكباتن
+          </h1>
+
+          <p
+            style={{
+              margin: 0,
+              color: "#6b7280",
+            }}
+          >
+            متابعة الحضور والانصراف ومدة العمل الفعلية.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
+            padding: 16,
+            marginBottom: 18,
+            background: "#fff",
+            borderRadius: 20,
+            border: "1px solid #e5e7eb",
+          }}
+        >
+          <input
+            value={captain}
+            onChange={(e) =>
+              setCaptain(e.target.value)
+            }
+            placeholder="ابحث باسم الكابتن — النتائج تظهر مباشرة"
+            style={{
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "1px solid #e5e7eb",
+              outline: "none",
+            }}
+          />
+
+          <input
+            type="date"
+            value={date}
+            onChange={(e) =>
+              setDate(e.target.value)
+            }
+            style={{
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "1px solid #e5e7eb",
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={load}
+            style={{
+              border: 0,
+              borderRadius: 12,
+              padding: "12px 18px",
+              background:
+                "linear-gradient(135deg,#f97316,#f59e0b)",
+              color: "#fff",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            تحديث السجل
+          </button>
+        </div>
+
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 20,
+            border: "1px solid #e5e7eb",
+            overflow: "hidden",
+          }}
+        >
+          {loading ? (
+            <div
+              style={{
+                padding: 50,
+                textAlign: "center",
+                color: "#6b7280",
+              }}
+            >
+              جاري تحميل سجل الحضور...
+            </div>
+          ) : filtered.length === 0 ? (
+            <div
+              style={{
+                padding: 50,
+                textAlign: "center",
+                color: "#6b7280",
+              }}
+            >
+              لا توجد سجلات حضور.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      background: "#fafafa",
+                    }}
+                  >
+                    {[
+                      "الكابتن",
+                      "التاريخ",
+                      "الشفت",
+                      "الدخول",
+                      "الخروج",
+                      "مدة العمل",
+                      "الحالة",
+                    ].map((title) => (
+                      <th
+                        key={title}
+                        style={{
+                          padding: 15,
+                          textAlign: "right",
+                          fontSize: 12,
+                          color: "#6b7280",
+                          borderBottom:
+                            "1px solid #eee",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {title}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filtered.map((item, index) => {
+                    const minutes =
+                      item.durationMinutes ??
+                      item.workDurationMinutes;
+
+                    return (
+                      <tr key={item._id || index}>
+                        <td style={cell}>
+                          <strong>
+                            {item.captainName ||
+                              item.fullName ||
+                              "كابتن"}
+                          </strong>
+                        </td>
+
+                        <td style={cell}>
+                          {formatDate(
+                            item.date ||
+                              item.checkIn
+                          )}
+                        </td>
+
+                        <td style={cell}>
+                          {item.shiftName || "—"}
+                        </td>
+
+                        <td style={cell}>
+                          {formatTime(
+                            item.checkIn ||
+                              item.startTime
+                          )}
+                        </td>
+
+                        <td style={cell}>
+                          {formatTime(
+                            item.checkOut ||
+                              item.endTime
+                          )}
+                        </td>
+
+                        <td style={cell}>
+                          {duration(minutes)}
+                        </td>
+
+                        <td style={cell}>
+                          <span
+                            style={{
+                              display:
+                                "inline-block",
+                              padding:
+                                "5px 9px",
+                              borderRadius:
+                                999,
+                              background:
+                                item.checkOut
+                                  ? "#ecfdf3"
+                                  : "#fff7ed",
+                              color:
+                                item.checkOut
+                                  ? "#15803d"
+                                  : "#c2410c",
+                              fontWeight: 800,
+                              fontSize: 11,
+                            }}
+                          >
+                            {item.status ||
+                              (item.checkOut
+                                ? "مكتمل"
+                                : "داخل الشفت")}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const cell: React.CSSProperties = {
+  padding: 15,
+  borderBottom: "1px solid #f0f0f0",
+  fontSize: 13,
+  whiteSpace: "nowrap",
+};

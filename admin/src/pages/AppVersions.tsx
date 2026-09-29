@@ -1,0 +1,461 @@
+import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import {
+  CheckCircle2,
+  RefreshCw,
+  Smartphone,
+  TriangleAlert,
+} from "lucide-react";
+import { api, getApiErrorMessage } from "../lib/api";
+
+type AppVersion = {
+  _id?: string;
+  version?: string;
+  minimumVersion?: string;
+  platform?: string;
+  forceUpdate?: boolean;
+  releaseNotes?: string;
+  createdAt?: string;
+};
+
+const card: React.CSSProperties = {
+  background: "#fff",
+  border: "1px solid #E2E8F0",
+  borderRadius: 20,
+  padding: 22,
+  boxShadow: "0 8px 30px rgba(15, 23, 42, .05)",
+};
+
+const input: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  padding: "12px 14px",
+  border: "1px solid #CBD5E1",
+  borderRadius: 12,
+  background: "#fff",
+  color: "#0F172A",
+};
+
+function unwrapVersions(value: any): AppVersion[] {
+  if (Array.isArray(value?.versions)) return value.versions;
+  if (Array.isArray(value?.data)) return value.data;
+  if (Array.isArray(value)) return value;
+  return [];
+}
+
+export default function AppVersions() {
+  const [versions, setVersions] = useState<AppVersion[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const [version, setVersion] = useState("");
+  const [minimumVersion, setMinimumVersion] = useState("1.0.0");
+  const [platform, setPlatform] = useState("android");
+  const [forceUpdate, setForceUpdate] = useState(false);
+  const [releaseNotes, setReleaseNotes] = useState("");
+
+  async function load() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get("/ops/app-versions");
+
+      setVersions(unwrapVersions(response.data));
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+      setVersions([]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+
+    if (!version.trim()) {
+      setError("اكتب رقم الإصدار.");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      setError("");
+      setMessage("");
+
+      await api.post("/ops/app-versions", {
+        version: version.trim(),
+        minimumVersion: minimumVersion.trim(),
+        platform,
+        forceUpdate,
+        releaseNotes: releaseNotes.trim(),
+      });
+
+      setVersion("");
+      setMinimumVersion("1.0.0");
+      setForceUpdate(false);
+      setReleaseNotes("");
+
+      setMessage("تمت إضافة الإصدار بنجاح.");
+      await load();
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div dir="rtl" style={{ padding: 28, maxWidth: 1200, margin: "0 auto" }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 20,
+          marginBottom: 24,
+        }}
+      >
+        <div>
+          <div style={{ color: "#E87516", fontSize: 12, fontWeight: 800 }}>
+            APP VERSION CONTROL
+          </div>
+
+          <h1
+            style={{
+              margin: "6px 0",
+              color: "#0F172A",
+              fontSize: 28,
+            }}
+          >
+            إصدارات التطبيق والتحديث الإجباري
+          </h1>
+
+          <p style={{ margin: 0, color: "#64748B" }}>
+            إدارة النسخة الحالية والحد الأدنى للإصدار وسياسة التحديث.
+          </p>
+        </div>
+
+        <button
+          onClick={() => void load()}
+          style={{
+            border: "1px solid #CBD5E1",
+            background: "#fff",
+            color: "#0F172A",
+            borderRadius: 12,
+            padding: "11px 16px",
+            fontWeight: 800,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <RefreshCw size={17} />
+          تحديث
+        </button>
+      </div>
+
+      {error && (
+        <div
+          style={{
+            marginBottom: 18,
+            padding: 14,
+            borderRadius: 13,
+            background: "#FEF2F2",
+            border: "1px solid #FECACA",
+            color: "#B91C1C",
+          }}
+        >
+          {error}
+        </div>
+      )}
+
+      {message && (
+        <div
+          style={{
+            marginBottom: 18,
+            padding: 14,
+            borderRadius: 13,
+            background: "#ECFDF5",
+            border: "1px solid #A7F3D0",
+            color: "#047857",
+          }}
+        >
+          {message}
+        </div>
+      )}
+
+      <div style={{ ...card, marginBottom: 20 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 9,
+            color: "#0F172A",
+            fontWeight: 900,
+            marginBottom: 18,
+          }}
+        >
+          <Smartphone size={19} color="#E87516" />
+          إضافة إصدار جديد
+        </div>
+
+        <form
+          onSubmit={(event) => void submit(event)}
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(2, minmax(220px, 1fr))",
+            gap: 14,
+          }}
+        >
+          <label>
+            <div style={{ marginBottom: 6, fontWeight: 800 }}>
+              رقم الإصدار
+            </div>
+            <input
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder="مثال: 1.2.0"
+              style={input}
+            />
+          </label>
+
+          <label>
+            <div style={{ marginBottom: 6, fontWeight: 800 }}>
+              الحد الأدنى للإصدار
+            </div>
+            <input
+              value={minimumVersion}
+              onChange={(e) => setMinimumVersion(e.target.value)}
+              placeholder="مثال: 1.1.0"
+              style={input}
+            />
+          </label>
+
+          <label>
+            <div style={{ marginBottom: 6, fontWeight: 800 }}>
+              المنصة
+            </div>
+
+            <select
+              value={platform}
+              onChange={(e) => setPlatform(e.target.value)}
+              style={input}
+            >
+              <option value="android">Android</option>
+              <option value="ios">iOS</option>
+              <option value="web">Web</option>
+            </select>
+          </label>
+
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: 13,
+              border: "1px solid #E2E8F0",
+              borderRadius: 12,
+              alignSelf: "end",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={forceUpdate}
+              onChange={(e) => setForceUpdate(e.target.checked)}
+              style={{ width: 18, height: 18, accentColor: "#E87516" }}
+            />
+
+            <span style={{ fontWeight: 800 }}>
+              فرض التحديث
+            </span>
+          </label>
+
+          <label style={{ gridColumn: "1 / -1" }}>
+            <div style={{ marginBottom: 6, fontWeight: 800 }}>
+              ملاحظات الإصدار
+            </div>
+
+            <textarea
+              value={releaseNotes}
+              onChange={(e) => setReleaseNotes(e.target.value)}
+              rows={4}
+              placeholder="ما الجديد في هذا الإصدار؟"
+              style={{
+                ...input,
+                resize: "vertical",
+              }}
+            />
+          </label>
+
+          <div style={{ gridColumn: "1 / -1" }}>
+            <button
+              disabled={saving}
+              type="submit"
+              style={{
+                border: 0,
+                borderRadius: 12,
+                padding: "12px 20px",
+                background: saving ? "#94A3B8" : "#E87516",
+                color: "#fff",
+                fontWeight: 900,
+                cursor: saving ? "not-allowed" : "pointer",
+              }}
+            >
+              {saving ? "جاري الحفظ..." : "إضافة الإصدار"}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <div style={card}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 16,
+            fontWeight: 900,
+            color: "#0F172A",
+          }}
+        >
+          <CheckCircle2 size={19} color="#047857" />
+          الإصدارات المسجلة
+        </div>
+
+        {loading ? (
+          <div style={{ color: "#64748B", padding: 25 }}>
+            جاري تحميل الإصدارات...
+          </div>
+        ) : versions.length === 0 ? (
+          <div style={{ color: "#64748B", padding: 25 }}>
+            لا توجد إصدارات مسجلة حتى الآن.
+          </div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {versions.map((item) => (
+              <div
+                key={item._id || `${item.version}-${item.createdAt}`}
+                style={{
+                  border: "1px solid #E2E8F0",
+                  borderRadius: 15,
+                  padding: 15,
+                  display: "grid",
+                  gridTemplateColumns:
+                    "minmax(100px, 1fr) minmax(120px, 1fr) minmax(100px, 1fr) auto",
+                  gap: 14,
+                  alignItems: "center",
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 900,
+                      color: "#0F172A",
+                    }}
+                  >
+                    v{item.version || "—"}
+                  </div>
+                  <div
+                    style={{
+                      color: "#64748B",
+                      fontSize: 12,
+                      marginTop: 4,
+                    }}
+                  >
+                    {item.platform || "—"}
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      color: "#64748B",
+                      fontSize: 12,
+                    }}
+                  >
+                    الحد الأدنى
+                  </div>
+
+                  <div
+                    style={{
+                      fontWeight: 800,
+                      marginTop: 3,
+                    }}
+                  >
+                    {item.minimumVersion || "—"}
+                  </div>
+                </div>
+
+                <div>
+                  <div
+                    style={{
+                      color: "#64748B",
+                      fontSize: 12,
+                    }}
+                  >
+                    السياسة
+                  </div>
+
+                  <div
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      marginTop: 4,
+                      fontWeight: 800,
+                      color: item.forceUpdate
+                        ? "#B91C1C"
+                        : "#047857",
+                    }}
+                  >
+                    {item.forceUpdate ? (
+                      <TriangleAlert size={15} />
+                    ) : (
+                      <CheckCircle2 size={15} />
+                    )}
+
+                    {item.forceUpdate ? "إجباري" : "عادي"}
+                  </div>
+                </div>
+
+                <div
+                  style={{
+                    color: "#64748B",
+                    fontSize: 12,
+                  }}
+                >
+                  {item.createdAt
+                    ? new Date(item.createdAt).toLocaleString("ar-IQ-u-nu-latn")
+                    : "—"}
+                </div>
+
+                {item.releaseNotes && (
+                  <div
+                    style={{
+                      gridColumn: "1 / -1",
+                      paddingTop: 10,
+                      borderTop: "1px solid #F1F5F9",
+                      color: "#475569",
+                      fontSize: 13,
+                    }}
+                  >
+                    {item.releaseNotes}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

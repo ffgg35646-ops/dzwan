@@ -1,0 +1,254 @@
+import { useState } from "react";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import type { LucideIcon } from "lucide-react";
+import {
+  Bell,
+  LayoutDashboard,
+  LogOut,
+  Map,
+  MapPinned,
+  Package,
+  Settings,
+  ShoppingBag,
+  Users,
+  X,
+  DollarSign,
+  BarChart3,
+  MessageSquareWarning,
+} from "lucide-react";
+import { api } from "../../lib/api";
+
+interface AdminLayoutProps {
+  userName?: string;
+}
+
+interface NavigationItem {
+  label: string;
+  path: string;
+  icon: LucideIcon;
+}
+
+const navigation: NavigationItem[] = [
+  {
+    label: "الرئيسية",
+    path: "/dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    label: "الطلبات",
+    path: "/orders",
+    icon: Package,
+  },
+  {
+    label: "مركز الطوارئ والعمليات",
+    path: "/operations-center",
+    icon: Bell,
+  },
+  {
+    label: "الإشعارات",
+    path: "/notifications",
+    icon: Bell,
+  },
+  {
+    label: "سجل العمليات",
+    path: "/audit-logs",
+    icon: BarChart3,
+  },
+  {
+    label: "الكباتن",
+    path: "/captains",
+    icon: Users,
+  },
+  {
+    label: "المطاعم والمحلات",
+    path: "/establishments",
+    icon: ShoppingBag,
+  },
+  {
+    label: "مواقع المنشآت",
+    path: "/establishment-locations",
+    icon: MapPinned,
+  },
+  {
+    label: "المحافظات والمناطق",
+    path: "/locations",
+    icon: Map,
+  },
+  {
+    label: "المنتجات",
+    path: "/products",
+    icon: Package,
+  },
+  {
+    label: "التسعير",
+    path: "/pricing",
+    icon: DollarSign,
+  },
+  {
+    label: "المناطق الجغرافية",
+    path: "/geofencing",
+    icon: Map,
+  },
+  {
+    label: "كشف حساب الكاش",
+    path: "/cash-accounting",
+    icon: DollarSign,
+  },
+  {
+    label: "تقييمات الكباتن",
+    path: "/captain-ratings",
+    icon: Users,
+  },
+  {
+    label: "الأدمنات الفرعية",
+    path: "/sub-admins",
+    icon: Users,
+  },
+  {
+    label: "مركز الطوارئ والعمليات",
+    icon: Bell,
+  },
+  {
+    label: "إعدادات التشغيل",
+    path: "/operations-settings",
+    icon: Settings,
+  },
+  {
+    label: "إشعارات الأحداث",
+    path: "/notification-rules",
+    icon: Bell,
+  },
+  {
+    label: "التقارير",
+    path: "/reports",
+    icon: BarChart3,
+  },
+  {
+    label: "الشكاوى",
+    path: "/complaints",
+    icon: MessageSquareWarning,
+  },
+  {
+    label: "الإعدادات",
+    path: "/settings",
+    icon: Settings,
+  },
+];
+
+export default function AdminLayout({
+  userName = "مدير عام",
+}: AdminLayoutProps) {
+  const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  async function logout() {
+    try {
+      await api.post("/auth/logout");
+    } finally {
+      navigate("/", { replace: true });
+    }
+  }
+
+  const sidebar = (
+    <aside className="admin-sidebar">
+      <div className="sidebar-brand">
+        <img
+          src="/logo.svg"
+          alt="زاجل ديلفري"
+          className="sidebar-logo"
+        />
+      </div>
+
+      <div className="sidebar-section-title">
+        القائمة
+      </div>
+
+      <nav className="sidebar-nav">
+        {navigation.map((item) => {
+          const Icon = item.icon;
+
+          return (
+            <NavLink
+              key={item.path}
+              to={item.path}
+              onClick={() => setMobileOpen(false)}
+              className={({ isActive }) =>
+                `sidebar-link${isActive ? " active" : ""}`
+              }
+            >
+              <Icon
+                size={19}
+                strokeWidth={1.9}
+              />
+              <span>{item.label}</span>
+            </NavLink>
+          );
+        })}
+      </nav>
+
+      <div className="sidebar-bottom">
+        <div className="sidebar-user">
+          <div className="sidebar-avatar">
+            {userName.slice(0, 1)}
+          </div>
+
+          <div className="sidebar-user-info">
+            <div className="sidebar-user-name">
+              {userName}
+            </div>
+
+            <div className="sidebar-user-role">
+              مدير عام
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={logout}
+          className="sidebar-logout"
+        >
+          <LogOut size={18} />
+          تسجيل الخروج
+        </button>
+      </div>
+    </aside>
+  );
+
+  return (
+    <div className="admin-app" dir="rtl">
+      <div className="desktop-sidebar">
+        {sidebar}
+      </div>
+
+      {mobileOpen && (
+        <div className="mobile-sidebar-layer">
+          <button
+            type="button"
+            className="mobile-sidebar-overlay"
+            aria-label="إغلاق القائمة"
+            onClick={() => setMobileOpen(false)}
+          />
+
+          <div className="mobile-sidebar-panel">
+            <button
+              type="button"
+              className="mobile-close"
+              onClick={() => setMobileOpen(false)}
+            >
+              <X size={20} />
+            </button>
+
+            {sidebar}
+          </div>
+        </div>
+      )}
+
+      <div className="admin-main">
+<main className="admin-content">
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+}

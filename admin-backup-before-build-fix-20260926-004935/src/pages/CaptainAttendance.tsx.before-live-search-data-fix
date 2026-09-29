@@ -1,0 +1,403 @@
+
+import { useEffect, useMemo, useState } from "react";
+import { api } from "../lib/api";
+
+type Attendance = {
+  _id?: string;
+  captainId?: string;
+  captainName?: string;
+  fullName?: string;
+  shiftName?: string;
+  startTime?: string;
+  endTime?: string;
+  checkIn?: string;
+  checkOut?: string;
+  durationMinutes?: number;
+  workDurationMinutes?: number;
+  status?: string;
+  date?: string;
+};
+
+function formatDate(value?: string) {
+  if (!value) return "—";
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+
+  return d.toLocaleDateString("ar-IQ", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function formatTime(value?: string) {
+  if (!value) return "—";
+
+  const d = new Date(value);
+
+  if (!Number.isNaN(d.getTime())) {
+    return d.toLocaleTimeString("ar-IQ", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  return value;
+}
+
+function duration(minutes?: number) {
+  if (!minutes || minutes < 1) return "—";
+
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+
+  if (!h) return `${m} دقيقة`;
+  if (!m) return `${h} ساعة`;
+
+  return `${h} ساعة و${m} دقيقة`;
+}
+
+export default function CaptainAttendance() {
+  const [items, setItems] = useState<Attendance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [captain, setCaptain] = useState("");
+  const [date, setDate] = useState("");
+
+  async function load() {
+    setLoading(true);
+
+    try {
+      const candidates = [
+        "/captain-attendance",
+        "/captain-attendance/all",
+        "/attendance",
+      ];
+
+      let data: any = null;
+
+      for (const endpoint of candidates) {
+        try {
+          const response = await api.get(endpoint, {
+            params: {
+              captainId: captain || undefined,
+              date: date || undefined,
+            },
+          });
+
+          if (response?.data) {
+            data = response.data;
+            break;
+          }
+        } catch {
+          // جرّب الـendpoint التالي.
+        }
+      }
+
+      const list =
+        data?.data ||
+        data?.items ||
+        data?.attendance ||
+        data?.records ||
+        [];
+
+      setItems(Array.isArray(list) ? list : []);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    return items.filter((item) => {
+      const captainName =
+        item.captainName ||
+        item.fullName ||
+        "";
+
+      const matchesCaptain =
+        !captain ||
+        captainName
+          .toLowerCase()
+          .includes(captain.toLowerCase());
+
+      const itemDate =
+        item.date ||
+        item.checkIn ||
+        "";
+
+      const matchesDate =
+        !date ||
+        itemDate.startsWith(date);
+
+      return matchesCaptain && matchesDate;
+    });
+  }, [items, captain, date]);
+
+  return (
+    <div
+      dir="rtl"
+      style={{
+        minHeight: "100%",
+        padding: 24,
+        background: "#f7f8fa",
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 1400,
+          margin: "0 auto",
+        }}
+      >
+        <div style={{ marginBottom: 24 }}>
+          <div
+            style={{
+              color: "#f97316",
+              fontSize: 12,
+              fontWeight: 900,
+            }}
+          >
+            OPERATIONS
+          </div>
+
+          <h1
+            style={{
+              margin: "4px 0",
+              fontSize: 30,
+              fontWeight: 900,
+            }}
+          >
+            حضور الكباتن
+          </h1>
+
+          <p
+            style={{
+              margin: 0,
+              color: "#6b7280",
+            }}
+          >
+            متابعة الحضور والانصراف ومدة العمل الفعلية.
+          </p>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 12,
+            padding: 16,
+            marginBottom: 18,
+            background: "#fff",
+            borderRadius: 20,
+            border: "1px solid #e5e7eb",
+          }}
+        >
+          <input
+            value={captain}
+            onChange={(e) =>
+              setCaptain(e.target.value)
+            }
+            placeholder="ابحث باسم الكابتن"
+            style={{
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "1px solid #e5e7eb",
+              outline: "none",
+            }}
+          />
+
+          <input
+            type="date"
+            value={date}
+            onChange={(e) =>
+              setDate(e.target.value)
+            }
+            style={{
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "1px solid #e5e7eb",
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={load}
+            style={{
+              border: 0,
+              borderRadius: 12,
+              padding: "12px 18px",
+              background:
+                "linear-gradient(135deg,#f97316,#f59e0b)",
+              color: "#fff",
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            تحديث السجل
+          </button>
+        </div>
+
+        <div
+          style={{
+            background: "#fff",
+            borderRadius: 20,
+            border: "1px solid #e5e7eb",
+            overflow: "hidden",
+          }}
+        >
+          {loading ? (
+            <div
+              style={{
+                padding: 50,
+                textAlign: "center",
+                color: "#6b7280",
+              }}
+            >
+              جاري تحميل سجل الحضور...
+            </div>
+          ) : filtered.length === 0 ? (
+            <div
+              style={{
+                padding: 50,
+                textAlign: "center",
+                color: "#6b7280",
+              }}
+            >
+              لا توجد سجلات حضور.
+            </div>
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                }}
+              >
+                <thead>
+                  <tr
+                    style={{
+                      background: "#fafafa",
+                    }}
+                  >
+                    {[
+                      "الكابتن",
+                      "التاريخ",
+                      "الشفت",
+                      "الدخول",
+                      "الخروج",
+                      "مدة العمل",
+                      "الحالة",
+                    ].map((title) => (
+                      <th
+                        key={title}
+                        style={{
+                          padding: 15,
+                          textAlign: "right",
+                          fontSize: 12,
+                          color: "#6b7280",
+                          borderBottom:
+                            "1px solid #eee",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {title}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {filtered.map((item, index) => {
+                    const minutes =
+                      item.durationMinutes ??
+                      item.workDurationMinutes;
+
+                    return (
+                      <tr key={item._id || index}>
+                        <td style={cell}>
+                          <strong>
+                            {item.captainName ||
+                              item.fullName ||
+                              "كابتن"}
+                          </strong>
+                        </td>
+
+                        <td style={cell}>
+                          {formatDate(
+                            item.date ||
+                              item.checkIn
+                          )}
+                        </td>
+
+                        <td style={cell}>
+                          {item.shiftName || "—"}
+                        </td>
+
+                        <td style={cell}>
+                          {formatTime(
+                            item.checkIn ||
+                              item.startTime
+                          )}
+                        </td>
+
+                        <td style={cell}>
+                          {formatTime(
+                            item.checkOut ||
+                              item.endTime
+                          )}
+                        </td>
+
+                        <td style={cell}>
+                          {duration(minutes)}
+                        </td>
+
+                        <td style={cell}>
+                          <span
+                            style={{
+                              display:
+                                "inline-block",
+                              padding:
+                                "5px 9px",
+                              borderRadius:
+                                999,
+                              background:
+                                item.checkOut
+                                  ? "#ecfdf3"
+                                  : "#fff7ed",
+                              color:
+                                item.checkOut
+                                  ? "#15803d"
+                                  : "#c2410c",
+                              fontWeight: 800,
+                              fontSize: 11,
+                            }}
+                          >
+                            {item.status ||
+                              (item.checkOut
+                                ? "مكتمل"
+                                : "داخل الشفت")}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const cell: React.CSSProperties = {
+  padding: 15,
+  borderBottom: "1px solid #f0f0f0",
+  fontSize: 13,
+  whiteSpace: "nowrap",
+};

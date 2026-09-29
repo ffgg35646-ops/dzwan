@@ -1,0 +1,181 @@
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  ArrowRight,
+  CheckCircle2,
+  Loader2,
+  RefreshCw,
+  ShieldCheck,
+} from "lucide-react";
+import { api, getApiErrorMessage } from "../lib/api";
+import HomeBackButton from "../components/admin/HomeBackButton";
+type SettingsData = {
+  environment: string;
+  api: {
+    status: string;
+    version: string;
+  };
+  database: {
+    status: string;
+  };
+  security: {
+    authentication: string;
+    loginRateLimit: boolean;
+    helmet: boolean;
+    malformedJsonProtection: boolean;
+    json404Protection: boolean;
+  };
+};
+
+function unwrap(data: any): SettingsData {
+  return data?.data ?? data;
+}
+
+export default function Settings() {
+  const [settings, setSettings] = useState<SettingsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  async function load() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get("/settings");
+      setSettings(unwrap(response.data));
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+      setSettings(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="page-loading">
+        <Loader2 className="spin" size={22} />
+        جاري تحميل الإعدادات...
+      </div>
+    );
+  }
+
+  if (error || !settings) {
+    return (
+      <div className="page-state">
+        <p>{error || "تعذر تحميل الإعدادات."}</p>
+        <button type="button" onClick={load}>
+          إعادة المحاولة
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page">
+
+      <HomeBackButton />
+      <div className="page-header">
+        <div>
+          <Link to="/dashboard" className="back-link">
+            <ArrowRight size={18} />
+            العودة إلى لوحة التحكم
+          </Link>
+          <h1>إعدادات النظام</h1>
+        </div>
+
+        <button
+          type="button"
+          onClick={load}
+          disabled={loading}
+          className="secondary-button"
+        >
+          <RefreshCw size={17} />
+          تحديث
+        </button>
+      </div>
+
+      <section className="details-card">
+        <h2>حالة النظام</h2>
+
+        <div className="details-grid">
+          <div>
+            <strong>بيئة التشغيل</strong>
+            <span>{settings.environment}</span>
+          </div>
+
+          <div>
+            <strong>إصدار الـAPI</strong>
+            <span>{settings.api.version}</span>
+          </div>
+
+          <div>
+            <strong>حالة API</strong>
+            <span>{settings.api.status === "online" ? "متصل" : settings.api.status}</span>
+          </div>
+
+          <div>
+            <strong>حالة قاعدة البيانات</strong>
+            <span>{settings.database.status === "online" ? "متصلة" : settings.database.status}</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="details-card">
+        <h2>
+          <ShieldCheck size={20} />
+          الحماية الحالية
+        </h2>
+
+        <div className="details-list">
+          <div className="details-row">
+            <span>المصادقة</span>
+            <strong>{settings.security.authentication}</strong>
+          </div>
+
+          <div className="details-row">
+            <span>تحديد محاولات تسجيل الدخول</span>
+            <strong>
+              {settings.security.loginRateLimit ? "مفعّل" : "غير مفعّل"}
+            </strong>
+          </div>
+
+          <div className="details-row">
+            <span>Helmet</span>
+            <strong>
+              {settings.security.helmet ? "مفعّل" : "غير مفعّل"}
+            </strong>
+          </div>
+
+          <div className="details-row">
+            <span>حماية JSON غير الصالح</span>
+            <strong>
+              {settings.security.malformedJsonProtection
+                ? "مفعّلة"
+                : "غير مفعّلة"}
+            </strong>
+          </div>
+
+          <div className="details-row">
+            <span>استجابة المسارات غير الموجودة</span>
+            <strong>
+              {settings.security.json404Protection
+                ? "مفعّلة"
+                : "غير مفعّلة"}
+            </strong>
+          </div>
+        </div>
+
+        <div className="settings-note">
+          <CheckCircle2 size={18} />
+          هذه الصفحة تعرض إعدادات النظام الفعلية المتاحة حاليًا، ولا تعرض
+          مفاتيح أو كلمات مرور أو أسرار البيئة.
+        </div>
+      </section>
+    </div>
+  );
+}

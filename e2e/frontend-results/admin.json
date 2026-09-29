@@ -1,0 +1,18 @@
+{
+  "app": "ADMIN",
+  "url": "http://127.0.0.1:5174",
+  "status": 200,
+  "finalUrl": "http://127.0.0.1:5174/",
+  "title": "admin",
+  "bodyEmpty": false,
+  "visibleTextLength": 160,
+  "buttons": [
+    "دخول"
+  ],
+  "links": [],
+  "foundExpectedElements": 0,
+  "expectedElements": 10,
+  "runtimeErrors": [],
+  "failedRequests": [],
+  "httpErrors": []
+}

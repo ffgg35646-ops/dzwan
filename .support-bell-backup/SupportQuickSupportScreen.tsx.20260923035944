@@ -1,0 +1,323 @@
+import React, { useState } from "react";
+import {
+  Alert,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import { Ionicons } from "@expo/vector-icons";
+import Screen from "../../components/Screen";
+import AppButton from "../../components/AppButton";
+import { apiGet, apiPost } from "../../api/request";
+
+export default function SupportQuickSupportScreen({
+  navigation,
+}: any) {
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [sending, setSending] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [ticketsLoading, setTicketsLoading] = useState(true);
+
+
+  async function loadTickets() {
+    try {
+      setTicketsLoading(true);
+
+      const response =
+        await apiGet(
+          "/support-tickets/my",
+        );
+
+      setTickets(
+        Array.isArray(response?.tickets)
+          ? response.tickets
+          : [],
+      );
+    } catch (error) {
+      console.error(
+        "Support tickets load error:",
+        error,
+      );
+      setTickets([]);
+    } finally {
+      setTicketsLoading(false);
+    }
+  }
+
+  function openTicket(ticket: any) {
+    navigation.navigate(
+      "SupportTickets",
+      {
+        ticketId: ticket?._id,
+      },
+    );
+  }
+
+  async function submit() {
+    const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+
+    if (!cleanTitle) {
+      Alert.alert("تنبيه", "عنوان المشكلة مطلوب.");
+      return;
+    }
+
+    if (!cleanDescription) {
+      Alert.alert("تنبيه", "تفاصيل المشكلة مطلوبة.");
+      return;
+    }
+
+    try {
+      setSending(true);
+      setSuccessMessage("");
+
+      await apiPost("/support-tickets", {
+        type: "complaint",
+        title: cleanTitle,
+        description: cleanDescription,
+      });
+
+      setTitle("");
+      setDescription("");
+      setSuccessMessage(
+        "تم إرسال رسالتك، سيتم الرد في غضون دقائق.",
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر الإرسال",
+        error?.response?.data?.message ||
+          error?.message ||
+          "حدث خطأ أثناء إرسال المشكلة.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  React.useEffect(() => {
+    void loadTickets();
+  }, []);
+
+  return (
+    <Screen>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>
+            نظام الدعم السريع
+          </Text>
+
+          <Text style={styles.subtitle}>
+            اكتب مشكلتك وسيتم الرد سريعًا
+          </Text>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.label}>
+            عنوان المشكلة
+          </Text>
+
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            placeholder="اكتب عنوان المشكلة"
+            placeholderTextColor="#94A3B8"
+            style={styles.input}
+            editable={!sending}
+          />
+
+          <Text style={styles.label}>
+            تفاصيل المشكلة
+          </Text>
+
+          <TextInput
+            value={description}
+            onChangeText={setDescription}
+            placeholder="اكتب تفاصيل المشكلة"
+            placeholderTextColor="#94A3B8"
+            multiline
+            textAlignVertical="top"
+            style={[styles.input, styles.textarea]}
+            editable={!sending}
+          />
+
+          <AppButton
+            title={
+              sending ? "جاري الإرسال..." : "إرسال"
+            }
+            onPress={submit}
+            disabled={sending}
+          />
+
+          {successMessage ? (
+            <Text style={styles.successMessage}>
+              {successMessage}
+            </Text>
+          ) : null}
+
+          <View style={styles.ticketsSection}>
+            <Text style={styles.ticketsTitle}>
+              التذاكر المفتوحة
+            </Text>
+
+            {ticketsLoading ? (
+              <Text style={styles.ticketsMuted}>
+                جاري تحميل التذاكر...
+              </Text>
+            ) : tickets.length === 0 ? (
+              <Text style={styles.ticketsMuted}>
+                لا توجد تذاكر مفتوحة حاليًا.
+              </Text>
+            ) : (
+              tickets
+                .filter(
+                  (ticket) =>
+                    ticket?.status !== "closed",
+                )
+                .map((ticket) => (
+                  <Pressable
+                    key={ticket._id}
+                    onPress={() =>
+                      openTicket(ticket)
+                    }
+                    style={styles.ticketRow}
+                  >
+                    <View style={styles.ticketInfo}>
+                      <Text style={styles.ticketNumber}>
+                        #{ticket.ticketNumber}
+                      </Text>
+
+                      <Text
+                        style={styles.ticketTitle}
+                        numberOfLines={2}
+                      >
+                        {ticket.title}
+                      </Text>
+                    </View>
+
+                    <Ionicons
+                      name="chevron-back"
+                      size={20}
+                      color="#64748B"
+                    />
+                  </Pressable>
+                ))
+            )}
+          </View>
+        </View>
+      </View>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    padding: 20,
+  },
+
+  header: {
+    marginBottom: 18,
+  },
+
+  title: {
+    fontSize: 25,
+    fontWeight: "900",
+    color: "#0F172A",
+  },
+
+  subtitle: {
+    marginTop: 6,
+    fontSize: 14,
+    color: "#64748B",
+  },
+
+  card: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 16,
+  },
+
+  label: {
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1E293B",
+  },
+
+  input: {
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 13,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    marginBottom: 16,
+    backgroundColor: "#F8FAFC",
+    color: "#0F172A",
+    fontSize: 14,
+  },
+
+  textarea: {
+    minHeight: 160,
+  },
+
+  successMessage: {
+    marginTop: 12,
+    textAlign: "center",
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#16A34A",
+    lineHeight: 22,
+  },
+
+  ticketsSection: {
+    marginTop: 24,
+  },
+
+  ticketsTitle: {
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#0F172A",
+    marginBottom: 10,
+  },
+
+  ticketsMuted: {
+    fontSize: 13,
+    color: "#64748B",
+    paddingVertical: 10,
+  },
+
+  ticketRow: {
+    minHeight: 66,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 14,
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    marginBottom: 9,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  ticketInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+
+  ticketNumber: {
+    fontSize: 11,
+    fontWeight: "900",
+    color: "#64748B",
+    marginBottom: 3,
+  },
+
+  ticketTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#0F172A",
+  },
+});

@@ -1,0 +1,207 @@
+import { useAppTheme } from "../../theme/useAppTheme";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  Alert,
+  FlatList,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+
+import Screen from "../../components/Screen";
+import LoadingState from "../../components/LoadingState";
+import OrderStatusBadge from "../../components/OrderStatusBadge";
+import { getOrders } from "../../api/orders";
+
+export default function ShopOrdersScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const navigation = useNavigation<any>();
+
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await getOrders();
+      setOrders(
+        Array.isArray(data)
+          ? data
+          : data?.orders || data?.items || []
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر تحميل الطلبات",
+        error?.response?.data?.message ||
+          "تعذر الاتصال بالخادم."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+
+    const timer = setInterval(load, 15000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  if (loading) {
+    return (
+      <Screen>
+        <LoadingState message="جاري تحميل الطلبات..." />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <View style={styles.container}>
+        <Text style={styles.title}>
+          طلباتي
+        </Text>
+
+        <Text style={styles.subtitle}>
+          ستتحدث حالة الطلب تلقائيًا بعد كل تغيير.
+        </Text>
+
+        <FlatList
+          data={orders}
+          keyExtractor={(item, index) =>
+            String(item?._id || item?.id || index)
+          }
+          refreshControl={
+            <RefreshControl
+              refreshing={loading}
+              onRefresh={load}
+            />
+          }
+          contentContainerStyle={styles.list}
+          renderItem={({ item }) => (
+            <TouchableOpacity
+              style={styles.card}
+              activeOpacity={0.85}
+              onPress={() =>
+                navigation.navigate(
+                  "OrderTracking",
+                  {
+                    orderId: String(
+                      item?._id || item?.id
+                    ),
+                  }
+                )
+              }
+            >
+              <View style={styles.top}>
+                <Text style={styles.number}>
+                  #
+                  {item?.orderNumber ||
+                    item?._id ||
+                    "—"}
+                </Text>
+
+                <OrderStatusBadge
+                  status={item?.status}
+                />
+              </View>
+
+              <Text style={styles.money}>
+                {item?.total ??
+                  item?.subtotal ??
+                  0}{" "}
+                د.ع
+              </Text>
+
+              <Text style={styles.note}>
+                {item?.customerNote ||
+                  "لا توجد ملاحظات"}
+              </Text>
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.icon}>📦</Text>
+              <Text style={styles.emptyTitle}>
+                لا توجد طلبات
+              </Text>
+            </View>
+          }
+        />
+      </View>
+    </Screen>
+  );
+}
+
+const createStyles = (appTheme: ReturnType<typeof useAppTheme>) => StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 20,
+  },
+  title: {
+    color: appTheme.textColor,
+    fontSize: 29,
+    fontWeight: "900",
+    textAlign: "right",
+    marginBottom: 4,
+  },
+
+  subtitle: {
+    color: appTheme.secondaryTextColor,
+    fontSize: 12,
+    fontWeight: "600",
+    textAlign: "right",
+    marginBottom: 15,
+  },
+  list: {
+    gap: 12,
+    paddingBottom: 20,
+  },
+  card: {
+    padding: 17,
+    borderWidth: 1,
+    borderColor: appTheme.borderColor,
+    borderRadius: 18,
+    backgroundColor: appTheme.cardColor,
+  },
+  top: {
+    flexDirection: "row-reverse",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  number: {
+    color: appTheme.textColor,
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  money: {
+    marginTop: 12,
+    color: appTheme.primaryDarkColor,
+    fontSize: 20,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+  note: {
+    marginTop: 7,
+    color: appTheme.secondaryTextColor,
+    textAlign: "right",
+  },
+  empty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 40,
+  },
+  icon: {
+    fontSize: 50,
+  },
+  emptyTitle: {
+    marginTop: 10,
+    color: appTheme.textColor,
+    fontSize: 20,
+    fontWeight: "900",
+  },
+});

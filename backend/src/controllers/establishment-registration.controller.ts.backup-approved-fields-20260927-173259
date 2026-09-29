@@ -1,0 +1,639 @@
+import { Request, Response } from "express";
+import crypto from "node:crypto";
+import bcrypt from "bcryptjs";
+import { Types } from "mongoose";
+
+import EstablishmentRegistrationModel from "../models/EstablishmentRegistration.js";
+import { EstablishmentModel } from "../models/Establishment.js";
+import { UserModel } from "../models/User.js";
+import { LocationModel } from "../models/Location.js";
+import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import EstablishmentRegistrationVerificationModel from "../models/EstablishmentRegistrationVerification.js";
+import {
+  createOtp,
+  hashOtp,
+  sendEstablishmentRegistrationOtp,
+} from "../services/email.service.js";
+import { createNotification } from "../services/notification.service.js";
+import { sendExpoPushToTokens } from "../services/push-notification.service.js";
+
+export async function registerEstablishment(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const {
+      name,
+      type,
+      phone,
+      email,
+      address,
+      latitude,
+      longitude,
+      ownerFullName,
+      ownerPhone,
+      gmail,
+      password,
+      governorateId,
+      areaId,
+    } = req.body;
+
+    if (
+      !name ||
+      !type ||
+      !phone ||
+      !email ||
+      !address ||
+      !governorateId ||
+      !areaId
+    ) {
+      return res.status(400).json({
+        message: "جميع البيانات الأساسية مطلوبة.",
+      });
+    }
+
+    if (type !== "restaurant" && type !== "shop") {
+      return res.status(400).json({
+        message: "نوع النشاط غير صحيح.",
+      });
+    }
+
+    if (String(password).length < 6) {
+      return res.status(400).json({
+        message: "كلمة السر يجب أن تكون 6 أحرف أو أكثر.",
+      });
+    }
+
+    if (
+      !Types.ObjectId.isValid(governorateId) ||
+      !Types.ObjectId.isValid(areaId)
+    ) {
+      return res.status(400).json({
+        message: "المحافظة أو المنطقة غير صحيحة.",
+      });
+    }
+
+    const normalizedOwnerPhone = String(phone).trim();
+    const normalizedGmail = String(email).trim().toLowerCase();
+    const pushToken = String(
+      req.body?.pushToken || ""
+    ).trim();
+
+    if (!/^[^\s@]+@gmail\.com$/.test(normalizedGmail)) {
+      return res.status(400).json({
+        message: "أدخل عنوان Gmail صحيحًا مثل example@gmail.com.",
+      });
+    }
+
+    const generatedPassword = crypto.randomBytes(32).toString("hex");
+    const passwordHash = await bcrypt.hash(generatedPassword, 12);
+
+    const location = await LocationModel.findById(governorateId)
+      .select("isActive establishmentsEnabled areas")
+      .lean();
+
+    if (!location || !location.isActive) {
+      return res.status(400).json({
+        message: "المحافظة غير مفعلة حاليًا.",
+      });
+    }
+
+    if (location.establishmentsEnabled === false) {
+      return res.status(400).json({
+        message: "تسجيل المطاعم والمحلات متوقف حاليًا في هذه المحافظة.",
+      });
+    }
+
+    const area = location.areas.find(
+      (item) => item._id.toString() === String(areaId),
+    );
+
+    if (!area || !area.isActive) {
+      return res.status(400).json({
+        message: "المنطقة غير مفعلة حاليًا.",
+      });
+    }
+
+    if (area.establishmentsEnabled === false) {
+      return res.status(400).json({
+        message: "تسجيل المطاعم والمحلات متوقف حاليًا في هذه المنطقة.",
+      });
+    }
+
+    const existingUser = await UserModel.findOne({
+      $or: [
+        { phone: normalizedOwnerPhone },
+        { email: normalizedGmail },
+      ],
+    }).lean();
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: "رقم هاتف صاحب الحساب أو البريد الإلكتروني مستخدم بالفعل.",
+      });
+    }
+
+    const pending = await EstablishmentRegistrationModel.findOne({
+      $or: [
+        { ownerPhone: normalizedOwnerPhone, status: "pending" },
+        { gmail: normalizedGmail, status: "pending" },
+      ],
+    }).lean();
+
+    if (pending) {
+      return res.status(409).json({
+        message: "يوجد طلب تسجيل قيد المراجعة بالفعل.",
+      });
+    }
+
+    const otp = createOtp();
+
+    await EstablishmentRegistrationVerificationModel.deleteMany({
+      gmail: normalizedGmail,
+      verifiedAt: null,
+    });
+
+    const verification =
+      await EstablishmentRegistrationVerificationModel.create({
+        gmail: normalizedGmail,
+        otpHash: hashOtp(otp),
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        payload: {
+          name: String(name).trim(),
+          type,
+          phone: String(phone).trim(),
+          email: email
+            ? String(email).trim().toLowerCase()
+            : null,
+          address: String(address).trim(),
+          latitude:
+            latitude !== undefined && latitude !== null
+              ? Number(latitude)
+              : null,
+          longitude:
+            longitude !== undefined && longitude !== null
+              ? Number(longitude)
+              : null,
+          ownerFullName: String(name).trim(),
+          ownerPhone: normalizedOwnerPhone,
+          gmail: normalizedGmail,
+          passwordHash,
+          governorateId,
+          areaId,
+        },
+        pushToken: pushToken || null,
+      });
+
+    try {
+      await sendEstablishmentRegistrationOtp(
+        normalizedGmail,
+        otp,
+      );
+    } catch (error) {
+      await EstablishmentRegistrationVerificationModel.findByIdAndDelete(
+        verification._id,
+      );
+      throw error;
+    }
+
+    return res.status(201).json({
+      message: "تم إرسال كود التحقق إلى Gmail.",
+      verificationId: verification._id,
+      status: "pending_email_verification",
+    });
+  } catch (error) {
+    console.error("registerEstablishment error:", error);
+
+    if (
+      error instanceof Error &&
+      error.message === "SMTP_NOT_CONFIGURED"
+    ) {
+      return res.status(500).json({
+        message: "إعداد البريد الإلكتروني غير مكتمل.",
+      });
+    }
+
+    return res.status(500).json({
+      message: "حدث خطأ أثناء إرسال كود التحقق.",
+    });
+  }
+}
+
+export async function verifyEstablishmentRegistration(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const verificationId = String(
+      req.body?.verificationId || "",
+    ).trim();
+
+    const otp = String(req.body?.otp || "").trim();
+
+    if (!Types.ObjectId.isValid(verificationId) || !otp) {
+      return res.status(400).json({
+        message: "معرّف التحقق والكود مطلوبان.",
+      });
+    }
+
+    const verification =
+      await EstablishmentRegistrationVerificationModel.findById(
+        verificationId,
+      );
+
+    if (!verification) {
+      return res.status(404).json({
+        message: "طلب التحقق غير موجود أو انتهت صلاحيته.",
+      });
+    }
+
+    if (verification.verifiedAt) {
+      return res.status(400).json({
+        message: "تم التحقق من البريد بالفعل.",
+      });
+    }
+
+    if (verification.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({
+        message: "انتهت صلاحية كود التحقق.",
+      });
+    }
+
+    if (verification.attempts >= 5) {
+      return res.status(429).json({
+        message: "تم تجاوز عدد محاولات التحقق المسموح بها.",
+      });
+    }
+
+    verification.attempts += 1;
+
+    if (hashOtp(otp) !== verification.otpHash) {
+      await verification.save();
+
+      return res.status(400).json({
+        message: "كود التحقق غير صحيح.",
+      });
+    }
+
+    const payload = verification.payload;
+
+    const existingUser = await UserModel.findOne({
+      $or: [
+        { phone: payload.ownerPhone },
+        { email: payload.gmail },
+      ],
+    }).lean();
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: "رقم هاتف صاحب الحساب أو البريد الإلكتروني مستخدم بالفعل.",
+      });
+    }
+
+    const pending = await EstablishmentRegistrationModel.findOne({
+      $or: [
+        { ownerPhone: payload.ownerPhone, status: "pending" },
+        { gmail: payload.gmail, status: "pending" },
+      ],
+    }).lean();
+
+    if (pending) {
+      return res.status(409).json({
+        message: "يوجد طلب تسجيل قيد المراجعة بالفعل.",
+      });
+    }
+
+    const registration =
+      await EstablishmentRegistrationModel.create({
+        ...payload,
+        status: "pending",
+        pushToken: verification.pushToken || null,
+      });
+
+    verification.verifiedAt = new Date();
+    await verification.save();
+
+    return res.status(201).json({
+      message:
+        "تم تأكيد البريد الإلكتروني بنجاح، وتم إرسال طلب التسجيل إلى الإدارة للمراجعة.",
+      registrationId: registration._id,
+      status: "pending",
+    });
+  } catch (error) {
+    console.error(
+      "verifyEstablishmentRegistration error:",
+      error,
+    );
+
+    return res.status(500).json({
+      message: "حدث خطأ أثناء تأكيد البريد الإلكتروني.",
+    });
+  }
+}
+
+export async function listEstablishmentRegistrations(
+  _req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const rows =
+      await EstablishmentRegistrationModel.find()
+        .select("-passwordHash")
+        .populate("approvedBy", "fullName")
+        .sort({ createdAt: -1 })
+        .lean();
+
+    const locations = await LocationModel.find()
+      .select("_id name areas")
+      .lean();
+
+    const locationMap = new Map(
+      locations.map((location) => [
+        String(location._id),
+        location,
+      ]),
+    );
+
+    const registrations = rows.map((row) => {
+      const location = locationMap.get(
+        String(row.governorateId),
+      );
+
+      const area = location?.areas?.find(
+        (item) =>
+          String(item._id) === String(row.areaId),
+      );
+
+      return {
+        ...row,
+        governorateId: location
+          ? {
+              _id: location._id,
+              name: location.name,
+            }
+          : row.governorateId,
+        areaId: area
+          ? {
+              _id: area._id,
+              name: area.name,
+            }
+          : row.areaId,
+      };
+    });
+
+    return res.json({
+      registrations,
+    });
+  } catch (error) {
+    console.error(
+      "listEstablishmentRegistrations error:",
+      error,
+    );
+
+    return res.status(500).json({
+      message: "تعذر تحميل طلبات التسجيل.",
+    });
+  }
+}
+
+export async function approveEstablishmentRegistration(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const registrationId =
+      String(req.params.id || "").trim();
+
+    if (!Types.ObjectId.isValid(registrationId)) {
+      return res.status(400).json({
+        message: "معرّف طلب التسجيل غير صالح.",
+      });
+    }
+
+    const registration =
+      await EstablishmentRegistrationModel.findById(
+        registrationId,
+      ).select("+passwordHash");
+
+    if (!registration) {
+      return res.status(404).json({
+        message: "طلب التسجيل غير موجود.",
+      });
+    }
+
+    if (registration.status !== "pending") {
+      return res.status(400).json({
+        message: "طلب التسجيل تمت مراجعته بالفعل.",
+      });
+    }
+
+    const location =
+      await LocationModel.findById(
+        registration.governorateId,
+      )
+        .select("isActive establishmentsEnabled areas")
+        .lean();
+
+    if (!location || !location.isActive) {
+      return res.status(400).json({
+        message: "المحافظة غير مفعلة حاليًا، ولا يمكن اعتماد الطلب.",
+      });
+    }
+
+    if (location.establishmentsEnabled === false) {
+      return res.status(400).json({
+        message:
+          "تشغيل المطاعم والمحلات متوقف حاليًا في هذه المحافظة.",
+      });
+    }
+
+    const area = location.areas.find(
+      (item) =>
+        item._id.toString() ===
+        String(registration.areaId),
+    );
+
+    if (!area || !area.isActive) {
+      return res.status(400).json({
+        message: "المنطقة غير مفعلة حاليًا، ولا يمكن اعتماد الطلب.",
+      });
+    }
+
+    if (area.establishmentsEnabled === false) {
+      return res.status(400).json({
+        message:
+          "تشغيل المطاعم والمحلات متوقف حاليًا في هذه المنطقة.",
+      });
+    }
+
+    const existingUser = await UserModel.findOne({
+      $or: [
+        { phone: registration.ownerPhone },
+        { email: registration.gmail },
+      ],
+    });
+
+    if (existingUser) {
+      return res.status(409).json({
+        message:
+          "يوجد حساب مستخدم بنفس هاتف أو بريد صاحب النشاط.",
+      });
+    }
+
+    const user = await UserModel.create({
+      role: "shop",
+      status: "active",
+      operationalEnabled: true,
+      fullName: registration.ownerFullName,
+      phone: registration.ownerPhone,
+      email: registration.gmail,
+      passwordHash: registration.passwordHash,
+      isOnline: false,
+      governorateId: registration.governorateId,
+      areaId: registration.areaId,
+      approvedAt: new Date(),
+      approvedBy: req.user?.sub,
+    });
+
+    const establishment =
+      await EstablishmentModel.create({
+        name: registration.name,
+        type: registration.type,
+        status: "active",
+        operationalEnabled: true,
+        phone: registration.phone,
+        email: registration.email || undefined,
+        address: registration.address,
+        latitude: registration.latitude ?? undefined,
+        longitude: registration.longitude ?? undefined,
+        governorateId: registration.governorateId,
+        areaId: registration.areaId,
+        ownerUserId: user._id,
+      });
+
+    registration.status = "approved";
+    registration.approvedAt = new Date();
+    registration.approvedBy =
+      new Types.ObjectId(req.user!.sub);
+    registration.rejectionReason = null;
+
+    await registration.save();
+
+    await createNotification({
+      userId: user._id,
+      type: "establishment",
+      title: "تم قبول حسابك",
+      message:
+        "تمت الموافقة على حسابك ومنشأتك في دزوان. يمكنك الآن استخدام التطبيق.",
+      establishmentId: establishment._id,
+    });
+
+    return res.json({
+      message:
+        "تم اعتماد النشاط وإنشاء حساب صاحب المطعم / المحل.",
+      establishment: {
+        id: establishment._id,
+        name: establishment.name,
+        type: establishment.type,
+        status: establishment.status,
+      },
+      owner: {
+        id: user._id,
+        fullName: user.fullName,
+        phone: user.phone,
+        status: user.status,
+      },
+    });
+  } catch (error) {
+    console.error(
+      "approveEstablishmentRegistration error:",
+      error,
+    );
+
+    return res.status(500).json({
+      message: "حدث خطأ أثناء اعتماد الطلب.",
+    });
+  }
+}
+
+export async function rejectEstablishmentRegistration(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const registrationId =
+      String(req.params.id || "").trim();
+
+    if (!Types.ObjectId.isValid(registrationId)) {
+      return res.status(400).json({
+        message: "معرّف طلب التسجيل غير صالح.",
+      });
+    }
+
+    const reason = String(
+      req.body?.reason || "",
+    ).trim();
+
+    if (reason.length < 2) {
+      return res.status(400).json({
+        message: "سبب الرفض مطلوب.",
+      });
+    }
+
+    const registration =
+      await EstablishmentRegistrationModel.findById(
+        registrationId,
+      );
+
+    if (!registration) {
+      return res.status(404).json({
+        message: "طلب التسجيل غير موجود.",
+      });
+    }
+
+    if (registration.status !== "pending") {
+      return res.status(400).json({
+        message: "طلب التسجيل تمت مراجعته بالفعل.",
+      });
+    }
+
+    registration.status = "rejected";
+    registration.rejectionReason = reason;
+    registration.approvedAt = null;
+    registration.approvedBy =
+      new Types.ObjectId(req.user!.sub);
+
+    await registration.save();
+
+    if (registration.pushToken) {
+      await sendExpoPushToTokens(
+        [registration.pushToken],
+        {
+          title: "تم رفض طلب تسجيل النشاط",
+          body:
+            `تم رفض طلب تسجيل المطعم/المحل. السبب: ${
+              registration.rejectionReason || "لم يتم تحديد السبب."
+            } يمكنك التواصل مع أرقام الدعم لمعرفة التفاصيل.`,
+          data: {
+            type: "establishment_registration_rejected",
+            registrationId: String(registration._id),
+          },
+        },
+      );
+    }
+
+    return res.json({
+      message: "تم رفض طلب التسجيل.",
+    });
+  } catch (error) {
+    console.error(
+      "rejectEstablishmentRegistration error:",
+      error,
+    );
+
+    return res.status(500).json({
+      message: "حدث خطأ أثناء رفض الطلب.",
+    });
+  }
+}

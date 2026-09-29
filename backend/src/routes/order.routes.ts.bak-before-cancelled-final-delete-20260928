@@ -1,0 +1,263 @@
+
+import {
+  core11OrderCreateGuard,
+  core11CaptainGuard,
+} from "../middleware/core11-order.middleware.js";
+
+import { Router } from "express";
+import {
+  requireAuth,
+  requireAdmin,
+} from "../middleware/auth.middleware.js";
+
+import {
+  loadUserScope,
+  requireManagementRole,
+} from "../middleware/scope.middleware.js";
+import {
+  getCaptainOrderBoard,
+  claimCaptainOrder,
+  rejectCaptainOrder,
+} from "../controllers/captain-order.controller.js";
+
+import {
+  assignCaptain,
+  reassignCaptain,
+  createOrder,
+  getOrder,
+  listOrders,
+  updateOrderStatus,
+  adminOrderDecision,
+  deleteRejectedOrder,
+} from "../controllers/order.controller.js";
+
+const router = Router();
+
+router.use(
+  requireAuth,
+  loadUserScope,
+);
+
+router.get(
+  "/captain/board",
+  getCaptainOrderBoard,
+);
+
+router.post(
+  "/captain/:id/claim",
+  claimCaptainOrder,
+);
+
+router.post(
+  "/captain/:id/reject",
+  rejectCaptainOrder,
+);
+
+router.get("/", listOrders);
+router.post("/", core11OrderCreateGuard, createOrder);
+router.delete(
+  "/:id",
+  requireAdmin,
+  deleteRejectedOrder,
+);
+
+router.get("/:id", getOrder);
+router.patch("/:id/status", updateOrderStatus);
+router.patch("/:id/admin-decision", requireAuth, requireAdmin, adminOrderDecision);
+router.delete(
+  "/:id",
+  requireAdmin,
+  deleteRejectedOrder,
+);
+
+router.post("/:id/assign-captain", core11CaptainGuard, assignCaptain);
+router.post("/:id/reassign-captain", reassignCaptain);
+
+
+router.post(
+  "/:id/restore-available",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = String(req.params.id);
+
+      const { Types } =
+        await import("mongoose");
+
+      if (!Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "معرف الطلب غير صحيح.",
+        });
+      }
+
+      const { OrderModel } =
+        await import("../models/Order.js");
+
+      const order =
+        await OrderModel.findById(id);
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "الطلب غير موجود.",
+        });
+      }
+
+      if (
+        order.status !== "cancelled" &&
+        order.status !== "rejected"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "لا يمكن إرجاع هذا الطلب لأنه ليس ملغيًا أو مرفوضًا.",
+        });
+      }
+
+      /*
+       * نرجع الطلب إلى الحالة المتاحة فقط.
+       *
+       * مهم:
+       * - لا نغيّر governorateId أو areaId.
+       * - لا نغيّر المنشأة.
+       * - نمسح الكابتن السابق حتى يظهر الطلب كمتاح.
+       */
+      order.status = "pending";
+      order.captainId = null;
+      order.assignedAt = null;
+
+      await order.save();
+
+      return res.status(200).json({
+        success: true,
+        message:
+          "تم إرجاع الطلب إلى الطلبات المتاحة.",
+        order,
+      });
+    } catch (error) {
+      console.error(
+        "Restore archived order error:",
+        error,
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "تعذر إرجاع الطلب إلى الطلبات المتاحة.",
+      });
+    }
+  },
+);
+
+
+router.get(
+  "/:id/available-captains",
+  requireAuth,
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = String(req.params.id);
+
+      const { Types } =
+        await import("mongoose");
+
+      if (!Types.ObjectId.isValid(id)) {
+        return res.status(400).json({
+          success: false,
+          message: "معرف الطلب غير صحيح.",
+        });
+      }
+
+      const { OrderModel } =
+        await import("../models/Order.js");
+
+      const { UserModel } =
+        await import("../models/User.js");
+
+      const { EstablishmentModel } =
+        await import("../models/Establishment.js");
+
+      const order =
+        await OrderModel.findById(id)
+          .select(
+            "establishmentId status",
+          )
+          .lean();
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "الطلب غير موجود.",
+        });
+      }
+
+      if (
+        order.status !== "cancelled" &&
+        order.status !== "rejected"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "هذا المسار مخصص للطلبات الملغاة والمرفوضة.",
+        });
+      }
+
+      const establishment =
+        await EstablishmentModel.findById(
+          order.establishmentId,
+        )
+          .select(
+            "governorateId areaId",
+          )
+          .lean();
+
+      if (
+        !establishment?.governorateId ||
+        !establishment?.areaId
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "بيانات منطقة الطلب غير مكتملة.",
+        });
+      }
+
+      const captains =
+        await UserModel.find({
+          role: "captain",
+          status: "active",
+          governorateId:
+            establishment.governorateId,
+          areaId:
+            establishment.areaId,
+        })
+          .select(
+            "_id fullName phone status isOnline governorateId areaId",
+          )
+          .sort({
+            fullName: 1,
+          })
+          .lean();
+
+      return res.status(200).json({
+        success: true,
+        captains,
+      });
+    } catch (error) {
+      console.error(
+        "Available captains for archived order error:",
+        error,
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "تعذر تحميل كباتن منطقة الطلب.",
+      });
+    }
+  },
+);
+
+export default router;

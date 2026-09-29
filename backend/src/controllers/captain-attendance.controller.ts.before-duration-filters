@@ -1,0 +1,149 @@
+import { Response } from "express";
+import { Types } from "mongoose";
+import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import CaptainAttendanceModel from "../models/CaptainAttendance.js";
+import { CaptainShiftModel } from "../models/CaptainShift.js";
+
+function todayKey() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function dayOfWeek() {
+  return new Date().getDay();
+}
+
+export async function checkIn(req: AuthenticatedRequest, res: Response) {
+  try {
+    const captainId = req.user?.sub;
+    if (!captainId) return res.status(401).json({ message: "غير مصرح." });
+
+    const existing = await CaptainAttendanceModel.findOne({
+      captainId,
+      date: todayKey(),
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        message: "تم تسجيل الحضور اليوم بالفعل.",
+        attendance: existing,
+      });
+    }
+
+    const shifts = await CaptainShiftModel.find({
+      captainId,
+      dayOfWeek: dayOfWeek(),
+      isActive: true,
+    }).lean();
+
+    if (!shifts.length) {
+      return res.status(400).json({
+        message: "لا يوجد شفت فعال للكابتن اليوم.",
+      });
+    }
+
+    const now = new Date();
+
+    const attendance = await CaptainAttendanceModel.create({
+      captainId: new Types.ObjectId(captainId),
+      shiftId: shifts[0]._id,
+      date: todayKey(),
+      checkInAt: now,
+      status: "present",
+      checkInIp:
+        typeof req.ip === "string" ? req.ip : undefined,
+    });
+
+    return res.status(201).json({
+      message: "تم تسجيل الحضور بنجاح.",
+      attendance,
+    });
+  } catch (error) {
+    console.error("checkIn error:", error);
+    return res.status(500).json({
+      message: "حدث خطأ أثناء تسجيل الحضور.",
+    });
+  }
+}
+
+export async function checkOut(req: AuthenticatedRequest, res: Response) {
+  try {
+    const captainId = req.user?.sub;
+    if (!captainId) return res.status(401).json({ message: "غير مصرح." });
+
+    const attendance = await CaptainAttendanceModel.findOne({
+      captainId,
+      date: todayKey(),
+      status: "present",
+    });
+
+    if (!attendance) {
+      return res.status(404).json({
+        message: "لا يوجد حضور مفتوح لليوم.",
+      });
+    }
+
+    attendance.checkOutAt = new Date();
+    attendance.status = "completed";
+    attendance.checkOutIp =
+      typeof req.ip === "string" ? req.ip : undefined;
+
+    await attendance.save();
+
+    return res.json({
+      message: "تم تسجيل الانصراف بنجاح.",
+      attendance,
+    });
+  } catch (error) {
+    console.error("checkOut error:", error);
+    return res.status(500).json({
+      message: "حدث خطأ أثناء تسجيل الانصراف.",
+    });
+  }
+}
+
+export async function myAttendance(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const captainId = req.user?.sub;
+    if (!captainId) return res.status(401).json({ message: "غير مصرح." });
+
+    const rows = await CaptainAttendanceModel.find({ captainId })
+      .sort({ date: -1 })
+      .limit(100)
+      .lean();
+
+    return res.json({ attendance: rows });
+  } catch (error) {
+    console.error("myAttendance error:", error);
+    return res.status(500).json({
+      message: "تعذر تحميل سجل الحضور.",
+    });
+  }
+}
+
+export async function adminAttendance(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const rows = await CaptainAttendanceModel.find()
+      .populate("captainId", "fullName phone")
+      .populate("shiftId", "dayOfWeek startTime endTime")
+      .sort({ date: -1, checkInAt: -1 })
+      .limit(500)
+      .lean();
+
+    return res.json({ attendance: rows });
+  } catch (error) {
+    console.error("adminAttendance error:", error);
+    return res.status(500).json({
+      message: "تعذر تحميل حضور الكباتن.",
+    });
+  }
+}

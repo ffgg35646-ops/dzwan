@@ -1,0 +1,164 @@
+import mongoose, { Document, Schema } from "mongoose";
+
+export type EstablishmentRegistrationStatus =
+  | "pending"
+  | "approved"
+  | "rejected";
+
+export interface IEstablishmentRegistration extends Document {
+  name: string;
+  type: "restaurant" | "shop";
+  phone: string;
+  email?: string | null;
+  address: string;
+  latitude?: number | null;
+  longitude?: number | null;
+
+  ownerFullName: string;
+  ownerPhone: string;
+  gmail: string;
+  passwordHash: string;
+
+  governorateId: mongoose.Types.ObjectId;
+  areaId: mongoose.Types.ObjectId;
+
+  status: EstablishmentRegistrationStatus;
+  rejectionReason?: string | null;
+  approvedAt?: Date | null;
+  approvedBy?: mongoose.Types.ObjectId | null;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const EstablishmentRegistrationSchema =
+  new Schema<IEstablishmentRegistration>(
+    {
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 160,
+      },
+
+      type: {
+        type: String,
+        enum: ["restaurant", "shop"],
+        required: true,
+      },
+
+      phone: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 30,
+      },
+
+      email: {
+        type: String,
+        default: null,
+        trim: true,
+        lowercase: true,
+      },
+
+      address: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 300,
+      },
+
+      latitude: {
+        type: Number,
+        default: null,
+      },
+
+      longitude: {
+        type: Number,
+        default: null,
+      },
+
+      ownerFullName: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 120,
+      },
+
+      ownerPhone: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 30,
+      },
+
+      gmail: {
+        type: String,
+        required: true,
+        trim: true,
+        lowercase: true,
+        maxlength: 160,
+      },
+
+      passwordHash: {
+        type: String,
+        required: true,
+        select: false,
+      },
+
+      governorateId: {
+        type: Schema.Types.ObjectId,
+        ref: "Location",
+        required: true,
+        index: true,
+      },
+
+      areaId: {
+        type: Schema.Types.ObjectId,
+        required: true,
+        index: true,
+      },
+
+      status: {
+        type: String,
+        enum: ["pending", "approved", "rejected"],
+        default: "pending",
+        index: true,
+      },
+
+      rejectionReason: {
+        type: String,
+        default: null,
+        trim: true,
+      },
+
+      approvedAt: {
+        type: Date,
+        default: null,
+      },
+
+      approvedBy: {
+        type: Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
+      },
+    },
+    {
+      timestamps: true,
+    },
+  );
+
+EstablishmentRegistrationSchema.index({
+  ownerPhone: 1,
+  status: 1,
+});
+
+EstablishmentRegistrationSchema.index({
+  gmail: 1,
+  status: 1,
+});
+
+export default mongoose.model<IEstablishmentRegistration>(
+  "EstablishmentRegistration",
+  EstablishmentRegistrationSchema,
+);

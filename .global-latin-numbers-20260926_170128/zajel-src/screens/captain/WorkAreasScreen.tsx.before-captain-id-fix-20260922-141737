@@ -1,0 +1,517 @@
+import React, { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
+
+import Screen from "../../components/Screen";
+import { useAppTheme } from "../../theme/useAppTheme";
+import { getMyWorkAreas } from "../../api/captainWorkAreas";
+
+export default function WorkAreasScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+
+  const [areas, setAreas] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const response = await getMyWorkAreas();
+
+      const rows = Array.isArray(response?.workAreas)
+        ? response.workAreas
+        : Array.isArray(response)
+          ? response
+          : [];
+
+      setAreas(rows);
+    } catch (error) {
+      console.error("Failed to load captain work areas:", error);
+      setAreas([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  async function refresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
+
+  const activeAreas = areas.filter(
+    (item) => item?.isActive === true,
+  );
+
+  const disabledAreas = areas.filter(
+    (item) => item?.isActive !== true,
+  );
+
+  return (
+    <Screen>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+          />
+        }
+      >
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons
+              name="location-outline"
+              size={26}
+              color={appTheme.primaryColor}
+            />
+          </View>
+
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>
+              نطاق العمل
+            </Text>
+
+            <Text style={styles.title}>
+              مناطق العمل
+            </Text>
+
+            <Text style={styles.subtitle}>
+              هذه هي المناطق التي تسمح لك الإدارة بالعمل فيها.
+            </Text>
+          </View>
+        </View>
+
+        {loading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator
+              size="small"
+              color={appTheme.primaryColor}
+            />
+
+            <Text style={styles.loadingText}>
+              جاري تحميل مناطق العمل...
+            </Text>
+          </View>
+        ) : areas.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
+              <Ionicons
+                name="map-outline"
+                size={34}
+                color={appTheme.secondaryTextColor}
+              />
+            </View>
+
+            <Text style={styles.emptyTitle}>
+              لا توجد مناطق عمل محددة
+            </Text>
+
+            <Text style={styles.emptyText}>
+              ستظهر هنا المناطق التي تحددها لك الإدارة.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryNumber}>
+                  {activeAreas.length}
+                </Text>
+
+                <Text style={styles.summaryLabel}>
+                  مناطق متاحة
+                </Text>
+              </View>
+
+              <View style={styles.divider} />
+
+              <View style={styles.summaryItem}>
+                <Text style={styles.summaryNumber}>
+                  {disabledAreas.length}
+                </Text>
+
+                <Text style={styles.summaryLabel}>
+                  مناطق متوقفة
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                المناطق المسموح لك بالعمل فيها
+              </Text>
+
+              {activeAreas.map((item) => (
+                <View
+                  key={String(item._id)}
+                  style={styles.areaCard}
+                >
+                  <View style={styles.areaIcon}>
+                    <Ionicons
+                      name="location"
+                      size={23}
+                      color={appTheme.successColor}
+                    />
+                  </View>
+
+                  <View style={styles.areaContent}>
+                    <Text style={styles.areaName}>
+                      {item?.areaId?.name ||
+                        item?.areaName ||
+                        item?.areaId ||
+                        "منطقة"}
+                    </Text>
+
+                    <Text style={styles.governorateName}>
+                      {item?.governorateId?.name ||
+                        item?.governorateName ||
+                        "المحافظة"}
+                    </Text>
+                  </View>
+
+                  <View style={styles.activeBadge}>
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={16}
+                      color={appTheme.successColor}
+                    />
+
+                    <Text style={styles.activeBadgeText}>
+                      متاحة
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            {disabledAreas.length > 0 && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  مناطق غير متاحة حاليًا
+                </Text>
+
+                {disabledAreas.map((item) => (
+                  <View
+                    key={String(item._id)}
+                    style={styles.disabledAreaCard}
+                  >
+                    <View style={styles.disabledIcon}>
+                      <Ionicons
+                        name="location-outline"
+                        size={22}
+                        color={appTheme.secondaryTextColor}
+                      />
+                    </View>
+
+                    <View style={styles.areaContent}>
+                      <Text style={styles.disabledAreaName}>
+                        {item?.areaId?.name ||
+                          item?.areaName ||
+                          item?.areaId ||
+                          "منطقة"}
+                      </Text>
+
+                      <Text style={styles.governorateName}>
+                        {item?.governorateId?.name ||
+                          item?.governorateName ||
+                          "المحافظة"}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.disabledBadge}>
+                      متوقفة
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={styles.infoCard}>
+              <Ionicons
+                name="information-circle-outline"
+                size={22}
+                color={appTheme.primaryColor}
+              />
+
+              <Text style={styles.infoText}>
+                الإدارة هي التي تحدد مناطق عملك. لا تحتاج إلى
+                اختيار المنطقة بنفسك، وأي منطقة يتم تعطيلها
+                لن يتم توزيع الطلبات منها عليك.
+              </Text>
+            </View>
+          </>
+        )}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>,
+) =>
+  StyleSheet.create({
+    container: {
+      padding: 20,
+      gap: 18,
+    },
+
+    header: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 14,
+    },
+
+    headerIcon: {
+      width: 56,
+      height: 56,
+      borderRadius: 18,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.primaryColor}12`,
+    },
+
+    headerText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    eyebrow: {
+      color: appTheme.primaryColor,
+      fontSize: 12,
+      fontWeight: "800",
+    },
+
+    title: {
+      color: appTheme.textColor,
+      fontSize: 28,
+      fontWeight: "900",
+      marginTop: 2,
+    },
+
+    subtitle: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 13,
+      lineHeight: 20,
+      marginTop: 5,
+      textAlign: "right",
+    },
+
+    loadingCard: {
+      minHeight: 150,
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      backgroundColor: appTheme.cardColor,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+
+    loadingText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 14,
+      fontWeight: "700",
+    },
+
+    emptyCard: {
+      borderRadius: 22,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      backgroundColor: appTheme.cardColor,
+      padding: 28,
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 10,
+    },
+
+    emptyIcon: {
+      width: 68,
+      height: 68,
+      borderRadius: 22,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.secondaryTextColor}10`,
+    },
+
+    emptyTitle: {
+      color: appTheme.textColor,
+      fontSize: 17,
+      fontWeight: "900",
+      textAlign: "center",
+    },
+
+    emptyText: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 13,
+      textAlign: "center",
+      lineHeight: 20,
+    },
+
+    summaryCard: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-around",
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      backgroundColor: appTheme.cardColor,
+      padding: 17,
+    },
+
+    summaryItem: {
+      flex: 1,
+      alignItems: "center",
+      gap: 4,
+    },
+
+    summaryNumber: {
+      color: appTheme.textColor,
+      fontSize: 24,
+      fontWeight: "900",
+    },
+
+    summaryLabel: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+
+    divider: {
+      width: 1,
+      height: 40,
+      backgroundColor: appTheme.borderColor,
+    },
+
+    section: {
+      gap: 10,
+    },
+
+    sectionTitle: {
+      color: appTheme.textColor,
+      fontSize: 16,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    areaCard: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 12,
+      padding: 15,
+      borderRadius: 19,
+      borderWidth: 1,
+      borderColor: `${appTheme.successColor}35`,
+      backgroundColor: `${appTheme.successColor}08`,
+    },
+
+    areaIcon: {
+      width: 46,
+      height: 46,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.successColor}16`,
+    },
+
+    areaContent: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    areaName: {
+      color: appTheme.textColor,
+      fontSize: 15,
+      fontWeight: "900",
+    },
+
+    governorateName: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 12,
+      marginTop: 3,
+    },
+
+    activeBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      paddingHorizontal: 9,
+      paddingVertical: 6,
+      borderRadius: 999,
+      backgroundColor: `${appTheme.successColor}15`,
+    },
+
+    activeBadgeText: {
+      color: appTheme.successColor,
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    disabledAreaCard: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 12,
+      padding: 15,
+      borderRadius: 19,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      backgroundColor: appTheme.cardColor,
+      opacity: 0.72,
+    },
+
+    disabledIcon: {
+      width: 46,
+      height: 46,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: `${appTheme.secondaryTextColor}12`,
+    },
+
+    disabledAreaName: {
+      color: appTheme.textColor,
+      fontSize: 15,
+      fontWeight: "800",
+    },
+
+    disabledBadge: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    infoCard: {
+      flexDirection: "row-reverse",
+      alignItems: "flex-start",
+      gap: 9,
+      padding: 15,
+      borderRadius: 18,
+      backgroundColor: `${appTheme.primaryColor}0D`,
+      borderWidth: 1,
+      borderColor: `${appTheme.primaryColor}25`,
+    },
+
+    infoText: {
+      flex: 1,
+      color: appTheme.textColor,
+      fontSize: 13,
+      lineHeight: 21,
+      textAlign: "right",
+    },
+  });

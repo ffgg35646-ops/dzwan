@@ -1,0 +1,667 @@
+import { resolveDeliveryFee } from "../src/services/pricing.service.js";
+
+const BASE = "http://localhost:4000";
+
+const ADMIN_EMAIL = "admin@dzwan.local";
+const ADMIN_PASSWORD = "Dzwan@2026_Admin";
+
+let passed = 0;
+let failed = 0;
+
+function pass(name) {
+  passed++;
+  console.log(`✅ PASS: ${name}`);
+}
+
+function fail(name, details = "") {
+  failed++;
+  console.log(`❌ FAIL: ${name}`);
+  if (details) console.log(details);
+}
+
+async function login() {
+  const r = await fetch(`${BASE}/api/auth/login`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+    }),
+  });
+
+  const body = await r.json();
+  const cookies = r.headers.getSetCookie?.() ?? [];
+
+  if (!r.ok || !body?.success || !cookies.length) {
+    throw new Error(
+      `Admin login failed: HTTP ${r.status}\n${JSON.stringify(body)}`
+    );
+  }
+
+  return cookies.map((x) => x.split(";", 1)[0]).join("; ");
+}
+
+async function req(cookie, method, path, body) {
+  const r = await fetch(`${BASE}${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+
+  const text = await r.text();
+
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    parsed = text;
+  }
+
+  return {
+    status: r.status,
+    body: parsed,
+  };
+}
+
+function print(label, r) {
+  console.log(`\n========== ${label} ==========`);
+  console.log("HTTP:", r.status);
+  console.log(JSON.stringify(r.body, null, 2));
+}
+
+async function main() {
+  const cookie = await login();
+
+  console.log("\n==============================================");
+  console.log(" GEOFENCE COMPLETE FUNCTIONAL TEST");
+  console.log("==============================================");
+
+  const stamp = Date.now();
+
+  // Existing valid ObjectIds for required Geofence fields.
+
+  /*
+   * Polygon:
+   *
+   * latitude  : 29.900 -> 29.910
+   * longitude : 30.900 -> 30.910
+   *
+   * Inside test point:
+   * 29.905, 30.905
+   *
+   * Outside test point:
+   * 29.950, 30.950
+   */
+  const polygon = [
+    [29.900, 30.900],
+    [29.900, 30.910],
+    [29.910, 30.910],
+    [29.910, 30.900],
+  ];
+
+  const geofenceName = `اختبار Geofence ${stamp}`;
+
+  let geofenceId = null;
+  let pricingRuleId = null;
+
+  try {
+    // =========================================================
+    // 1. LIST
+    // =========================================================
+    let r = await req(
+      cookie,
+      "GET",
+      "/api/geofences/",
+    );
+
+    print("INITIAL GEOFENCES", r);
+
+    if (r.status === 200 && Array.isArray(r.body)) {
+      pass("Admin can list geofences");
+    } else {
+      fail(
+        "List geofences",
+        JSON.stringify(r.body)
+      );
+    }
+
+    // =========================================================
+    // 2. CREATE
+    // =========================================================
+    r = await req(
+      cookie,
+      "POST",
+      "/api/geofences/",
+      {
+        name: geofenceName,
+        description: "اختبار المنطقة الجغرافية",
+        governorateId: governorateId.toString(),
+        areaId: areaId.toString(),
+        coordinates: polygon,
+        isActive: true,
+      }
+    );
+
+    print("CREATE GEOFENCE", r);
+
+    geofenceId =
+      r.body?._id ??
+      r.body?.id ??
+      null;
+
+    if (
+      r.status === 201 &&
+      geofenceId &&
+      r.body?.isActive === true &&
+      Array.isArray(r.body?.coordinates)
+    ) {
+      pass("Create geofence");
+    } else {
+      fail(
+        "Create geofence",
+        JSON.stringify(r.body)
+      );
+      return;
+    }
+
+    // =========================================================
+    // 3. VERIFY RAW MONGODB DATA
+    // =========================================================
+      geofenceId
+    ).lean();
+
+    if (
+      raw &&
+      raw.enabled === true &&
+      Array.isArray(raw.polygon) &&
+      raw.polygon.length === 4 &&
+      raw.polygon[0]?.lat === 29.9 &&
+      raw.polygon[0]?.lng === 30.9
+    ) {
+      pass("Geofence polygon persisted in MongoDB");
+    } else {
+      fail(
+        "Geofence MongoDB persistence",
+        JSON.stringify(raw)
+      );
+    }
+
+    // =========================================================
+    // 4. LIST CONTAINS NEW GEOFENCE
+    // =========================================================
+    r = await req(
+      cookie,
+      "GET",
+      "/api/geofences/",
+    );
+
+    const listed =
+      Array.isArray(r.body)
+        ? r.body.find(
+            (x) => String(x._id) === String(geofenceId)
+          )
+        : null;
+
+    if (
+      r.status === 200 &&
+      listed &&
+      listed.name === geofenceName &&
+      listed.isActive === true &&
+      Array.isArray(listed.coordinates)
+    ) {
+      pass("Created geofence appears in list");
+    } else {
+      fail(
+        "Created geofence list persistence",
+        JSON.stringify(listed)
+      );
+    }
+
+    // =========================================================
+    // 5. INVALID POLYGON
+    // =========================================================
+    r = await req(
+      cookie,
+      "POST",
+      "/api/geofences/",
+      {
+        name: `Invalid Geofence ${stamp}`,
+        governorateId: governorateId.toString(),
+        areaId: areaId.toString(),
+        coordinates: [
+          [29.9, 30.9],
+          [29.91, 30.91],
+        ],
+        isActive: true,
+      }
+    );
+
+    if (r.status === 400) {
+      pass("Invalid polygon is rejected");
+    } else {
+      fail(
+        "Invalid polygon validation",
+        JSON.stringify(r.body)
+      );
+    }
+
+    // =========================================================
+    // 6. UPDATE NAME
+    // =========================================================
+    const updatedName =
+      `Geofence معدلة ${stamp}`;
+
+    r = await req(
+      cookie,
+      "PATCH",
+      `/api/geofences/${geofenceId}`,
+      {
+        name: updatedName,
+      }
+    );
+
+    print("UPDATE GEOFENCE NAME", r);
+
+    if (
+      r.status === 200 &&
+      r.body?.name === updatedName
+    ) {
+      pass("Update geofence name");
+    } else {
+      fail(
+        "Update geofence name",
+        JSON.stringify(r.body)
+      );
+    }
+
+    // =========================================================
+    // 7. DISABLE
+    // =========================================================
+    r = await req(
+      cookie,
+      "PATCH",
+      `/api/geofences/${geofenceId}`,
+      {
+        isActive: false,
+      }
+    );
+
+    print("DISABLE GEOFENCE", r);
+
+    if (
+      r.status === 200 &&
+      r.body?.isActive === false
+    ) {
+      pass("Disable geofence");
+    } else {
+      fail(
+        "Disable geofence",
+        JSON.stringify(r.body)
+      );
+    }
+
+    // =========================================================
+    // 8. VERIFY DISABLED IN DB
+    // =========================================================
+      geofenceId
+    ).lean();
+
+    if (
+      disabled &&
+      disabled.enabled === false
+    ) {
+      pass("Disabled geofence persisted");
+    } else {
+      fail(
+        "Disabled geofence persistence",
+        JSON.stringify(disabled)
+      );
+    }
+
+    // =========================================================
+    // 9. RE-ENABLE
+    // =========================================================
+    r = await req(
+      cookie,
+      "PATCH",
+      `/api/geofences/${geofenceId}`,
+      {
+        isActive: true,
+      }
+    );
+
+    if (
+      r.status === 200 &&
+      r.body?.isActive === true
+    ) {
+      pass("Re-enable geofence");
+    } else {
+      fail(
+        "Re-enable geofence",
+        JSON.stringify(r.body)
+      );
+    }
+
+    // =========================================================
+    // 10. DIRECT POINT-IN-POLYGON THROUGH PUBLIC RESOLVE
+    // =========================================================
+    r = await req(
+      cookie,
+      "GET",
+      "/api/requirements/geofence/resolve?lat=29.905&lng=30.905",
+    );
+
+    print("GEOFENCE RESOLVE INSIDE", r);
+
+    if (
+      r.status === 200 &&
+      r.body &&
+      String(r.body._id) === String(geofenceId)
+    ) {
+      pass("Point inside polygon resolves to geofence");
+    } else {
+      fail(
+        "Inside geofence resolution",
+        JSON.stringify(r.body)
+      );
+    }
+
+    // =========================================================
+    // 11. OUTSIDE POINT
+    // =========================================================
+    r = await req(
+      cookie,
+      "GET",
+      "/api/requirements/geofence/resolve?lat=29.950&lng=30.950",
+    );
+
+    print("GEOFENCE RESOLVE OUTSIDE", r);
+
+    if (
+      r.status === 200 &&
+      (r.body === null ||
+        (typeof r.body === "object" &&
+          r.body &&
+          !r.body._id))
+    ) {
+      pass("Point outside polygon does not resolve");
+    } else {
+      fail(
+        "Outside geofence resolution",
+        JSON.stringify(r.body)
+      );
+    }
+
+    // =========================================================
+    // 12. CREATE GEOFENCE-TO-GEOFENCE PRICING RULE
+    // =========================================================
+    //
+    // We need TWO geofences for a pricing pair.
+    //
+    const secondGovId =
+
+    const secondAreaId =
+
+    const secondPolygon = [
+      [29.920, 30.920],
+      [29.920, 30.930],
+      [29.930, 30.930],
+      [29.930, 30.920],
+    ];
+
+    const secondName =
+      `اختبار Geofence وجهة ${stamp}`;
+
+      name: secondName,
+      governorateId: secondGovId,
+      areaId: secondAreaId,
+      enabled: true,
+      polygon: secondPolygon.map(
+        ([lat, lng]) => ({ lat, lng })
+      ),
+    });
+
+    const secondGeofenceId =
+      second._id.toString();
+
+    try {
+      r = await req(
+        cookie,
+        "POST",
+        "/api/pricing/",
+        {
+          name: `سعر Geofence إلى Geofence ${stamp}`,
+          type: "geofence_to_geofence",
+          amount: 475,
+          fromGeofenceId: geofenceId,
+          toGeofenceId: secondGeofenceId,
+          priority: 100,
+          isActive: true,
+        }
+      );
+
+      print(
+        "CREATE GEOFENCE PRICING RULE",
+        r
+      );
+
+      pricingRuleId =
+        r.body?._id ??
+        null;
+
+      if (
+        r.status === 201 &&
+        pricingRuleId
+      ) {
+        pass("Create geofence-to-geofence pricing rule");
+      } else {
+        fail(
+          "Create geofence pricing rule",
+          JSON.stringify(r.body)
+        );
+      }
+
+      // =======================================================
+      // 13. RESOLVE DELIVERY FEE USING BOTH GEOFENCES
+      // =======================================================
+      const pricing = await resolveDeliveryFee({
+        establishmentId:
+        establishmentType: "restaurant",
+
+        fromGovernorateId:
+          governorateId,
+
+        fromAreaId:
+          areaId,
+
+        toGovernorateId:
+          secondGovId,
+
+        toAreaId:
+          secondAreaId,
+
+        fromLatitude: 29.905,
+        fromLongitude: 30.905,
+
+        toLatitude: 29.925,
+        toLongitude: 30.925,
+
+        now: new Date(),
+      });
+
+      console.log("\n========== PRICING GEOFENCE RESOLUTION ==========");
+      console.log(
+        JSON.stringify(pricing, null, 2)
+      );
+
+      if (
+        Number(pricing.fee) === 475 &&
+        String(pricing.ruleId) === String(pricingRuleId) &&
+        String(pricing.fromGeofenceId) === String(geofenceId) &&
+        String(pricing.toGeofenceId) === String(secondGeofenceId)
+      ) {
+        pass(
+          "Geofence-to-geofence pricing resolves correctly"
+        );
+      } else {
+        fail(
+          "Geofence pricing resolution",
+          JSON.stringify(pricing, null, 2)
+        );
+      }
+
+      // =======================================================
+      // 14. DISABLE SOURCE GEOFENCE
+      // =======================================================
+        geofenceId,
+        {
+          enabled: false,
+        }
+      );
+
+      const disabledPricing =
+        await resolveDeliveryFee({
+          establishmentId:
+          establishmentType: "restaurant",
+
+          fromGovernorateId:
+            governorateId,
+
+          fromAreaId:
+            areaId,
+
+          toGovernorateId:
+            secondGovId,
+
+          toAreaId:
+            secondAreaId,
+
+          fromLatitude: 29.905,
+          fromLongitude: 30.905,
+
+          toLatitude: 29.925,
+          toLongitude: 30.925,
+
+          now: new Date(),
+        });
+
+      if (
+        String(disabledPricing.fromGeofenceId ?? "") !==
+          String(geofenceId)
+      ) {
+        pass(
+          "Disabled source geofence is ignored by resolver"
+        );
+      } else {
+        fail(
+          "Disabled source geofence handling",
+          JSON.stringify(disabledPricing, null, 2)
+        );
+      }
+    } finally {
+        secondGeofenceId
+      );
+    }
+
+    // =========================================================
+    // DELETE PRICING RULE
+    // =========================================================
+    if (pricingRuleId) {
+      r = await req(
+        cookie,
+        "DELETE",
+        `/api/pricing/${pricingRuleId}`,
+      );
+
+      if (
+        r.status === 200 &&
+        r.body?.success === true
+      ) {
+        pass("Delete geofence pricing rule");
+      } else {
+        fail(
+          "Delete geofence pricing rule",
+          JSON.stringify(r.body)
+        );
+      }
+    }
+
+    // =========================================================
+    // DELETE GEOFENCE
+    // =========================================================
+    r = await req(
+      cookie,
+      "DELETE",
+      `/api/geofences/${geofenceId}`,
+    );
+
+    print("DELETE GEOFENCE", r);
+
+    if (
+      r.status === 200 &&
+      r.body?.success === true
+    ) {
+      pass("Delete geofence");
+    } else {
+      fail(
+        "Delete geofence",
+        JSON.stringify(r.body)
+      );
+    }
+
+    // =========================================================
+    // VERIFY DELETE
+    // =========================================================
+    const deleted =
+        geofenceId
+      ).lean();
+
+    if (!deleted) {
+      pass("Deleted geofence is gone from MongoDB");
+    } else {
+      fail(
+        "Deleted geofence still exists",
+        JSON.stringify(deleted)
+      );
+    }
+
+    console.log("\n==============================================");
+    console.log(" GEOFENCE TEST SUMMARY");
+    console.log("==============================================");
+    console.log(`PASS: ${passed}`);
+    console.log(`FAIL: ${failed}`);
+
+    if (failed === 0) {
+      console.log("\n🎉 ALL GEOFENCE TESTS PASSED");
+      process.exitCode = 0;
+    } else {
+      console.log("\n⚠️ GEOFENCE TESTS HAVE FAILURES");
+      process.exitCode = 2;
+    }
+  } finally {
+    if (pricingRuleId) {
+        pricingRuleId
+      ).catch(() => {});
+    }
+
+    if (geofenceId) {
+        geofenceId
+      ).catch(() => {});
+    }
+  }
+}
+
+main().catch(async (error) => {
+  console.error("\n💥 TEST CRASHED");
+  console.error(error);
+
+  try {
+  } catch {}
+
+  process.exit(3);
+});

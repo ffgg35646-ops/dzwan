@@ -1,0 +1,51 @@
+import { Types } from "mongoose";
+import CaptainCashTransactionModel from "../models/CaptainCashTransaction.js";
+import { OrderModel } from "../models/Order.js";
+
+export async function recordOrderCashFlow(
+  orderId: Types.ObjectId,
+  captainId: Types.ObjectId,
+) {
+  const order = await OrderModel.findById(orderId).lean();
+
+  if (!order) {
+    throw new Error("ORDER_NOT_FOUND");
+  }
+
+  const existing = await CaptainCashTransactionModel.countDocuments({
+    orderId,
+  });
+
+  if (existing > 0) {
+    return {
+      created: false,
+      message: "تم تسجيل حركة الكاش لهذا الطلب مسبقًا.",
+    };
+  }
+
+  await CaptainCashTransactionModel.create([
+    {
+      captainId,
+      orderId,
+      type: "paid_to_establishment",
+      amount: order.subtotal,
+      description: "قيمة الطلب المدفوعة للمطعم/المحل.",
+    },
+    {
+      captainId,
+      orderId,
+      type: "collected_from_customer",
+      amount: order.total,
+      description: "إجمالي المبلغ المحصل من الزبون.",
+    },
+    {
+      captainId,
+      orderId,
+      type: "delivery_fee",
+      amount: order.deliveryFee,
+      description: "أجرة التوصيل.",
+    },
+  ]);
+
+  return { created: true };
+}

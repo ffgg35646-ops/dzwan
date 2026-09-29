@@ -1,0 +1,681 @@
+import { Request, Response } from "express";
+import bcrypt from "bcryptjs";
+import { Types } from "mongoose";
+import CaptainRegistrationModel from "../models/CaptainRegistration.js";
+import { UserModel } from "../models/User.js";
+import { LocationModel } from "../models/Location.js";
+import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import CaptainRegistrationVerificationModel from "../models/CaptainRegistrationVerification.js";
+import { OrderModel } from "../models/Order.js";
+import {
+  createOtp,
+  hashOtp,
+  sendCaptainRegistrationOtp,
+} from "../services/email.service.js";
+import { createNotification } from "../services/notification.service.js";
+import { sendExpoPushToTokens } from "../services/push-notification.service.js";
+import { CaptainShiftModel } from "../models/CaptainShift.js";
+
+export async function registerCaptain(req: Request, res: Response) {
+  try {
+    const {
+      fullName,
+      phone,
+      email,
+      password,
+      gmail,
+      governorateId,
+      areaId,
+      idFrontUrl,
+      idBackUrl,
+      residenceFrontUrl,
+      residenceBackUrl,
+    } = req.body;
+
+    if (
+      !fullName ||
+      !phone ||
+      !password ||
+      !gmail ||
+      !governorateId ||
+      !areaId ||
+      !idFrontUrl ||
+      !idBackUrl ||
+      !residenceFrontUrl ||
+      !residenceBackUrl
+    ) {
+      return res.status(400).json({
+        message: "جميع البيانات الأساسية مطلوبة.",
+      });
+    }
+
+    if (
+      !Types.ObjectId.isValid(governorateId) ||
+      !Types.ObjectId.isValid(areaId)
+    ) {
+      return res.status(400).json({
+        message: "المحافظة أو المنطقة غير صحيحة.",
+      });
+    }
+
+    const normalizedGmail = String(gmail).trim().toLowerCase();
+    const normalizedPhone = String(phone).trim();
+    const pushToken = String(
+      req.body?.pushToken || ""
+    ).trim();
+
+    const location = await LocationModel.findById(governorateId)
+      .select("isActive captainsEnabled areas")
+      .lean();
+
+    if (!location || !location.isActive) {
+      return res.status(400).json({
+        message: "المحافظة غير مفعلة حاليًا.",
+      });
+    }
+
+    if (location.captainsEnabled === false) {
+      return res.status(400).json({
+        message: "تسجيل الكباتن متوقف حاليًا في هذه المحافظة.",
+      });
+    }
+
+    const area = location.areas.find(
+      (item) => item._id.toString() === String(areaId),
+    );
+
+    if (!area || !area.isActive) {
+      return res.status(400).json({
+        message: "المنطقة غير مفعلة حاليًا.",
+      });
+    }
+
+    if (area.captainsEnabled === false) {
+      return res.status(400).json({
+        message: "تسجيل الكباتن متوقف حاليًا في هذه المنطقة.",
+      });
+    }
+
+    const existingUser = await UserModel.findOne({
+      $or: [
+        { phone: normalizedPhone },
+        { email: normalizedGmail },
+      ],
+    }).lean();
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: "رقم الهاتف أو البريد الإلكتروني مستخدم بالفعل.",
+      });
+    }
+
+    const pending = await CaptainRegistrationModel.findOne({
+      $or: [
+        { phone: normalizedPhone, status: "pending" },
+        { gmail: normalizedGmail, status: "pending" },
+      ],
+    });
+
+    if (pending) {
+      return res.status(409).json({
+        message: "يوجد طلب تسجيل قيد المراجعة بالفعل.",
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(String(password), 12);
+
+    const otp = createOtp();
+
+    await CaptainRegistrationVerificationModel.deleteMany({
+      gmail: normalizedGmail,
+      verifiedAt: null,
+    });
+
+    const verification =
+      await CaptainRegistrationVerificationModel.create({
+        gmail: normalizedGmail,
+        otpHash: hashOtp(otp),
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        payload: {
+          fullName: String(fullName).trim(),
+          phone: normalizedPhone,
+          email: email
+            ? String(email).trim().toLowerCase()
+            : null,
+          gmail: normalizedGmail,
+          passwordHash,
+          governorateId,
+          areaId,
+          idFrontUrl: String(idFrontUrl).trim(),
+          idBackUrl: String(idBackUrl).trim(),
+          residenceFrontUrl: String(residenceFrontUrl).trim(),
+          residenceBackUrl: String(residenceBackUrl).trim(),
+        },
+        pushToken: pushToken || null,
+      });
+
+    try {
+      await sendCaptainRegistrationOtp(
+        normalizedGmail,
+        otp,
+      );
+    } catch (error) {
+      await CaptainRegistrationVerificationModel.findByIdAndDelete(
+        verification._id,
+      );
+      throw error;
+    }
+
+    return res.status(201).json({
+      message: "تم إرسال كود التحقق إلى Gmail.",
+      verificationId: verification._id,
+      status: "pending_email_verification",
+    });
+  } catch (error) {
+    console.error("registerCaptain error:", error);
+
+    if (error instanceof Error && error.message === "SMTP_NOT_CONFIGURED") {
+      return res.status(500).json({
+        message: "إعداد البريد الإلكتروني غير مكتمل.",
+      });
+    }
+
+    return res.status(500).json({
+      message: "حدث خطأ أثناء إرسال كود التحقق.",
+    });
+  }
+}
+
+export async function verifyCaptainRegistration(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const verificationId = String(
+      req.body?.verificationId || "",
+    ).trim();
+
+    const otp = String(req.body?.otp || "").trim();
+
+    if (!Types.ObjectId.isValid(verificationId) || !otp) {
+      return res.status(400).json({
+        message: "معرّف التحقق والكود مطلوبان.",
+      });
+    }
+
+    const verification =
+      await CaptainRegistrationVerificationModel.findById(
+        verificationId,
+      );
+
+    if (!verification) {
+      return res.status(404).json({
+        message: "طلب التحقق غير موجود أو انتهت صلاحيته.",
+      });
+    }
+
+    if (verification.verifiedAt) {
+      return res.status(400).json({
+        message: "تم التحقق من البريد بالفعل.",
+      });
+    }
+
+    if (verification.expiresAt.getTime() < Date.now()) {
+      return res.status(400).json({
+        message: "انتهت صلاحية كود التحقق.",
+      });
+    }
+
+    if (verification.attempts >= 5) {
+      return res.status(429).json({
+        message: "تم تجاوز عدد محاولات التحقق المسموح بها.",
+      });
+    }
+
+    verification.attempts += 1;
+
+    if (hashOtp(otp) !== verification.otpHash) {
+      await verification.save();
+
+      return res.status(400).json({
+        message: "كود التحقق غير صحيح.",
+      });
+    }
+
+    const payload = verification.payload;
+
+    const existingUser = await UserModel.findOne({
+      $or: [
+        { phone: payload.phone },
+        { email: payload.gmail },
+      ],
+    }).lean();
+
+    if (existingUser) {
+      return res.status(409).json({
+        message: "رقم الهاتف أو البريد الإلكتروني مستخدم بالفعل.",
+      });
+    }
+
+    const pending = await CaptainRegistrationModel.findOne({
+      $or: [
+        { phone: payload.phone, status: "pending" },
+        { gmail: payload.gmail, status: "pending" },
+      ],
+    });
+
+    if (pending) {
+      return res.status(409).json({
+        message: "يوجد طلب تسجيل قيد المراجعة بالفعل.",
+      });
+    }
+
+    const registration = await CaptainRegistrationModel.create({
+      ...payload,
+      status: "pending",
+      pushToken: verification.pushToken || null,
+    });
+
+    verification.verifiedAt = new Date();
+    await verification.save();
+
+    return res.status(201).json({
+      message:
+        "تم تأكيد البريد الإلكتروني بنجاح، وتم إرسال طلب التسجيل إلى الإدارة للمراجعة.",
+      registrationId: registration._id,
+      status: "pending",
+    });
+  } catch (error) {
+    console.error("verifyCaptainRegistration error:", error);
+
+    return res.status(500).json({
+      message: "حدث خطأ أثناء تأكيد البريد الإلكتروني.",
+    });
+  }
+}
+
+export async function listCaptainRegistrations(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  const rows = await CaptainRegistrationModel.find()
+    .select("-passwordHash")
+    .populate("approvedBy", "fullName")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  const locations = await LocationModel.find()
+    .select("_id name areas")
+    .lean();
+
+  const locationMap = new Map(
+    locations.map((location) => [
+      String(location._id),
+      location,
+    ]),
+  );
+
+  // نبحث عن حساب الكابتن المرتبط بطلب التسجيل عن طريق الهاتف.
+  const phones = rows
+    .map((row) => String(row.phone || "").trim())
+    .filter(Boolean);
+
+  const users = phones.length
+    ? await UserModel.find({
+        role: "captain",
+        phone: { $in: phones },
+      })
+        .select("_id phone")
+        .lean()
+    : [];
+
+  const userIdByPhone = new Map(
+    users.map((user) => [
+      String(user.phone || "").trim(),
+      String(user._id),
+    ]),
+  );
+
+  const captainIds = users.map((user) => user._id);
+
+  // إحصائيات الطلبات الخاصة بكل كابتن.
+  const orderStats = captainIds.length
+    ? await OrderModel.aggregate([
+        {
+          $match: {
+            captainId: { $in: captainIds },
+          },
+        },
+        {
+          $group: {
+            _id: "$captainId",
+            completedOrders: {
+              $sum: {
+                $cond: [
+                  {
+                    $in: [
+                      "$status",
+                      ["delivered", "completed"],
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+            cancelledOrders: {
+              $sum: {
+                $cond: [
+                  {
+                    $in: [
+                      "$status",
+                      ["cancelled", "rejected"],
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ])
+    : [];
+
+  const orderStatsByCaptain = new Map(
+    orderStats.map((item) => [
+      String(item._id),
+      {
+        completedOrders: Number(
+          item.completedOrders || 0,
+        ),
+        cancelledOrders: Number(
+          item.cancelledOrders || 0,
+        ),
+      },
+    ]),
+  );
+
+  // نأخذ آخر شفت حالي مسجل للكابتن خلال الأسبوع الحالي.
+  const now = new Date();
+  const windowStart = new Date(
+    now.getTime() - 7 * 24 * 60 * 60 * 1000,
+  );
+
+  const assignments = captainIds.length
+    ? await CaptainShiftModel.find({
+        captainId: { $in: captainIds },
+        shiftId: {
+          $exists: true,
+          $ne: null,
+        },
+        weekStart: {
+          $gt: windowStart,
+          $lte: now,
+        },
+        isActive: true,
+      })
+        .populate(
+          "shiftId",
+          "name startTime endTime isActive",
+        )
+        .sort({ weekStart: -1 })
+        .lean()
+    : [];
+
+  const currentShiftByCaptain = new Map<
+    string,
+    {
+      _id?: string;
+      name?: string;
+      startTime?: string;
+      endTime?: string;
+    }
+  >();
+
+  for (const assignment of assignments) {
+    const captainKey = String(assignment.captainId);
+
+    // أول Assignment هو الأحدث بسبب sort.
+    if (currentShiftByCaptain.has(captainKey)) {
+      continue;
+    }
+
+    const shift =
+      assignment.shiftId &&
+      typeof assignment.shiftId === "object"
+        ? assignment.shiftId
+        : null;
+
+    if (!shift) {
+      continue;
+    }
+
+    currentShiftByCaptain.set(captainKey, {
+      _id: String(shift._id),
+      name: shift.name,
+      startTime: shift.startTime,
+      endTime: shift.endTime,
+    });
+  }
+
+  const registrations = rows.map((row) => {
+    const location = locationMap.get(
+      String(row.governorateId),
+    );
+
+    const area = location?.areas?.find(
+      (item) =>
+        String(item._id) === String(row.areaId),
+    );
+
+    const captainUserId = userIdByPhone.get(
+      String(row.phone || "").trim(),
+    );
+
+    const currentShift = captainUserId
+      ? currentShiftByCaptain.get(captainUserId) || null
+      : null;
+
+    const captainOrderStats = captainUserId
+      ? orderStatsByCaptain.get(captainUserId) || {
+          completedOrders: 0,
+          cancelledOrders: 0,
+        }
+      : {
+          completedOrders: 0,
+          cancelledOrders: 0,
+        };
+
+    return {
+      ...row,
+
+      governorateId: location
+        ? {
+            _id: location._id,
+            name: location.name,
+          }
+        : row.governorateId,
+
+      areaId: area
+        ? {
+            _id: area._id,
+            name: area.name,
+          }
+        : row.areaId,
+
+      currentShift,
+
+      completedOrders:
+        captainOrderStats.completedOrders,
+
+      cancelledOrders:
+        captainOrderStats.cancelledOrders,
+    };
+  });
+
+  return res.json({ registrations });
+}
+
+export async function approveCaptainRegistration(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const registrationId = String(req.params.id || "").trim();
+
+    if (!Types.ObjectId.isValid(registrationId)) {
+      return res.status(400).json({
+        message: "معرّف طلب التسجيل غير صالح.",
+      });
+    }
+
+    const registration = await CaptainRegistrationModel
+      .findById(registrationId)
+      .select("+passwordHash");
+
+    if (!registration) {
+      return res.status(404).json({
+        message: "طلب التسجيل غير موجود.",
+      });
+    }
+
+    if (registration.status !== "pending") {
+      return res.status(400).json({
+        message: "طلب التسجيل تمت مراجعته بالفعل.",
+      });
+    }
+
+    const existing = await UserModel.findOne({
+      $or: [
+        { phone: registration.phone },
+        ...(registration.email
+          ? [{ email: registration.email }]
+          : []),
+      ],
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        message: "يوجد حساب مستخدم بنفس الهاتف أو البريد.",
+      });
+    }
+
+    const user = await UserModel.create({
+      role: "captain",
+      status: "active",
+      fullName: registration.fullName,
+      phone: registration.phone,
+      email: registration.email || undefined,
+      passwordHash: registration.passwordHash,
+      governorateId: registration.governorateId,
+      areaId: registration.areaId,
+      isOnline: false,
+      approvedAt: new Date(),
+      approvedBy: req.user?.sub,
+    });
+
+    registration.status = "approved";
+    registration.approvedAt = new Date();
+    registration.approvedBy = new Types.ObjectId(req.user!.sub);
+    registration.rejectionReason = null;
+
+    await registration.save();
+
+    await createNotification({
+      userId: user._id,
+      type: "captain",
+      title: "تم قبول حسابك",
+      message:
+        "تمت الموافقة على حسابك في دزوان. يمكنك الآن استخدام التطبيق وبدء العمل.",
+    });
+
+    return res.json({
+      message: "تم اعتماد الكابتن وإنشاء الحساب.",
+      captain: {
+        id: user._id,
+        fullName: user.fullName,
+        phone: user.phone,
+        status: user.status,
+      },
+    });
+  } catch (error) {
+    console.error("approveCaptainRegistration error:", error);
+    return res.status(500).json({
+      message: "حدث خطأ أثناء اعتماد الطلب.",
+    });
+  }
+}
+
+export async function rejectCaptainRegistration(
+  req: AuthenticatedRequest,
+  res: Response,
+) {
+  try {
+    const { reason } = req.body;
+
+    if (!reason || String(reason).trim().length < 2) {
+      return res.status(400).json({
+        message: "سبب الرفض مطلوب.",
+      });
+    }
+
+    const registrationId = String(req.params.id || "").trim();
+
+    if (!Types.ObjectId.isValid(registrationId)) {
+      return res.status(400).json({
+        message: "معرّف طلب التسجيل غير صالح.",
+      });
+    }
+
+    const registration = await CaptainRegistrationModel.findById(
+      registrationId,
+    );
+
+    if (!registration) {
+      return res.status(404).json({
+        message: "طلب التسجيل غير موجود.",
+      });
+    }
+
+    if (registration.status !== "pending") {
+      return res.status(400).json({
+        message: "طلب التسجيل تمت مراجعته بالفعل.",
+      });
+    }
+
+    registration.status = "rejected";
+    registration.rejectionReason = String(reason).trim();
+    registration.approvedAt = null;
+    registration.approvedBy = new Types.ObjectId(req.user!.sub);
+
+    await registration.save();
+
+    if (registration.pushToken) {
+      await sendExpoPushToTokens(
+        [registration.pushToken],
+        {
+          title: "تم رفض طلب تسجيلك",
+          body:
+            `تم رفض طلب تسجيلك في دزوان. السبب: ${
+              registration.rejectionReason || "لم يتم تحديد السبب."
+            } يمكنك التواصل مع أرقام الدعم لمعرفة التفاصيل.`,
+          data: {
+            type: "captain_registration_rejected",
+            registrationId: String(registration._id),
+          },
+        },
+      );
+    }
+
+    return res.json({
+      message: "تم رفض طلب التسجيل.",
+    });
+  } catch (error) {
+    console.error("rejectCaptainRegistration error:", error);
+    return res.status(500).json({
+      message: "حدث خطأ أثناء رفض الطلب.",
+    });
+  }
+}

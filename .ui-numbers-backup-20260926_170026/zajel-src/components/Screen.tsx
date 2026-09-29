@@ -1,0 +1,234 @@
+import React, { PropsWithChildren } from "react";
+import {
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  View,
+  ViewStyle,
+  Platform,
+} from "react-native";
+import { useAppTheme } from "../theme/useAppTheme";
+import { LinearGradient } from "expo-linear-gradient";
+
+type Props = PropsWithChildren<{
+  scroll?: boolean;
+  style?: ViewStyle | ViewStyle[];
+  authBackground?: boolean;
+  fitContent?: boolean;
+}>;
+
+export default function Screen({
+  children,
+  scroll = false,
+  style,
+  authBackground = false,
+  fitContent = false,
+}: Props) {
+  const theme = useAppTheme();
+
+  const styles = StyleSheet.create({
+    root: {
+      flex: 1,
+      width: "100%",
+      height: "100%",
+      backgroundColor: authBackground ? "#FFF7E8" : theme.backgroundColor,
+      overflow: "visible",
+      ...(Platform.OS === "web"
+        ? {
+            maxWidth: "100%",
+            minWidth: 0,
+            alignSelf: "stretch",
+            maxHeight: "100%",
+            minHeight: 0,
+            borderRadius: 0,
+            overflow: "visible",
+          }
+        : {}),
+    },
+
+    authBackground: {
+      ...StyleSheet.absoluteFill,
+      overflow: "visible",
+    },
+
+    mainGradient: {
+      ...StyleSheet.absoluteFill,
+    },
+
+    yellowRibbon: {
+      position: "absolute",
+      width: "145%",
+      height: "43%",
+      left: "-22%",
+      top: "39%",
+      borderRadius: 220,
+      transform: [{ rotate: "-12deg" }],
+      opacity: 0.98,
+    },
+
+    orangeWave: {
+      position: "absolute",
+      width: "125%",
+      height: "30%",
+      right: "-40%",
+      top: "52%",
+      borderRadius: 240,
+      backgroundColor: "#FF6A00",
+      transform: [{ rotate: "-13deg" }],
+      opacity: 0.98,
+      shadowColor: "#7A2600",
+      shadowOpacity: 0.24,
+      shadowRadius: 28,
+      shadowOffset: {
+        width: -8,
+        height: 18,
+      },
+      elevation: 12,
+    },
+
+    depthLayer: {
+      ...StyleSheet.absoluteFill,
+    },
+
+    glassGlowLarge: {
+      position: "absolute",
+      width: 300,
+      height: 300,
+      borderRadius: 150,
+      right: -115,
+      top: -95,
+      backgroundColor: "rgba(255,255,255,0.13)",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.16)",
+    },
+
+    glassGlowSmall: {
+      position: "absolute",
+      width: 150,
+      height: 150,
+      borderRadius: 75,
+      left: -65,
+      bottom: 70,
+      backgroundColor: "rgba(255,255,255,0.10)",
+      borderWidth: 1,
+      borderColor: "rgba(255,255,255,0.13)",
+    },
+
+    ambientCircleOne: {
+      position: "absolute",
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: "rgba(255,255,255,0.18)",
+      top: 120,
+      right: 45,
+    },
+
+    ambientCircleTwo: {
+      position: "absolute",
+      width: 18,
+      height: 18,
+      borderRadius: 9,
+      backgroundColor: "rgba(255,212,0,0.55)",
+      top: 190,
+      left: 34,
+    },
+
+    content: {
+      paddingHorizontal: 18,
+      paddingTop: 16,
+      paddingBottom: 32,
+    },
+  });
+
+  const background = authBackground ? (
+    <View pointerEvents="none" style={styles.authBackground}>
+      {/* Main cinematic orange gradient */}
+      <LinearGradient
+        colors={["#FF4D00", "#FF6A00", "#FF8A1F"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.mainGradient}
+      />
+
+      {/* Large yellow 3D ribbon */}
+      <LinearGradient
+        colors={["#FFF04A", "#FFD400", "#FFB800"]}
+        start={{ x: 0, y: 0.15 }}
+        end={{ x: 1, y: 0.9 }}
+        style={styles.yellowRibbon}
+      />
+
+      {/* Orange layer sitting above the yellow */}
+      <View style={styles.orangeWave} />
+
+      {/* Soft white glass glow */}
+      <View style={styles.glassGlowLarge} />
+      <View style={styles.glassGlowSmall} />
+
+      {/* Deep orange depth layer */}
+      <LinearGradient
+        colors={[
+          "rgba(180,50,0,0.18)",
+          "rgba(255,106,0,0.02)",
+          "rgba(255,255,255,0)",
+        ]}
+        start={{ x: 0, y: 1 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.depthLayer}
+      />
+
+      {/* Small ambient circles */}
+      <View style={styles.ambientCircleOne} />
+      <View style={styles.ambientCircleTwo} />
+    </View>
+  ) : null;
+
+  if (scroll) {
+    return (
+      <SafeAreaView style={styles.root}>
+        {background}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.content}
+        >
+          <View style={style}>{children}</View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  const content = (
+    <SafeAreaView style={styles.root}>
+      {background}
+      <View style={[styles.content, { flex: 1 }, style]}>
+        {children}
+      </View>
+    </SafeAreaView>
+  );
+
+  if (Platform.OS === "web") {
+    return (
+      <View
+        style={{
+          flex: 1,
+          minHeight: fitContent
+            ? ("auto" as any)
+            : ("100vh" as any),
+          width: "100%",
+          alignItems: "center",
+          justifyContent: fitContent
+            ? "flex-start"
+            : "center",
+          backgroundColor: "#EDEDED",
+          overflow: "visible",
+        }}
+      >
+        {content}
+      </View>
+    );
+  }
+
+  return content;
+}

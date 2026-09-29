@@ -1,0 +1,140 @@
+import { api } from "./client";
+
+export type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "preparing"
+  | "ready_for_pickup"
+  | "assigned"
+  | "picked_up"
+  | "on_the_way"
+  | "delivered"
+  | "cancelled"
+  | "rejected";
+
+export async function getOrders(params?: Record<string, string>) {
+  const response = await api.get("/orders", { params });
+  return response.data;
+}
+
+export async function getOrder(orderId: string) {
+  const response = await api.get(`/orders/${orderId}`);
+  return response.data;
+}
+
+export async function createOrder(payload: Record<string, unknown>) {
+  const response = await api.post("/orders", payload);
+  return response.data;
+}
+
+export async function updateOrderStatus(
+  orderId: string | { _id?: unknown; id?: unknown },
+  status: OrderStatus
+) {
+  const normalizedOrderId =
+    typeof orderId === "object"
+      ? String(orderId?._id ?? orderId?.id ?? "")
+      : String(orderId ?? "");
+
+  if (!normalizedOrderId || normalizedOrderId === "[object Object]") {
+    throw new Error("رقم الطلب غير صالح.");
+  }
+
+  const response = await api.patch(
+    `/orders/${normalizedOrderId}/status`,
+    { status }
+  );
+
+  return response.data;
+}
+
+export async function assignCaptain(
+  orderId: string,
+  captainId: string
+) {
+  const response = await api.patch(
+    `/orders/${orderId}/assign-captain`,
+    { captainId }
+  );
+  return response.data;
+}
+
+export async function getTimeline(orderId: string) {
+  const [legacyResponse, opsResponse] =
+    await Promise.all([
+      api
+        .get(
+          `/requirements-30-46/orders/${orderId}/timeline`,
+        )
+        .catch(() => null),
+
+      api
+        .get(
+          `/ops/orders/${orderId}/timeline`,
+        )
+        .catch(() => null),
+    ]);
+
+  const legacy =
+    legacyResponse?.data ?? {};
+
+  const opsEvents =
+    Array.isArray(
+      opsResponse?.data?.timeline,
+    )
+      ? opsResponse.data.timeline
+      : [];
+
+  const legacyEvents =
+    Array.isArray(legacy?.events)
+      ? legacy.events
+      : Array.isArray(legacy?.timeline)
+        ? legacy.timeline
+        : [];
+
+  return {
+    ...(legacy &&
+    typeof legacy === "object"
+      ? legacy
+      : {}),
+    events:
+      opsEvents.length > 0
+        ? opsEvents
+        : legacyEvents,
+  };
+}
+
+export async function sendEmergency(
+  orderId: string,
+  message: string,
+  severity: "normal" | "high" | "critical" = "high"
+) {
+  const response = await api.post(
+    "/requirements-30-46/emergencies",
+    {
+      orderId,
+      message,
+      severity,
+    }
+  );
+
+  return response.data;
+}
+
+export async function cancelOrder(
+  orderId: string,
+  reason: string
+) {
+  const response = await api.post(
+    `/requirements-30-46/orders/${orderId}/cancel`,
+    { reason }
+  );
+
+  return response.data;
+}
+
+
+export async function getOrderDestinations() {
+  const response = await api.get("/locations/order-destinations");
+  return response.data;
+}

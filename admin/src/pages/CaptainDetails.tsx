@@ -1,0 +1,1299 @@
+import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom";
+import {
+  ArrowRight,
+  Loader2,
+  MapPin,
+  Check,
+  X,
+  Plus,
+  Power,
+  ChevronDown,
+  ChevronUp,
+  ShoppingBag,
+  Banknote,
+  CalendarDays,
+  Star, PackageCheck, PackageX, Clock3, Timer} from "lucide-react";
+import { api, getApiErrorMessage } from "../lib/api";
+import HomeBackButton from "../components/admin/HomeBackButton";
+
+type Captain = Record<string, any>;
+
+function unwrap(data: any) {
+  return data?.data ?? data?.captain ?? data;
+}
+
+function text(value: any, fallback = "—") {
+  if (value === null || value === undefined || value === "") {
+    return fallback;
+  }
+
+  if (typeof value === "object") {
+    return (
+      value?.fullName ??
+      value?.name ??
+      value?.title ??
+      value?._id ??
+      fallback
+    );
+  }
+
+  return String(value);
+}
+
+export default function CaptainDetails() {
+  const { id } = useParams();
+
+  const [item, setItem] = useState<Captain | null>(null);
+  const [locations, setLocations] = useState<any[]>([]);
+  const [workAreas, setWorkAreas] = useState<any[]>([]);
+
+  const [orders, setOrders] = useState<any[]>([]);
+  const [cashStatement, setCashStatement] = useState<any>(null);
+
+  const [ratings] = useState<any[]>([]);
+  const [ratingAverage] = useState(0);
+  const [kpi, setKpi] = useState<any>(null);
+  const [ratingTotal] = useState(0);
+  const [ratingsOpen, setRatingsOpen] = useState(false);
+
+  const [ordersOpen, setOrdersOpen] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [areasLoading, setAreasLoading] = useState(true);
+  const [areasBusy, setAreasBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadAll() {
+    if (!id) return;
+
+    try {
+      setLoading(true);
+      setAreasLoading(true);
+      setError("");
+
+      const [
+        captainResponse,
+        locationsResponse,
+        workAreasResponse,
+        ordersResponse,
+        cashResponse,
+        ,
+        kpiResponse,
+      ] = await Promise.all([
+        api.get(`/captains/${id}`),
+        api.get("/locations"),
+        api.get(`/captain-work-area/${id}`),
+        api.get("/orders"),
+        api.get(`/requirements/captains/${id}/cash-statement`).catch(() => ({
+          data: {},
+        })),
+        api.get(`/completion/ratings/${id}`).catch(() => ({
+          data: {},
+        })),
+        api.get( `/requirements/captains/${id}/kpi?start=2000-01-01T00:00:00.000Z&end=${encodeURIComponent(new Date().toISOString())}`).catch(() => ({
+          data: null,
+        })),
+      ]);
+
+      const captain = unwrap(captainResponse.data);
+      setItem(captain);
+
+      setLocations(
+        Array.isArray(locationsResponse.data?.locations)
+          ? locationsResponse.data.locations
+          : [],
+      );
+
+      setWorkAreas(
+        Array.isArray(workAreasResponse.data?.workAreas)
+          ? workAreasResponse.data.workAreas
+          : [],
+      );
+
+      const allOrders = Array.isArray(ordersResponse.data?.orders)
+        ? ordersResponse.data.orders
+        : [];
+
+      const captainOrders = allOrders.filter((order: any) => {
+        const captainId =
+          order?.captainId?._id ??
+          order?.captainId ??
+          "";
+
+        return String(captainId) === String(id);
+      });
+
+      setOrders(captainOrders);
+      setCashStatement(
+        cashResponse?.data?.statement ??
+        cashResponse?.data ??
+        null,
+      );
+
+      setKpi(
+        kpiResponse?.data?.data ??
+        kpiResponse?.data?.kpi ??
+        kpiResponse?.data ??
+        null,
+      );
+    } catch (err) {
+      setError(getApiErrorMessage(err));
+    } finally {
+      setLoading(false);
+      setAreasLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadAll();
+  }, [id]);
+
+  async function addWorkArea(governorateId: string, areaId: string) {
+    if (!id || !governorateId || !areaId) return;
+
+    try {
+      setAreasBusy(true);
+
+      const response = await api.post(
+        `/captain-work-area/${id}`,
+        {
+          governorateId,
+          areaId,
+        },
+      );
+
+      const row = response.data?.workArea;
+
+      if (row) {
+        setWorkAreas((prev) => {
+          const exists = prev.some(
+            (x) => String(x._id) === String(row._id),
+          );
+
+          return exists
+            ? prev.map((x) =>
+                String(x._id) === String(row._id)
+                  ? row
+                  : x,
+              )
+            : [row, ...prev];
+        });
+      }
+    } catch (err) {
+      window.alert(getApiErrorMessage(err));
+    } finally {
+      setAreasBusy(false);
+    }
+  }
+
+  async function toggleWorkArea(workAreaId: string) {
+    try {
+      setAreasBusy(true);
+
+      const response = await api.patch(
+        `/captain-work-area/${workAreaId}/toggle`,
+      );
+
+      const row = response.data?.workArea;
+
+      if (row) {
+        setWorkAreas((prev) =>
+          prev.map((x) =>
+            String(x._id) === String(row._id)
+              ? row
+              : x,
+          ),
+        );
+      }
+    } catch (err) {
+      window.alert(getApiErrorMessage(err));
+    } finally {
+      setAreasBusy(false);
+    }
+  }
+
+  function money(value: any) {
+    return `${Number(value || 0).toLocaleString("en-US")} د.ع`;
+  }
+
+  function orderTotal(order: any) {
+    return Number(
+      order?.total ??
+      order?.subtotal ??
+      0,
+    );
+  }
+
+  function deliveryFee(order: any) {
+    return Number(order?.deliveryFee ?? 0);
+  }
+
+  function grandTotal(order: any) {
+    return orderTotal(order) + deliveryFee(order);
+  }
+
+  function findOrderForRating(rating: any) {
+    const ratingOrderId = String(
+      rating?.orderId?._id ??
+      rating?.orderId ??
+      ""
+    );
+
+    return orders.find(
+      (order) =>
+        String(
+          order?._id ??
+          order?.id ??
+          ""
+        ) === ratingOrderId
+    );
+  }
+
+  function establishmentNameForRating(rating: any) {
+    const order = findOrderForRating(rating);
+
+    const establishment =
+      order?.establishment ??
+      order?.establishmentId ??
+      order?.shop ??
+      order?.restaurant ??
+      null;
+
+    return text(
+      establishment,
+      rating?.establishmentName ||
+        rating?.establishment?.name ||
+        "المحل / المطعم"
+    );
+  }
+
+  function orderLabelForRating(rating: any) {
+    const order = findOrderForRating(rating);
+
+    return text(
+      order?.orderNumber ??
+        order?.number ??
+        order?.code ??
+        order?._id ??
+        rating?.orderId,
+      "—"
+    );
+  }
+
+
+  const weekStart = new Date();
+  weekStart.setHours(0, 0, 0, 0);
+  const day = weekStart.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  weekStart.setDate(weekStart.getDate() - diff);
+
+  const weeklyOrders = orders.filter((order) => {
+    if (!order?.createdAt) return false;
+    return new Date(order.createdAt) >= weekStart;
+  });
+
+  const totalOrderValue = orders.reduce(
+    (sum, order) => sum + orderTotal(order),
+    0,
+  );
+
+  const weeklyOrderValue = weeklyOrders.reduce(
+    (sum, order) => sum + orderTotal(order),
+    0,
+  );
+
+  const totalDeliveryFees = orders.reduce(
+    (sum, order) => sum + deliveryFee(order),
+    0,
+  );
+
+  const weeklyDeliveryFees = weeklyOrders.reduce(
+    (sum, order) => sum + deliveryFee(order),
+    0,
+  );
+
+  const paidToShops = Number(
+    cashStatement?.paidToEstablishments ??
+    cashStatement?.totalPaidShops ??
+    0,
+  );
+
+  const collectedFromCustomers = Number(
+    cashStatement?.collectedFromCustomers ??
+    cashStatement?.totalCollectedCustomers ??
+    0,
+  );
+
+  if (loading) {
+    return (
+      <div className="page-loading">
+        <Loader2 className="spin" size={22} />
+        جاري تحميل بيانات المندوب...
+      </div>
+    );
+  }
+
+  if (error || !item) {
+    return (
+      <div className="page-state">
+        <p>{error || "المندوب غير موجود."}</p>
+        <Link to="/captains">
+          العودة إلى المندوبين
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page">
+      <HomeBackButton />
+
+      <div className="page-header">
+        <div>
+          <Link
+            to="/captains"
+            className="back-link"
+          >
+            <ArrowRight size={18} />
+            العودة إلى المندوبين
+          </Link>
+
+          <h1>ملف الكابتن</h1>
+        </div>
+      </div>
+
+      <section className="details-card">
+        <h2>بيانات المندوب</h2>
+
+        <div className="details-grid">
+          <div>
+            <strong>الاسم</strong>
+            <span>{text(item.fullName)}</span>
+          </div>
+
+          <div>
+            <strong>البريد الإلكتروني</strong>
+            <span>{text(item.email)}</span>
+          </div>
+
+          <div>
+            <strong>الهاتف</strong>
+            <span>{text(item.phone)}</span>
+          </div>
+
+          <div>
+            <strong>الحالة</strong>
+            <span>{text(item.status)}</span>
+          </div>
+
+          <div>
+            <strong>متصل حاليًا</strong>
+            <span>{item.isOnline ? "نعم" : "لا"}</span>
+          </div>
+
+          <div>
+            <strong>المحافظة</strong>
+            <span>
+              {text(
+                item.governorateId ??
+                  item.governorate,
+              )}
+            </span>
+          </div>
+
+          <div>
+            <strong>المنطقة</strong>
+            <span>
+              {text(
+                item.areaId ??
+                  item.area,
+              )}
+            </span>
+          </div>
+
+          <div>
+            <strong>آخر ظهور</strong>
+            <span>
+              {item.lastSeenAt
+                ? new Date(
+                    item.lastSeenAt,
+                  ).toLocaleString("ar-EG-u-nu-latn")
+                : "—"}
+            </span>
+          </div>
+
+          <div>
+            <strong>آخر دخول</strong>
+            <span>
+              {item.lastLoginAt
+                ? new Date(
+                    item.lastLoginAt,
+                  ).toLocaleString("ar-EG-u-nu-latn")
+                : "—"}
+            </span>
+          </div>
+
+          <div>
+            <strong>تاريخ الإنشاء</strong>
+            <span>
+              {item.createdAt
+                ? new Date(
+                    item.createdAt,
+                  ).toLocaleString("ar-EG-u-nu-latn")
+                : "—"}
+            </span>
+          </div>
+        </div>
+      </section>
+
+      <section
+        className="details-card"
+        style={{
+          marginTop: 20,
+          borderRadius: 18,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                margin: 0,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+              }}
+            >
+              <Banknote size={20} />
+              كشف حساب وتشغيل الكابتن
+            </h2>
+
+            <p
+              style={{
+                margin: "6px 0 0",
+                color: "#64748B",
+                fontSize: 13,
+              }}
+            >
+              تقرير تشغيلي ومحاسبي منذ تسجيل الكابتن.
+              هذا ليس محفظة إلكترونية.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setOrdersOpen((value) => !value)}
+            style={{
+              border: 0,
+              borderRadius: 12,
+              padding: "10px 16px",
+              background: "#FFF4E3",
+              color: "#C65D05",
+              fontWeight: 800,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            {ordersOpen ? (
+              <ChevronUp size={17} />
+            ) : (
+              <ChevronDown size={17} />
+            )}
+
+            {ordersOpen
+              ? "إخفاء تفاصيل الطلبات"
+              : `عرض تفاصيل الطلبات (${orders.length})`}
+          </button>
+        </div>
+
+        <div
+          style={{
+            marginTop: 20,
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: 14,
+          }}
+        >
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 16,
+              background: "#F8FAFC",
+              border: "1px solid #E2E8F0",
+            }}
+          >
+            <div style={{ color: "#64748B", fontSize: 12 }}>
+              إجمالي الطلبات منذ التسجيل
+            </div>
+
+            <div
+              style={{
+                marginTop: 7,
+                fontSize: 24,
+                fontWeight: 900,
+                color: "#0F172A",
+              }}
+            >
+              {orders.length}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 16,
+              background: "#F0FDF4",
+              border: "1px solid #BBF7D0",
+            }}
+          >
+            <div style={{ color: "#64748B", fontSize: 12 }}>
+              طلبات هذا الأسبوع
+            </div>
+
+            <div
+              style={{
+                marginTop: 7,
+                fontSize: 24,
+                fontWeight: 900,
+                color: "#166534",
+              }}
+            >
+              {weeklyOrders.length}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 16,
+              background: "#EFF6FF",
+              border: "1px solid #BFDBFE",
+            }}
+          >
+            <div style={{ color: "#64748B", fontSize: 12 }}>
+              إجمالي قيم الطلبات
+            </div>
+
+            <div
+              style={{
+                marginTop: 7,
+                fontSize: 21,
+                fontWeight: 900,
+                color: "#1D4ED8",
+              }}
+            >
+              {money(totalOrderValue)}
+            </div>
+          </div>
+
+          <div
+            style={{
+              padding: 18,
+              borderRadius: 16,
+              background: "#FFF7ED",
+              border: "1px solid #FED7AA",
+            }}
+          >
+            <div style={{ color: "#64748B", fontSize: 12 }}>
+              إجمالي أجور التوصيل
+            </div>
+
+            <div
+              style={{
+                marginTop: 7,
+                fontSize: 21,
+                fontWeight: 900,
+                color: "#C2410C",
+              }}
+            >
+              {money(totalDeliveryFees)}
+            </div>
+          </div>
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit, minmax(220px, 1fr))",
+            gap: 14,
+          }}
+        >
+          <div className="details-card" style={{ margin: 0 }}>
+            <strong>المدفوع للمحلات</strong>
+            <span>{money(paidToShops)}</span>
+          </div>
+
+          <div className="details-card" style={{ margin: 0 }}>
+            <strong>المحصل من الزبائن</strong>
+            <span>{money(collectedFromCustomers)}</span>
+          </div>
+
+          <div className="details-card" style={{ margin: 0 }}>
+            <strong>أجور التوصيل هذا الأسبوع</strong>
+            <span>{money(weeklyDeliveryFees)}</span>
+          </div>
+
+          <div className="details-card" style={{ margin: 0 }}>
+            <strong>قيمة طلبات هذا الأسبوع</strong>
+            <span>{money(weeklyOrderValue)}</span>
+          </div>
+        </div>
+
+        {ordersOpen && (
+          <div style={{ marginTop: 22 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: 14,
+              }}
+            >
+              <ShoppingBag size={19} />
+              <h3 style={{ margin: 0 }}>
+                تفاصيل الطلبات ({orders.length})
+              </h3>
+            </div>
+
+            {orders.length === 0 ? (
+              <div
+                style={{
+                  padding: 20,
+                  borderRadius: 14,
+                  background: "#F8FAFC",
+                  color: "#64748B",
+                  textAlign: "center",
+                }}
+              >
+                لا توجد طلبات مسجلة لهذا الكابتن.
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 12,
+                }}
+              >
+                {orders.map((order: any, index: number) => (
+                  <div
+                    key={String(order?._id ?? index)}
+                    style={{
+                      padding: 18,
+                      borderRadius: 16,
+                      border: "1px solid #E2E8F0",
+                      background: "#fff",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <strong>
+                        طلب #{String(order?._id ?? "").slice(-6)}
+                      </strong>
+
+                      <span
+                        style={{
+                          color: "#64748B",
+                          fontSize: 12,
+                        }}
+                      >
+                        {order?.createdAt
+                          ? new Date(
+                              order.createdAt,
+                            ).toLocaleString("ar-EG-u-nu-latn")
+                          : "—"}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 14,
+                        display: "grid",
+                        gridTemplateColumns:
+                          "repeat(auto-fit, minmax(160px, 1fr))",
+                        gap: 10,
+                      }}
+                    >
+                      <div className="details-card" style={{ margin: 0 }}>
+                        <strong>قيمة الطلب</strong>
+                        <span>{money(orderTotal(order))}</span>
+                      </div>
+
+                      <div className="details-card" style={{ margin: 0 }}>
+                        <strong>أجرة التوصيل</strong>
+                        <span>{money(deliveryFee(order))}</span>
+                      </div>
+
+                      <div className="details-card" style={{ margin: 0 }}>
+                        <strong>الإجمالي</strong>
+                        <span>{money(grandTotal(order))}</span>
+                      </div>
+
+                      <div className="details-card" style={{ margin: 0 }}>
+                        <strong>الحالة</strong>
+                        <span>{text(order?.status)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+
+      <section className="details-card" style={{ marginTop: 20 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                margin: 0,
+              }}
+            >
+              <Star size={20} />
+              تقييمات الكابتن
+            </h2>
+
+            <p style={{ margin: "8px 0 0", opacity: 0.75 }}>
+              تقييمات المطاعم والمحلات المرتبطة بطلبات هذا الكابتن.
+            </p>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 18,
+              flexWrap: "wrap",
+            }}
+          >
+            <div
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                background: "#fff8df",
+                minWidth: 120,
+              }}
+            >
+              <strong style={{ display: "block", fontSize: 12 }}>
+                متوسط التقييم
+              </strong>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 4,
+                }}
+              >
+                <Star size={18} fill="currentColor" />
+                <strong style={{ fontSize: 22 }}>
+                  {Number(ratingAverage || 0).toFixed(1)}
+                </strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: "10px 16px",
+                borderRadius: 12,
+                background: "#f3f6fa",
+                minWidth: 120,
+              }}
+            >
+              <strong style={{ display: "block", fontSize: 12 }}>
+                عدد التقييمات
+              </strong>
+
+              <strong
+                style={{
+                  display: "block",
+                  fontSize: 22,
+                  marginTop: 4,
+                }}
+              >
+                {ratingTotal}
+              </strong>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setRatingsOpen((value) => !value)}
+              style={{
+                border: "1px solid #d9e0e8",
+                background: "#fff",
+                borderRadius: 12,
+                padding: "11px 16px",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              {ratingsOpen ? "إخفاء التقييمات" : "عرض التقييمات"}
+            </button>
+          </div>
+        </div>
+
+        {ratingsOpen && (
+          <div style={{ marginTop: 18 }}>
+            {ratings.length === 0 ? (
+              <div
+                style={{
+                  padding: 24,
+                  borderRadius: 14,
+                  background: "#f8fafc",
+                  textAlign: "center",
+                }}
+              >
+                <Star size={28} />
+                <div style={{ marginTop: 8, fontWeight: 700 }}>
+                  لا توجد تقييمات لهذا الكابتن حاليًا.
+                </div>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 12,
+                }}
+              >
+                {ratings.map((rating: any) => {
+                  const stars = Number(rating?.stars || 0);
+
+                  return (
+                    <article
+                      key={String(rating?._id ?? `${rating?.orderId}-${rating?.createdAt}`)}
+                      style={{
+                        border: "1px solid #e4e8ee",
+                        borderRadius: 14,
+                        padding: 16,
+                        background: "#fff",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 3,
+                            alignItems: "center",
+                          }}
+                        >
+                          {[1, 2, 3, 4, 5].map((star) => (
+                            <Star
+                              key={star}
+                              size={17}
+                              fill={
+                                star <= stars
+                                  ? "currentColor"
+                                  : "none"
+                              }
+                            />
+                          ))}
+                        </div>
+
+                        <span style={{ opacity: 0.65 }}>
+                          {rating?.createdAt
+                            ? new Date(
+                                rating.createdAt
+                              ).toLocaleDateString("ar-EG-u-nu-latn")
+                            : "—"}
+                        </span>
+                      </div>
+
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(auto-fit, minmax(180px, 1fr))",
+                          gap: 10,
+                          marginTop: 14,
+                        }}
+                      >
+                        <div>
+                          <small style={{ opacity: 0.6 }}>
+                            المطعم / المحل
+                          </small>
+                          <strong style={{ display: "block", marginTop: 4 }}>
+                            {establishmentNameForRating(rating)}
+                          </strong>
+                        </div>
+
+                        <div>
+                          <small style={{ opacity: 0.6 }}>
+                            الطلب
+                          </small>
+                          <strong style={{ display: "block", marginTop: 4 }}>
+                            {orderLabelForRating(rating)}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div style={{ marginTop: 14 }}>
+                        <small style={{ opacity: 0.6 }}>
+                          التقييم
+                        </small>
+                        <p
+                          style={{
+                            margin: "5px 0 0",
+                            lineHeight: 1.8,
+                          }}
+                        >
+                          {rating?.comment?.trim() ||
+                            rating?.review?.trim() ||
+                            "بدون تعليق"}
+                        </p>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      <section className="details-card captain-work-areas-card">
+        <div className="captain-work-areas-header">
+          <div>
+            <h2 className="captain-work-title">
+              <MapPin size={20} />
+              مناطق عمل الكابتن
+            </h2>
+
+            <p className="captain-work-description">
+              يمكنك السماح للكابتن بالعمل في أكثر من منطقة،
+              وتعطيل منطقة معينة بدون إيقاف الحساب بالكامل.
+            </p>
+          </div>
+        </div>
+
+        {areasLoading ? (
+          <div className="captain-work-areas-loading">
+            جاري تحميل المناطق...
+          </div>
+        ) : locations.length === 0 ? (
+          <div className="captain-work-areas-loading">
+            لا توجد مناطق متاحة.
+          </div>
+        ) : (
+          <div className="captain-work-locations">
+            {locations.map((location) => {
+              const areas = Array.isArray(location.areas)
+                ? location.areas
+                : [];
+
+              return (
+                <div
+                  className="captain-work-location"
+                  key={String(location._id)}
+                >
+                  <div className="captain-work-location-header">
+                    <strong>{text(location.name)}</strong>
+
+                    {!location.isActive && (
+                      <span className="captain-location-disabled">
+                        المحافظة غير مفعلة
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="captain-work-area-list">
+                    {areas.map((area: any) => {
+                      const row = workAreas.find(
+                        (x) =>
+                          String(
+                            x.areaId?._id ??
+                              x.areaId,
+                          ) === String(area._id),
+                      );
+
+                      const active = Boolean(
+                        row?.isActive,
+                      );
+
+                      const unavailable =
+                        !location.isActive ||
+                        !area.isActive ||
+                        area.captainsEnabled === false;
+
+                      return (
+                        <div
+                          className="captain-work-area-item"
+                          key={String(area._id)}
+                        >
+                          <div className="captain-work-area-name">
+                            <MapPin size={16} />
+                            <span>
+                              {text(area.name)}
+                            </span>
+                          </div>
+
+                          <div className="captain-work-area-actions">
+                            {row ? (
+                              <button
+                                type="button"
+                                className={
+                                  active
+                                    ? "captain-area-control disable"
+                                    : "captain-area-control enable"
+                                }
+                                disabled={areasBusy}
+                                onClick={() =>
+                                  toggleWorkArea(
+                                    String(row._id),
+                                  )
+                                }
+                              >
+                                {active ? (
+                                  <>
+                                    <Power size={15} />
+                                    تعطيل
+                                  </>
+                                ) : (
+                                  <>
+                                    <Check size={15} />
+                                    تفعيل
+                                  </>
+                                )}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                className="captain-area-control add"
+                                disabled={
+                                  areasBusy ||
+                                  unavailable
+                                }
+                                onClick={() =>
+                                  addWorkArea(
+                                    String(location._id),
+                                    String(area._id),
+                                  )
+                                }
+                              >
+                                <Plus size={15} />
+                                إضافة
+                              </button>
+                            )}
+
+                            <span
+                              className={
+                                active
+                                  ? "captain-area-status on"
+                                  : "captain-area-status off"
+                              }
+                            >
+                              {active ? (
+                                <>
+                                  <Check size={14} />
+                                  يعمل فيها
+                                </>
+                              ) : (
+                                <>
+                                  <X size={14} />
+                                  لا يعمل فيها
+                                </>
+                              )}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="captain-work-note">
+          <strong>ملاحظة:</strong>{" "}
+          تعطيل منطقة هنا يمنع توزيع الطلبات على الكابتن
+          في هذه المنطقة فقط، ولا يوقف حسابه بالكامل.
+        </div>
+      </section>
+
+{/* R23_KPI_SECTION */}
+<section className="mt-6 space-y-4">
+  <div className="flex items-center justify-between">
+    <div>
+      <h2 className="text-xl font-bold">مؤشرات أداء الكابتن</h2>
+      <p className="text-sm text-gray-500">
+        الطلبات، التوصيل، التقييم، الحضور ومدة العمل
+      </p>
+    </div>
+  </div>
+
+  <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-gray-500">
+        <PackageCheck size={18} />
+        <span className="text-sm">إجمالي الطلبات</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold">{kpi?.orders ?? 0}</div>
+    </div>
+
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-gray-500">
+        <PackageCheck size={18} />
+        <span className="text-sm">المكتملة</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold">{kpi?.completed ?? 0}</div>
+    </div>
+
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-gray-500">
+        <PackageX size={18} />
+        <span className="text-sm">الملغاة</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold">{kpi?.cancelled ?? 0}</div>
+    </div>
+
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-gray-500">
+        <Clock3 size={18} />
+        <span className="text-sm">متوسط التوصيل</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold">
+        {kpi?.averageDeliveryMinutes ?? 0}
+        <span className="mr-1 text-sm font-normal">دقيقة</span>
+      </div>
+    </div>
+
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-gray-500">
+        <Star size={18} />
+        <span className="text-sm">متوسط التقييم</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold">
+        {Number(kpi?.averageRating ?? 0).toFixed(1)}
+        <span className="mr-1 text-sm font-normal">/ 5</span>
+      </div>
+    </div>
+
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-gray-500">
+        <CalendarDays size={18} />
+        <span className="text-sm">أيام الحضور</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold">{kpi?.attendanceDays ?? 0}</div>
+    </div>
+
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <div className="flex items-center gap-2 text-gray-500">
+        <Timer size={18} />
+        <span className="text-sm">مدة العمل</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold">
+        {Math.round((Number(kpi?.workedMinutes ?? 0) / 60) * 10) / 10}
+        <span className="mr-1 text-sm font-normal">ساعة</span>
+      </div>
+    </div>
+  </div>
+
+  <div className="grid gap-4 lg:grid-cols-3">
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <h3 className="mb-3 font-bold">الأداء اليومي</h3>
+      <div className="space-y-2">
+        {(kpi?.performance?.daily ?? []).length === 0 ? (
+          <p className="text-sm text-gray-500">لا توجد بيانات.</p>
+        ) : (
+          kpi.performance.daily.slice(-7).map((item: any) => (
+            <div
+              key={item.period}
+              className="flex items-center justify-between border-b pb-2 last:border-0"
+            >
+              <span className="text-sm">{item.period}</span>
+              <span className="text-sm">
+                {item.completed} مكتمل / {item.cancelled} ملغي
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <h3 className="mb-3 font-bold">الأداء الأسبوعي</h3>
+      <div className="space-y-2">
+        {(kpi?.performance?.weekly ?? []).length === 0 ? (
+          <p className="text-sm text-gray-500">لا توجد بيانات.</p>
+        ) : (
+          kpi.performance.weekly.slice(-8).map((item: any) => (
+            <div
+              key={item.period}
+              className="flex items-center justify-between border-b pb-2 last:border-0"
+            >
+              <span className="text-sm">{item.period}</span>
+              <span className="text-sm">
+                {item.orders} طلب
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+
+    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+      <h3 className="mb-3 font-bold">الأداء الشهري</h3>
+      <div className="space-y-2">
+        {(kpi?.performance?.monthly ?? []).length === 0 ? (
+          <p className="text-sm text-gray-500">لا توجد بيانات.</p>
+        ) : (
+          kpi.performance.monthly.slice(-6).map((item: any) => (
+            <div
+              key={item.period}
+              className="flex items-center justify-between border-b pb-2 last:border-0"
+            >
+              <span className="text-sm">{item.period}</span>
+              <span className="text-sm">
+                {item.completed} مكتمل / {item.cancelled} ملغي
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  </div>
+</section>
+
+    </div>
+  );
+}

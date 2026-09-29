@@ -1,0 +1,1997 @@
+{
+  "backend": "/home/mohamed/Downloads/dzwan/backend",
+  "generated": "2026-09-03T15:31:40.353019",
+  "routes": [
+    {
+      "file": "src/controllers/completion.controller.ts",
+      "method": "GET",
+      "path": "user-agent",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/controllers/ops-31-47.controller.ts",
+      "method": "GET",
+      "path": "user-agent",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/audit.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/audit.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "method": "POST",
+      "path": "/login",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "method": "POST",
+      "path": "/refresh",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "method": "GET",
+      "path": "/me",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "method": "POST",
+      "path": "/logout",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-attendance.routes.ts",
+      "method": "POST",
+      "path": "/check-in",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-attendance.routes.ts",
+      "method": "POST",
+      "path": "/check-out",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-attendance.routes.ts",
+      "method": "GET",
+      "path": "/me",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-attendance.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-document.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-document.routes.ts",
+      "method": "GET",
+      "path": "/me",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-document.routes.ts",
+      "method": "GET",
+      "path": "/captain/:captainId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-document.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/review",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-ledger.routes.ts",
+      "method": "GET",
+      "path": "/me",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-ledger.routes.ts",
+      "method": "GET",
+      "path": "/:captainId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-registration.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-registration.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-registration.routes.ts",
+      "method": "POST",
+      "path": "/:id/approve",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-registration.routes.ts",
+      "method": "POST",
+      "path": "/:id/reject",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "POST",
+      "path": "/weekly/select",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "POST",
+      "path": "/weekly/change",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-shift-management.routes.ts",
+      "method": "GET",
+      "path": "/current/check",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "POST",
+      "path": "/me",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "GET",
+      "path": "/me",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "POST",
+      "path": "/:captainId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "GET",
+      "path": "/:captainId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/toggle",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain-work-area.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "POST",
+      "path": "/:id/approve",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "POST",
+      "path": "/:id/reject",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/captain.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "POST",
+      "path": "/ratings",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/ratings/:captainId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "POST",
+      "path": "/cash",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/cash/:captainId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/kpi/captains/:captainId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/audit",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "POST",
+      "path": "/audit",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/settings",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "PATCH",
+      "path": "/settings",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/notification-rules",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "PUT",
+      "path": "/notification-rules/:event",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "POST",
+      "path": "/sub-admins",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "GET",
+      "path": "/sub-admins",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/completion.routes.ts",
+      "method": "PATCH",
+      "path": "/sub-admins/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/core-operations-settings.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/core-operations-settings.routes.ts",
+      "method": "PATCH",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/core11-establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/suspend",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/core11-establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/reactivate",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/core11-establishment.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/location",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/core11-settings.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/core11-settings.routes.ts",
+      "method": "PATCH",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "GET",
+      "path": "/:customerId/addresses",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "POST",
+      "path": "/:customerId/addresses",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "PATCH",
+      "path": "/addresses/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/customer.routes.ts",
+      "method": "DELETE",
+      "path": "/addresses/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/delivery-proof.routes.ts",
+      "method": "POST",
+      "path": "/:orderId/otp",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/delivery-proof.routes.ts",
+      "method": "POST",
+      "path": "/:orderId/otp/verify",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/delivery-proof.routes.ts",
+      "method": "POST",
+      "path": "/:orderId/photo",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/delivery-proof.routes.ts",
+      "method": "GET",
+      "path": "/:orderId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "GET",
+      "path": "/settings",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "PATCH",
+      "path": "/settings",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "POST",
+      "path": "/shifts",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "GET",
+      "path": "/shifts",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "DELETE",
+      "path": "/shifts/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "GET",
+      "path": "/queue",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "GET",
+      "path": "/assignments",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "POST",
+      "path": "/orders/:id/dispatch",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "POST",
+      "path": "/orders/:id/accept",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/dispatch.routes.ts",
+      "method": "POST",
+      "path": "/process",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment-report.routes.ts",
+      "method": "GET",
+      "path": "/establishments/:establishmentId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment-user.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/approve",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/reject",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/suspend",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "POST",
+      "path": "/:id/reactivate",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/establishment.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/location",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/geofence.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/geofence.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/geofence.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/geofence.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "POST",
+      "path": "/:id/approve",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "POST",
+      "path": "/:id/reject",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/leader.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "POST",
+      "path": "/:id/areas",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/areas/:areaId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/location.routes.ts",
+      "method": "DELETE",
+      "path": "/:id/areas/:areaId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/notification.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/notification.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/read",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/notification.routes.ts",
+      "method": "POST",
+      "path": "/read-all",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "POST",
+      "path": "/validate",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/toggle",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/offer.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/complaints",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/complaints",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/complaints/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/orders/:orderId/timeline",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/timeline",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/timers",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/timers/:stage/finish",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/stuck/process",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/stuck",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/stuck/:id/resolve",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/re-dispatch",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/emergencies",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/emergencies",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/emergencies/:id/resolve",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/security-events",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/app-versions",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/app-versions",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/app-version-check",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/search",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/maintenance",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/maintenance",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "GET",
+      "path": "/permissions/:userId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "PATCH",
+      "path": "/permissions/:userId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/ops-31-47.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/cancel",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/status",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/order.routes.ts",
+      "method": "POST",
+      "path": "/:id/assign-captain",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/pricing.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/pricing.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/pricing.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/pricing.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "POST",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/product.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/reports.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/shift/check",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "PATCH",
+      "path": "/captains/:captainId/online",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/capacity",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/captains/:captainId/attendance/in",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/captains/:captainId/attendance/out",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/work-areas",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/cash-statement",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/rating",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/captains/:captainId/kpi",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/events",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/orders/:orderId/timeline",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/orders/:orderId/timeline/full",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/cash/:captainId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/rating",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "POST",
+      "path": "/complaints",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/complaints/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/reports/establishments/:establishmentId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/reports/admin",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-11-29.routes.ts",
+      "method": "GET",
+      "path": "/dashboard/operations",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/orders/:orderId/timeline",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/events",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/reassign",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/orders/:orderId/cancel",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/stuck-orders",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/emergencies",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "PATCH",
+      "path": "/emergencies/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/security-log",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/versions/:app",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/settings",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "PUT",
+      "path": "/settings",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/maintenance",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "GET",
+      "path": "/geofence/resolve",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/requirements-30-46.routes.ts",
+      "method": "POST",
+      "path": "/complaints",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/scoped-location.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/settings.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/staff.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/staff.routes.ts",
+      "method": "POST",
+      "path": "/:userId",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/staff.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/system-settings.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/system-settings.routes.ts",
+      "method": "PATCH",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/user.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/user.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/user.routes.ts",
+      "method": "PATCH",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/user.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "GET",
+      "path": "/",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "GET",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/status",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "PATCH",
+      "path": "/:id/role",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/routes/users.routes.ts",
+      "method": "DELETE",
+      "path": "/:id",
+      "mount_candidates": []
+    },
+    {
+      "file": "src/server.ts",
+      "method": "GET",
+      "path": "/api/health",
+      "mount_candidates": [
+        "/api/requirements-30-46",
+        "/api/auth",
+        "/api/users",
+        "/api/staff",
+        "/api/locations",
+        "/api/users",
+        "/api/captains",
+        "/api/leaders",
+        "/api/scoped/locations",
+        "/api/establishments",
+        "/api/establishment-users",
+        "/api/customers",
+        "/api/products",
+        "/api/orders",
+        "/api/pricing",
+        "/api/geofences",
+        "/api/notifications",
+        "/api/audit-logs",
+        "/api/settings",
+        "/api/dispatch",
+        "/api/system-settings",
+        "/api/delivery-proof",
+        "/api/captain-ledger",
+        "/api/captain-work-areas",
+        "/api/captain-documents",
+        "/api/captain-registration",
+        "/api/captain-attendance",
+        "/api/reports",
+        "/api/completion",
+        "/api/ops",
+        "/api/offers",
+        "/api/reports",
+        "/api/core11/establishments",
+        "/api/core11/settings",
+        "/api/requirements"
+      ]
+    },
+    {
+      "file": "src/server.ts",
+      "method": "GET",
+      "path": "/api/system/status",
+      "mount_candidates": [
+        "/api/requirements-30-46",
+        "/api/auth",
+        "/api/users",
+        "/api/staff",
+        "/api/locations",
+        "/api/users",
+        "/api/captains",
+        "/api/leaders",
+        "/api/scoped/locations",
+        "/api/establishments",
+        "/api/establishment-users",
+        "/api/customers",
+        "/api/products",
+        "/api/orders",
+        "/api/pricing",
+        "/api/geofences",
+        "/api/notifications",
+        "/api/audit-logs",
+        "/api/settings",
+        "/api/dispatch",
+        "/api/system-settings",
+        "/api/delivery-proof",
+        "/api/captain-ledger",
+        "/api/captain-work-areas",
+        "/api/captain-documents",
+        "/api/captain-registration",
+        "/api/captain-attendance",
+        "/api/reports",
+        "/api/completion",
+        "/api/ops",
+        "/api/offers",
+        "/api/reports",
+        "/api/core11/establishments",
+        "/api/core11/settings",
+        "/api/requirements"
+      ]
+    }
+  ],
+  "mounts": [
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/requirements-30-46"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/auth"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/users"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/staff"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/locations"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/users"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captains"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/leaders"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/scoped/locations"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/establishments"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/establishment-users"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/customers"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/products"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/orders"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/pricing"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/geofences"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/notifications"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/audit-logs"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/settings"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/dispatch"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/system-settings"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/delivery-proof"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-ledger"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-work-areas"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-documents"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-registration"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/captain-attendance"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/reports"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/completion"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/ops"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/offers"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/reports"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/core11/establishments"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/core11/settings"
+    },
+    {
+      "file": "src/server.ts",
+      "prefix": "/api/requirements"
+    }
+  ],
+  "auth_hits": [
+    {
+      "file": "src/controllers/captain-registration.controller.ts",
+      "line": 14,
+      "snippet": "  try {\n    const {\n      fullName,\n      phone,\n      email,\n      password,\n      governorateId,\n      areaId,\n    } = req.body;\n\n    if (\n      !fullName ||\n      !phone ||\n      !password ||\n      !governorateId ||\n      !areaId\n    ) {"
+    },
+    {
+      "file": "src/controllers/captain-registration.controller.ts",
+      "line": 22,
+      "snippet": "    } = req.body;\n\n    if (\n      !fullName ||\n      !phone ||\n      !password ||\n      !governorateId ||\n      !areaId\n    ) {\n      return res.status(400).json({\n        message: \"جميع البيانات الأساسية مطلوبة.\",\n      });\n    }\n\n    if (!Types.ObjectId.isValid(governorateId) ||\n        !Types.ObjectId.isValid(areaId)) {\n      return res.status(400).json({"
+    },
+    {
+      "file": "src/controllers/captain-registration.controller.ts",
+      "line": 64,
+      "snippet": "      return res.status(409).json({\n        message: \"يوجد طلب تسجيل قيد المراجعة بالفعل.\",\n      });\n    }\n\n    const passwordHash = await bcrypt.hash(password, 12);\n\n    const registration = await CaptainRegistrationModel.create({\n      fullName: String(fullName).trim(),\n      phone: String(phone).trim(),\n      email: email ? String(email).trim().toLowerCase() : null,\n      passwordHash,\n      governorateId,\n      areaId,\n      status: \"pending\",\n    });\n"
+    },
+    {
+      "file": "src/controllers/captain-registration.controller.ts",
+      "line": 70,
+      "snippet": "\n    const registration = await CaptainRegistrationModel.create({\n      fullName: String(fullName).trim(),\n      phone: String(phone).trim(),\n      email: email ? String(email).trim().toLowerCase() : null,\n      passwordHash,\n      governorateId,\n      areaId,\n      status: \"pending\",\n    });\n\n    return res.status(201).json({\n      message: \"تم إرسال طلب التسجيل للمراجعة.\",\n      registrationId: registration._id,\n      status: registration.status,\n    });\n  } catch (error) {"
+    },
+    {
+      "file": "src/controllers/captain-registration.controller.ts",
+      "line": 94,
+      "snippet": "export async function listCaptainRegistrations(\n  req: AuthenticatedRequest,\n  res: Response,\n) {\n  const rows = await CaptainRegistrationModel.find()\n    .select(\"-passwordHash\")\n    .populate(\"governorateId\", \"name\")\n    .populate(\"areaId\", \"name\")\n    .populate(\"reviewedBy\", \"fullName\")\n    .sort({ createdAt: -1 })\n    .lean();\n\n  return res.json({ registrations: rows });\n}\n\nexport async function approveCaptainRegistration(\n  req: AuthenticatedRequest,"
+    },
+    {
+      "file": "src/controllers/captain-registration.controller.ts",
+      "line": 111,
+      "snippet": "  res: Response,\n) {\n  try {\n    const registration = await CaptainRegistrationModel\n      .findById(String(req.params.id))\n      .select(\"+passwordHash\");\n\n    if (!registration) {\n      return res.status(404).json({\n        message: \"طلب التسجيل غير موجود.\",\n      });\n    }\n\n    if (registration.status !== \"pending\") {\n      return res.status(400).json({\n        message: \"طلب التسجيل تمت مراجعته بالفعل.\",\n      });"
+    },
+    {
+      "file": "src/controllers/captain-registration.controller.ts",
+      "line": 146,
+      "snippet": "      role: \"captain\",\n      status: \"active\",\n      fullName: registration.fullName,\n      phone: registration.phone,\n      email: registration.email || undefined,\n      passwordHash: registration.passwordHash,\n      governorateId: registration.governorateId,\n      areaId: registration.areaId,\n      isOnline: false,\n      approvedAt: new Date(),\n      approvedBy: req.user?.sub,\n    });\n\n    registration.status = \"approved\";\n    registration.reviewedAt = new Date();\n    registration.reviewedBy = new Types.ObjectId(req.user!.sub);\n    registration.rejectionReason = null;"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 8,
+      "snippet": "import { z } from \"zod\";\nimport type { AuthenticatedRequest } from \"../middleware/auth.middleware.js\";\nimport type { ScopedRequest } from \"../middleware/scope.middleware.js\";\nimport { UserModel } from \"../models/User.js\";\nimport { EstablishmentModel } from \"../models/Establishment.js\";\nimport { createPasswordHash } from \"../services/auth.service.js\";\n\nconst createOwnerSchema = z.object({\n  establishmentId: z.string().min(1),\n  fullName: z.string().trim().min(2).max(120),\n  phone: z.string().trim().min(5).max(30),\n  email: z.string().trim().email().optional(),\n  password: z.string().min(8).max(128),\n});\n\nconst updateOwnerSchema = z.object({\n  fullName: z.string().trim().min(2).max(120).optional(),"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 15,
+      "snippet": "const createOwnerSchema = z.object({\n  establishmentId: z.string().min(1),\n  fullName: z.string().trim().min(2).max(120),\n  phone: z.string().trim().min(5).max(30),\n  email: z.string().trim().email().optional(),\n  password: z.string().min(8).max(128),\n});\n\nconst updateOwnerSchema = z.object({\n  fullName: z.string().trim().min(2).max(120).optional(),\n  phone: z.string().trim().min(5).max(30).optional(),\n  email: z.string().trim().email().optional().nullable(),\n  status: z\n    .enum([\n      \"pending\",\n      \"active\",\n      \"rejected\","
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 31,
+      "snippet": "      \"rejected\",\n      \"suspended\",\n      \"inactive\",\n    ])\n    .optional(),\n  password: z.string().min(8).max(128).optional(),\n});\n\nfunction hasScopeAccess(\n  req: ScopedRequest,\n  governorateId: string,\n  areaId: string,\n): boolean {\n  const scope = req.scopedUser;\n\n  if (!scope) return false;\n"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 248,
+      "snippet": "          \"البريد الإلكتروني مستخدم بالفعل.\",\n      });\n      return;\n    }\n\n    const passwordHash =\n      await createPasswordHash(\n        data.password,\n      );\n\n    const owner =\n      new UserModel({\n        role: \"shop\",\n        status: \"active\",\n        fullName: data.fullName,\n        phone: data.phone,\n        email: email ?? undefined,"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 249,
+      "snippet": "      });\n      return;\n    }\n\n    const passwordHash =\n      await createPasswordHash(\n        data.password,\n      );\n\n    const owner =\n      new UserModel({\n        role: \"shop\",\n        status: \"active\",\n        fullName: data.fullName,\n        phone: data.phone,\n        email: email ?? undefined,\n        passwordHash,"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 250,
+      "snippet": "      return;\n    }\n\n    const passwordHash =\n      await createPasswordHash(\n        data.password,\n      );\n\n    const owner =\n      new UserModel({\n        role: \"shop\",\n        status: \"active\",\n        fullName: data.fullName,\n        phone: data.phone,\n        email: email ?? undefined,\n        passwordHash,\n        avatarUrl: null,"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 260,
+      "snippet": "        role: \"shop\",\n        status: \"active\",\n        fullName: data.fullName,\n        phone: data.phone,\n        email: email ?? undefined,\n        passwordHash,\n        avatarUrl: null,\n        isOnline: false,\n        governorateId:\n          establishment.governorateId,\n        areaId:\n          establishment.areaId,\n        approvedAt: new Date(),\n        approvedBy:\n          scopedReq.user?.sub &&\n          Types.ObjectId.isValid(\n            scopedReq.user.sub,"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 510,
+      "snippet": "    if (data.status !== undefined) {\n      owner.status =\n        data.status;\n    }\n\n    if (data.password) {\n      owner.passwordHash =\n        await createPasswordHash(\n          data.password,\n        );\n    }\n\n    await owner.save();\n\n    res.status(200).json({\n      success: true,\n      message:"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 511,
+      "snippet": "      owner.status =\n        data.status;\n    }\n\n    if (data.password) {\n      owner.passwordHash =\n        await createPasswordHash(\n          data.password,\n        );\n    }\n\n    await owner.save();\n\n    res.status(200).json({\n      success: true,\n      message:\n        \"تم تحديث حساب صاحب المنشأة بنجاح.\","
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 512,
+      "snippet": "        data.status;\n    }\n\n    if (data.password) {\n      owner.passwordHash =\n        await createPasswordHash(\n          data.password,\n        );\n    }\n\n    await owner.save();\n\n    res.status(200).json({\n      success: true,\n      message:\n        \"تم تحديث حساب صاحب المنشأة بنجاح.\",\n      owner: {"
+    },
+    {
+      "file": "src/controllers/establishment-user.controller.ts",
+      "line": 513,
+      "snippet": "    }\n\n    if (data.password) {\n      owner.passwordHash =\n        await createPasswordHash(\n          data.password,\n        );\n    }\n\n    await owner.save();\n\n    res.status(200).json({\n      success: true,\n      message:\n        \"تم تحديث حساب صاحب المنشأة بنجاح.\",\n      owner: {\n        _id: owner._id,"
+    },
+    {
+      "file": "src/controllers/leader.controller.ts",
+      "line": 476,
+      "snippet": "        status: \"pending\",\n        fullName: data.fullName,\n        phone: data.phone,\n        email: data.email\n          ?.toLowerCase(),\n        passwordHash:\n          \"TEMP_PASSWORD_HASH\",\n        avatarUrl: null,\n        isOnline: false,\n        governorateId:\n          new Types.ObjectId(\n            data.governorateId,\n          ),\n        areaId:\n          data.role === \"area_leader\" &&\n          data.areaId\n            ? new Types.ObjectId("
+    },
+    {
+      "file": "src/controllers/leader.controller.ts",
+      "line": 477,
+      "snippet": "        fullName: data.fullName,\n        phone: data.phone,\n        email: data.email\n          ?.toLowerCase(),\n        passwordHash:\n          \"TEMP_PASSWORD_HASH\",\n        avatarUrl: null,\n        isOnline: false,\n        governorateId:\n          new Types.ObjectId(\n            data.governorateId,\n          ),\n        areaId:\n          data.role === \"area_leader\" &&\n          data.areaId\n            ? new Types.ObjectId(\n                data.areaId,"
+    },
+    {
+      "file": "src/controllers/completion.controller.ts",
+      "line": 434,
+      "snippet": ") {\n  const data = z.object({\n    fullName: z.string().min(2).max(120),\n    phone: z.string().min(5).max(30),\n    email: z.string().email().optional(),\n    password: z.string().min(8).max(100),\n    governorateId: z.string().optional(),\n    areaId: z.string().optional(),\n  }).parse(req.body);\n\n  const bcrypt = await import(\"bcryptjs\");\n\n  const exists =\n    await UserModel.findOne({\n      $or: [\n        { phone: data.phone },\n        ...(data.email"
+    },
+    {
+      "file": "src/controllers/completion.controller.ts",
+      "line": 457,
+      "snippet": "    return res.status(409).json({\n      message: \"رقم الهاتف أو البريد مستخدم بالفعل.\",\n    });\n  }\n\n  const passwordHash =\n    await bcrypt.hash(data.password, 12);\n\n  const user =\n    await UserModel.create({\n      role: \"admin\",\n      status: \"active\",\n      fullName: data.fullName,\n      phone: data.phone,\n      email: data.email,\n      passwordHash,\n      governorateId: data.governorateId"
+    },
+    {
+      "file": "src/controllers/completion.controller.ts",
+      "line": 458,
+      "snippet": "      message: \"رقم الهاتف أو البريد مستخدم بالفعل.\",\n    });\n  }\n\n  const passwordHash =\n    await bcrypt.hash(data.password, 12);\n\n  const user =\n    await UserModel.create({\n      role: \"admin\",\n      status: \"active\",\n      fullName: data.fullName,\n      phone: data.phone,\n      email: data.email,\n      passwordHash,\n      governorateId: data.governorateId\n        ? oid(data.governorateId)"
+    },
+    {
+      "file": "src/controllers/completion.controller.ts",
+      "line": 467,
+      "snippet": "      role: \"admin\",\n      status: \"active\",\n      fullName: data.fullName,\n      phone: data.phone,\n      email: data.email,\n      passwordHash,\n      governorateId: data.governorateId\n        ? oid(data.governorateId)\n        : null,\n      areaId: data.areaId\n        ? oid(data.areaId)\n        : null,\n      isOnline: false,\n    });\n\n  return res.status(201).json({\n    message: \"تم إنشاء الأدمن الفرعي.\","
+    },
+    {
+      "file": "src/controllers/auth.controller.ts",
+      "line": 19,
+      "snippet": "  secure: process.env.NODE_ENV === \"production\",\n  sameSite: \"lax\" as const,\n  path: \"/\",\n};\n\nexport async function login(\n  req: Request,\n  res: Response,\n): Promise<void> {\n  try {\n    const { email, phone, password } = req.body ?? {};\n\n    const identifier =\n      typeof email === \"string\" && email.trim()\n        ? email.trim()\n        : typeof phone === \"string\"\n          ? phone.trim()"
+    },
+    {
+      "file": "src/controllers/auth.controller.ts",
+      "line": 24,
+      "snippet": "export async function login(\n  req: Request,\n  res: Response,\n): Promise<void> {\n  try {\n    const { email, phone, password } = req.body ?? {};\n\n    const identifier =\n      typeof email === \"string\" && email.trim()\n        ? email.trim()\n        : typeof phone === \"string\"\n          ? phone.trim()\n          : \"\";\n\n    if (!identifier || typeof password !== \"string\" || !password) {\n      res.status(400).json({\n        success: false,"
+    },
+    {
+      "file": "src/controllers/auth.controller.ts",
+      "line": 26,
+      "snippet": "  res: Response,\n): Promise<void> {\n  try {\n    const { email, phone, password } = req.body ?? {};\n\n    const identifier =\n      typeof email === \"string\" && email.trim()\n        ? email.trim()\n        : typeof phone === \"string\"\n          ? phone.trim()\n          : \"\";\n\n    if (!identifier || typeof password !== \"string\" || !password) {\n      res.status(400).json({\n        success: false,\n        message: \"Email or phone and password are required.\",\n      });"
+    },
+    {
+      "file": "src/controllers/auth.controller.ts",
+      "line": 33,
+      "snippet": "        ? email.trim()\n        : typeof phone === \"string\"\n          ? phone.trim()\n          : \"\";\n\n    if (!identifier || typeof password !== \"string\" || !password) {\n      res.status(400).json({\n        success: false,\n        message: \"Email or phone and password are required.\",\n      });\n      return;\n    }\n\n    const user = await authenticateUser(identifier, password);\n\n    const payload = {\n      sub: user._id.toString(),"
+    },
+    {
+      "file": "src/controllers/auth.controller.ts",
+      "line": 36,
+      "snippet": "          : \"\";\n\n    if (!identifier || typeof password !== \"string\" || !password) {\n      res.status(400).json({\n        success: false,\n        message: \"Email or phone and password are required.\",\n      });\n      return;\n    }\n\n    const user = await authenticateUser(identifier, password);\n\n    const payload = {\n      sub: user._id.toString(),\n      role: user.role,\n    };\n"
+    },
+    {
+      "file": "src/controllers/auth.controller.ts",
+      "line": 41,
+      "snippet": "        message: \"Email or phone and password are required.\",\n      });\n      return;\n    }\n\n    const user = await authenticateUser(identifier, password);\n\n    const payload = {\n      sub: user._id.toString(),\n      role: user.role,\n    };\n\n    const accessToken = signAccessToken(payload);\n    const refreshToken = signRefreshToken(payload);\n\n    res.cookie(ACCESS_COOKIE, accessToken, {\n      ...baseCookieOptions,"
+    },
+    {
+      "file": "src/controllers/auth.controller.ts",
+      "line": 92,
+      "snippet": "        });\n        return;\n      }\n    }\n\n    console.error(\"Login error:\", error);\n\n    res.status(500).json({\n      success: false,\n      message: \"Internal server error.\",\n    });\n  }\n}\n\nexport async function me(\n  req: Request,\n  res: Response,"
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 8,
+      "snippet": "import { z } from \"zod\";\nimport type { AuthenticatedRequest } from \"../middleware/auth.middleware.js\";\nimport { UserModel } from \"../models/User.js\";\nimport { CustomerAddressModel } from \"../models/CustomerAddress.js\";\nimport { LocationModel } from \"../models/Location.js\";\nimport { createPasswordHash } from \"../services/auth.service.js\";\n\nconst createCustomerSchema = z.object({\n  fullName: z.string().trim().min(2).max(120),\n  phone: z.string().trim().min(5).max(30),\n  email: z.string().trim().email().optional(),\n  password: z.string().min(8).max(128),\n});\n\nconst updateCustomerSchema = z.object({\n  fullName: z.string().trim().min(2).max(120).optional(),\n  phone: z.string().trim().min(5).max(30).optional(),"
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 14,
+      "snippet": "\nconst createCustomerSchema = z.object({\n  fullName: z.string().trim().min(2).max(120),\n  phone: z.string().trim().min(5).max(30),\n  email: z.string().trim().email().optional(),\n  password: z.string().min(8).max(128),\n});\n\nconst updateCustomerSchema = z.object({\n  fullName: z.string().trim().min(2).max(120).optional(),\n  phone: z.string().trim().min(5).max(30).optional(),\n  email: z.string().trim().email().optional().nullable(),\n  status: z\n    .enum([\n      \"pending\",\n      \"active\",\n      \"rejected\","
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 30,
+      "snippet": "      \"rejected\",\n      \"suspended\",\n      \"inactive\",\n    ])\n    .optional(),\n  password: z.string().min(8).max(128).optional(),\n});\n\nconst createAddressSchema = z.object({\n  governorateId: z.string().trim().min(1),\n  areaId: z.string().trim().min(1),\n  label: z.string().trim().min(2).max(50),\n  address: z.string().trim().min(2).max(300),\n  notes: z.string().trim().max(500).optional().nullable(),\n  latitude: z.number().min(-90).max(90).optional().nullable(),\n  longitude: z.number().min(-180).max(180).optional().nullable(),\n  isDefault: z.boolean().optional(),"
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 140,
+      "snippet": "        message: \"البريد الإلكتروني مستخدم بالفعل.\",\n      });\n      return;\n    }\n\n    const passwordHash = await createPasswordHash(\n      data.password,\n    );\n\n    const customer = await UserModel.create({\n      role: \"customer\",\n      status: \"active\",\n      fullName: data.fullName,\n      phone: data.phone,\n      email,\n      passwordHash,\n      avatarUrl: null,"
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 141,
+      "snippet": "      });\n      return;\n    }\n\n    const passwordHash = await createPasswordHash(\n      data.password,\n    );\n\n    const customer = await UserModel.create({\n      role: \"customer\",\n      status: \"active\",\n      fullName: data.fullName,\n      phone: data.phone,\n      email,\n      passwordHash,\n      avatarUrl: null,\n      isOnline: false,"
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 150,
+      "snippet": "      role: \"customer\",\n      status: \"active\",\n      fullName: data.fullName,\n      phone: data.phone,\n      email,\n      passwordHash,\n      avatarUrl: null,\n      isOnline: false,\n      governorateId: null,\n      areaId: null,\n    });\n\n    res.status(201).json({\n      success: true,\n      message: \"تم إنشاء حساب العميل بنجاح.\",\n      customer: {\n        _id: customer._id,"
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 254,
+      "snippet": "\n    if (data.status !== undefined) {\n      customer.status = data.status;\n    }\n\n    if (data.password) {\n      customer.passwordHash = await createPasswordHash(\n        data.password,\n      );\n    }\n\n    await customer.save();\n\n    res.status(200).json({\n      success: true,\n      message: \"تم تحديث العميل بنجاح.\",\n      customer: {"
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 255,
+      "snippet": "    if (data.status !== undefined) {\n      customer.status = data.status;\n    }\n\n    if (data.password) {\n      customer.passwordHash = await createPasswordHash(\n        data.password,\n      );\n    }\n\n    await customer.save();\n\n    res.status(200).json({\n      success: true,\n      message: \"تم تحديث العميل بنجاح.\",\n      customer: {\n        _id: customer._id,"
+    },
+    {
+      "file": "src/controllers/customer.controller.ts",
+      "line": 256,
+      "snippet": "      customer.status = data.status;\n    }\n\n    if (data.password) {\n      customer.passwordHash = await createPasswordHash(\n        data.password,\n      );\n    }\n\n    await customer.save();\n\n    res.status(200).json({\n      success: true,\n      message: \"تم تحديث العميل بنجاح.\",\n      customer: {\n        _id: customer._id,\n        fullName: customer.fullName,"
+    },
+    {
+      "file": "src/models/User.ts",
+      "line": 33,
+      "snippet": "\n  fullName: string;\n  phone: string;\n  email?: string;\n\n  passwordHash: string;\n  avatarUrl?: string | null;\n\n  isOnline: boolean;\n  lastSeenAt?: Date | null;\n  lastLoginAt?: Date | null;\n\n  approvedAt?: Date | null;\n  approvedBy?: Types.ObjectId | null;\n\n  rejectionReason?: string | null;\n  suspensionReason?: string | null;"
+    },
+    {
+      "file": "src/models/User.ts",
+      "line": 94,
+      "snippet": "      lowercase: true,\n      sparse: true,\n      index: true,\n    },\n\n    passwordHash: {\n      type: String,\n      required: true,\n      select: false,\n    },\n\n    avatarUrl: {\n      type: String,\n      default: null,\n    },\n\n    isOnline: {"
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "line": 4,
+      "snippet": "import { Router } from \"express\";\nimport { loginRateLimit } from \"../middleware/loginRateLimit.middleware.js\";\nimport {\n  login,\n  logout,\n  me,\n  refresh,\n} from \"../controllers/auth.controller.js\";\n\nconst router = Router();\n\nrouter.post(\"/login\", loginRateLimit, login);\nrouter.post(\"/refresh\", refresh);\nrouter.get(\"/me\", me);\nrouter.post(\"/logout\", logout);"
+    },
+    {
+      "file": "src/routes/auth.routes.ts",
+      "line": 12,
+      "snippet": "  refresh,\n} from \"../controllers/auth.controller.js\";\n\nconst router = Router();\n\nrouter.post(\"/login\", loginRateLimit, login);\nrouter.post(\"/refresh\", refresh);\nrouter.get(\"/me\", me);\nrouter.post(\"/logout\", logout);\n\nexport default router;"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 3,
+      "snippet": "import { UserModel } from \"../models/User.js\";\nimport {\n  comparePassword,\n  hashPassword,\n} from \"../utils/password.js\";\n\nexport async function authenticateUser(\n  identifier: string,\n  password: string,\n) {\n  const isEmail = identifier.includes(\"@\");\n\n  const query = isEmail\n    ? { email: identifier.toLowerCase().trim() }"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 4,
+      "snippet": "import { UserModel } from \"../models/User.js\";\nimport {\n  comparePassword,\n  hashPassword,\n} from \"../utils/password.js\";\n\nexport async function authenticateUser(\n  identifier: string,\n  password: string,\n) {\n  const isEmail = identifier.includes(\"@\");\n\n  const query = isEmail\n    ? { email: identifier.toLowerCase().trim() }\n    : { phone: identifier.trim() };"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 5,
+      "snippet": "import { UserModel } from \"../models/User.js\";\nimport {\n  comparePassword,\n  hashPassword,\n} from \"../utils/password.js\";\n\nexport async function authenticateUser(\n  identifier: string,\n  password: string,\n) {\n  const isEmail = identifier.includes(\"@\");\n\n  const query = isEmail\n    ? { email: identifier.toLowerCase().trim() }\n    : { phone: identifier.trim() };\n"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 8,
+      "snippet": "  comparePassword,\n  hashPassword,\n} from \"../utils/password.js\";\n\nexport async function authenticateUser(\n  identifier: string,\n  password: string,\n) {\n  const isEmail = identifier.includes(\"@\");\n\n  const query = isEmail\n    ? { email: identifier.toLowerCase().trim() }\n    : { phone: identifier.trim() };\n\n  const user = await UserModel.findOne({\n    ...query,\n    status: \"active\","
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 9,
+      "snippet": "  hashPassword,\n} from \"../utils/password.js\";\n\nexport async function authenticateUser(\n  identifier: string,\n  password: string,\n) {\n  const isEmail = identifier.includes(\"@\");\n\n  const query = isEmail\n    ? { email: identifier.toLowerCase().trim() }\n    : { phone: identifier.trim() };\n\n  const user = await UserModel.findOne({\n    ...query,\n    status: \"active\",\n  }).select(\"+passwordHash\");"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 11,
+      "snippet": "\nexport async function authenticateUser(\n  identifier: string,\n  password: string,\n) {\n  const isEmail = identifier.includes(\"@\");\n\n  const query = isEmail\n    ? { email: identifier.toLowerCase().trim() }\n    : { phone: identifier.trim() };\n\n  const user = await UserModel.findOne({\n    ...query,\n    status: \"active\",\n  }).select(\"+passwordHash\");\n\n  if (!user) {"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 14,
+      "snippet": "  password: string,\n) {\n  const isEmail = identifier.includes(\"@\");\n\n  const query = isEmail\n    ? { email: identifier.toLowerCase().trim() }\n    : { phone: identifier.trim() };\n\n  const user = await UserModel.findOne({\n    ...query,\n    status: \"active\",\n  }).select(\"+passwordHash\");\n\n  if (!user) {\n    const existingUser = await UserModel.findOne(query)\n      .select(\"_id status\")\n      .lean();"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 15,
+      "snippet": ") {\n  const isEmail = identifier.includes(\"@\");\n\n  const query = isEmail\n    ? { email: identifier.toLowerCase().trim() }\n    : { phone: identifier.trim() };\n\n  const user = await UserModel.findOne({\n    ...query,\n    status: \"active\",\n  }).select(\"+passwordHash\");\n\n  if (!user) {\n    const existingUser = await UserModel.findOne(query)\n      .select(\"_id status\")\n      .lean();\n"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 20,
+      "snippet": "    : { phone: identifier.trim() };\n\n  const user = await UserModel.findOne({\n    ...query,\n    status: \"active\",\n  }).select(\"+passwordHash\");\n\n  if (!user) {\n    const existingUser = await UserModel.findOne(query)\n      .select(\"_id status\")\n      .lean();\n\n    if (existingUser && existingUser.status !== \"active\") {\n      throw new Error(\"ACCOUNT_NOT_ACTIVE\");\n    }\n\n    throw new Error(\"INVALID_CREDENTIALS\");"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 34,
+      "snippet": "    }\n\n    throw new Error(\"INVALID_CREDENTIALS\");\n  }\n\n  const valid = await comparePassword(\n    password,\n    user.passwordHash,\n  );\n\n  if (!valid) {\n    throw new Error(\"INVALID_CREDENTIALS\");\n  }\n\n  user.lastLoginAt = new Date();\n  await user.save();\n"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 35,
+      "snippet": "\n    throw new Error(\"INVALID_CREDENTIALS\");\n  }\n\n  const valid = await comparePassword(\n    password,\n    user.passwordHash,\n  );\n\n  if (!valid) {\n    throw new Error(\"INVALID_CREDENTIALS\");\n  }\n\n  user.lastLoginAt = new Date();\n  await user.save();\n\n  return user;"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 36,
+      "snippet": "    throw new Error(\"INVALID_CREDENTIALS\");\n  }\n\n  const valid = await comparePassword(\n    password,\n    user.passwordHash,\n  );\n\n  if (!valid) {\n    throw new Error(\"INVALID_CREDENTIALS\");\n  }\n\n  user.lastLoginAt = new Date();\n  await user.save();\n\n  return user;\n}"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 49,
+      "snippet": "  await user.save();\n\n  return user;\n}\n\nexport async function createPasswordHash(\n  password: string,\n): Promise<string> {\n  return hashPassword(password);\n}"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 50,
+      "snippet": "\n  return user;\n}\n\nexport async function createPasswordHash(\n  password: string,\n): Promise<string> {\n  return hashPassword(password);\n}"
+    },
+    {
+      "file": "src/services/auth.service.ts",
+      "line": 52,
+      "snippet": "}\n\nexport async function createPasswordHash(\n  password: string,\n): Promise<string> {\n  return hashPassword(password);\n}"
+    },
+    {
+      "file": "src/utils/password.ts",
+      "line": 5,
+      "snippet": "import bcrypt from \"bcryptjs\";\n\nconst SALT_ROUNDS = 12;\n\nexport async function hashPassword(password: string): Promise<string> {\n  return bcrypt.hash(password, SALT_ROUNDS);\n}\n\nexport async function comparePassword(\n  password: string,\n  passwordHash: string,\n): Promise<boolean> {\n  return bcrypt.compare(password, passwordHash);\n}"
+    },
+    {
+      "file": "src/utils/password.ts",
+      "line": 6,
+      "snippet": "import bcrypt from \"bcryptjs\";\n\nconst SALT_ROUNDS = 12;\n\nexport async function hashPassword(password: string): Promise<string> {\n  return bcrypt.hash(password, SALT_ROUNDS);\n}\n\nexport async function comparePassword(\n  password: string,\n  passwordHash: string,\n): Promise<boolean> {\n  return bcrypt.compare(password, passwordHash);\n}"
+    },
+    {
+      "file": "src/utils/password.ts",
+      "line": 9,
+      "snippet": "\nexport async function hashPassword(password: string): Promise<string> {\n  return bcrypt.hash(password, SALT_ROUNDS);\n}\n\nexport async function comparePassword(\n  password: string,\n  passwordHash: string,\n): Promise<boolean> {\n  return bcrypt.compare(password, passwordHash);\n}"
+    },
+    {
+      "file": "src/utils/password.ts",
+      "line": 10,
+      "snippet": "export async function hashPassword(password: string): Promise<string> {\n  return bcrypt.hash(password, SALT_ROUNDS);\n}\n\nexport async function comparePassword(\n  password: string,\n  passwordHash: string,\n): Promise<boolean> {\n  return bcrypt.compare(password, passwordHash);\n}"
+    },
+    {
+      "file": "src/utils/password.ts",
+      "line": 11,
+      "snippet": "  return bcrypt.hash(password, SALT_ROUNDS);\n}\n\nexport async function comparePassword(\n  password: string,\n  passwordHash: string,\n): Promise<boolean> {\n  return bcrypt.compare(password, passwordHash);\n}"
+    },
+    {
+      "file": "src/utils/password.ts",
+      "line": 13,
+      "snippet": "\nexport async function comparePassword(\n  password: string,\n  passwordHash: string,\n): Promise<boolean> {\n  return bcrypt.compare(password, passwordHash);\n}"
+    }
+  ],
+  "keyword_files": {
+    "attendance": [
+      "src/controllers/captain-attendance.controller.ts",
+      "src/models/CaptainAttendance.ts",
+      "src/routes/captain-attendance.routes.ts",
+      "src/services/r12-attendance.service.ts"
+    ],
+    "registration": [
+      "src/controllers/captain-registration.controller.ts",
+      "src/models/CaptainRegistration.ts",
+      "src/routes/captain-registration.routes.ts"
+    ],
+    "document": [
+      "src/controllers/captain-document.controller.ts",
+      "src/models/CaptainDocument.ts",
+      "src/routes/captain-document.routes.ts",
+      "src/services/captain-document-compliance.service.ts"
+    ],
+    "work-area": [
+      "src/controllers/captain-work-area.controller.ts",
+      "src/routes/captain-work-area.routes.ts",
+      "src/services/captain-work-area.service.ts"
+    ],
+    "workarea": [
+      "src/models/CaptainWorkArea.ts",
+      "src/models/CaptainWorkAreaFinal.ts"
+    ],
+    "ledger": [
+      "src/controllers/captain-ledger.controller.ts",
+      "src/models/CaptainLedger.ts",
+      "src/routes/captain-ledger.routes.ts",
+      "src/services/captain-ledger.service.ts"
+    ],
+    "delivery-proof": [
+      "src/controllers/delivery-proof.controller.ts",
+      "src/routes/delivery-proof.routes.ts",
+      "src/services/delivery-proof.service.ts",
+      "src/services/r19-delivery-proof-final.service.ts"
+    ],
+    "rating": [
+      "src/models/CaptainRating.ts",
+      "src/models/CaptainRatingFinal.ts",
+      "src/services/captain-rating.service.ts",
+      "src/services/r22-rating-final.service.ts"
+    ],
+    "audit": [
+      "src/controllers/audit.controller.ts",
+      "src/middleware/audit.middleware.ts",
+      "src/models/AuditLog.ts",
+      "src/routes/audit.routes.ts",
+      "src/services/audit-log.service.ts",
+      "src/services/audit.service.ts",
+      "src/services/system-audit.service.ts"
+    ],
+    "security": [
+      "src/models/SecurityEvent.ts",
+      "src/models/SystemSecurityLog.ts"
+    ],
+    "notification": [
+      "src/controllers/notification.controller.ts",
+      "src/models/Notification.ts",
+      "src/models/NotificationRule.ts",
+      "src/routes/notification.routes.ts",
+      "src/services/event-notification.service.ts",
+      "src/services/notification.service.ts",
+      "src/services/r27-notification-target.service.ts"
+    ],
+    "complaint": [
+      "src/models/Complaint.ts",
+      "src/models/Complaint30_46.ts"
+    ],
+    "emergency": [
+      "src/models/CaptainEmergency.ts",
+      "src/models/EmergencyAlert.ts"
+    ],
+    "geofence": [
+      "src/controllers/geofence.controller.ts",
+      "src/models/Geofence.ts",
+      "src/routes/geofence.routes.ts"
+    ],
+    "maintenance": [
+      "src/models/MaintenanceSettings.ts"
+    ],
+    "version": [
+      "src/models/AppVersion.ts"
+    ],
+    "dispatch": [
+      "src/controllers/dispatch.controller.ts",
+      "src/models/DispatchAssignment.ts",
+      "src/models/DispatchQueue.ts",
+      "src/models/DispatchSettings.ts",
+      "src/routes/dispatch.routes.ts",
+      "src/services/dispatch-manager.service.ts",
+      "src/services/dispatch-policy-1-11.service.ts",
+      "src/services/dispatch.service.ts",
+      "src/services/smart-dispatch-score.service.ts"
+    ],
+    "order": [
+      "src/controllers/order.controller.ts",
+      "src/middleware/core11-order.middleware.ts",
+      "src/models/Core11OrderState.ts",
+      "src/models/Order.ts",
+      "src/models/OrderStageEvent.ts",
+      "src/models/OrderStageTimer.ts",
+      "src/models/OrderTimeline.ts",
+      "src/models/StuckOrderAlert.ts",
+      "src/routes/order.routes.ts",
+      "src/services/core-order-flow.service.ts",
+      "src/services/order-cash.service.ts",
+      "src/services/order-customer-snapshot.service.ts",
+      "src/services/order-intake-1-11.service.ts",
+      "src/services/order-lifecycle-1-11.service.ts",
+      "src/services/order-timeline-30-46.service.ts",
+      "src/services/r21-order-notes.service.ts",
+      "src/services/r29-order-timeline.service.ts"
+    ],
+    "settings": [
+      "src/controllers/core-operations-settings.controller.ts",
+      "src/controllers/settings.controller.ts",
+      "src/controllers/system-settings.controller.ts",
+      "src/models/CoreOperationsSettings.ts",
+      "src/models/DispatchSettings.ts",
+      "src/models/MaintenanceSettings.ts",
+      "src/models/OperationsSettings.ts",
+      "src/models/SystemSettings.ts",
+      "src/routes/core-operations-settings.routes.ts",
+      "src/routes/core11-settings.routes.ts",
+      "src/routes/settings.routes.ts",
+      "src/routes/system-settings.routes.ts",
+      "src/services/system-settings.service.ts"
+    ],
+    "shift": [
+      "src/controllers/captain-shift-management.controller.ts",
+      "src/models/CaptainShift.ts",
+      "src/routes/captain-shift-management.routes.ts",
+      "src/services/captain-shift-management.service.ts",
+      "src/services/r11-shift-guard.service.ts",
+      "src/services/shift-policy-1-11.service.ts",
+      "src/services/strict-shift-enforcement.service.ts",
+      "src/services/weekly-shift-policy.service.ts"
+    ],
+    "cash": [
+      "src/models/CaptainCashTransaction.ts",
+      "src/services/captain-cash.service.ts",
+      "src/services/order-cash.service.ts",
+      "src/services/r17-cash.service.ts"
+    ]
+  }
+}

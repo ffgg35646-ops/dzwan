@@ -1,0 +1,37 @@
+
+import { registerPushNotifications } from "../api/push";
+import { startCaptainLocationService } from "./captainLocationService";
+
+let captainStarted = false;
+
+export async function bootstrapAfterLogin(
+  role: "captain" | "shop"
+) {
+  try {
+    await registerPushNotifications();
+  } catch {
+    // عدم منع تسجيل الدخول عند رفض الإشعارات.
+  }
+
+  if (
+    role === "captain" &&
+    !captainStarted
+  ) {
+    captainStarted = true;
+
+    try {
+      await startCaptainLocationService();
+    } catch {
+      // الموقع سيُطلب عند توفره.
+    }
+  }
+}
+
+export async function stopCaptainRuntime() {
+  try {
+    const mod = await import("./captainLocationService");
+    mod.stopCaptainLocationService();
+  } catch {}
+
+  captainStarted = false;
+}

@@ -1,0 +1,44 @@
+import { useState } from "react";
+import { api } from "../lib/api";
+
+export default function CashAccounting() {
+  const [captainId, setCaptainId] = useState("");
+  const [data, setData] = useState<any>(null);
+
+  async function load() {
+    if (!captainId) return;
+    const response = await api.get(
+      `/completion/cash/${captainId}`,
+    );
+    setData(response.data);
+  }
+
+  return (
+    <div className="admin-page">
+      <h1>كشف حساب الكاش</h1>
+
+      <div className="admin-card">
+        <input
+          value={captainId}
+          onChange={(e) =>
+            setCaptainId(e.target.value)
+          }
+          placeholder="معرف الكابتن"
+        />
+
+        <button onClick={load}>
+          عرض كشف الحساب
+        </button>
+      </div>
+
+      {data && (
+        <div className="stats-grid">
+          <div>الطلبات المدفوعة للمحلات: {data.paidToEstablishments}</div>
+          <div>المحصل من الزبائن: {data.collectedFromCustomers}</div>
+          <div>أجور التوصيل: {data.deliveryFees}</div>
+          <div>فرق الكاش: {data.cashDifference}</div>
+        </div>
+      )}
+    </div>
+  );
+}

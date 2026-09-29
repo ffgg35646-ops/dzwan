@@ -1,0 +1,259 @@
+import type { Response } from "express";
+import { z } from "zod";
+import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { UserModel, USER_ROLES, ACCOUNT_STATUSES } from "../models/User.js";
+
+const statusSchema = z.object({
+  status: z.enum(ACCOUNT_STATUSES),
+});
+
+const roleSchema = z.object({
+  role: z.enum(USER_ROLES),
+});
+
+export async function listUsers(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const users = await UserModel.find()
+      .select(
+        "fullName phone email role status avatarUrl isOnline lastSeenAt lastLoginAt approvedAt rejectionReason suspensionReason createdAt updatedAt",
+      )
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      users,
+      total: users.length,
+    });
+  } catch (error) {
+    console.error("List users error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ داخلي في الخادم.",
+    });
+  }
+}
+
+export async function getUser(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const user = await UserModel.findById(req.params.id)
+      .select(
+        "fullName phone email role status avatarUrl isOnline lastSeenAt lastLoginAt approvedAt approvedBy rejectionReason suspensionReason createdAt updatedAt",
+      )
+      .lean();
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "المستخدم غير موجود.",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.error("Get user error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ داخلي في الخادم.",
+    });
+  }
+}
+
+export async function updateUserStatus(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = statusSchema.parse(req.body);
+
+    const user = await UserModel.findById(req.params.id);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "المستخدم غير موجود.",
+      });
+      return;
+    }
+
+    if (
+      user.role === "super_admin" &&
+      data.status !== "active"
+    ) {
+      res.status(403).json({
+        success: false,
+        message: "لا يمكن تعطيل حساب المدير الرئيسي.",
+      });
+      return;
+    }
+
+    user.status = data.status;
+
+    if (data.status === "active") {
+      user.approvedAt = new Date();
+      user.approvedBy = req.user?.sub as any;
+      user.rejectionReason = null;
+      user.suspensionReason = null;
+    }
+
+    if (data.status === "rejected") {
+      user.rejectionReason =
+        typeof req.body.rejectionReason === "string"
+          ? req.body.rejectionReason.trim()
+          : null;
+    }
+
+    if (data.status === "suspended") {
+      user.suspensionReason =
+        typeof req.body.suspensionReason === "string"
+          ? req.body.suspensionReason.trim()
+          : null;
+    }
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "تم تحديث حالة المستخدم بنجاح.",
+      user: {
+        id: user._id.toString(),
+        fullName: user.fullName,
+        role: user.role,
+        status: user.status,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "حالة المستخدم غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    console.error("Update user status error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ داخلي في الخادم.",
+    });
+  }
+}
+
+export async function updateUserRole(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const data = roleSchema.parse(req.body);
+
+    const user = await UserModel.findById(req.params.id);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "المستخدم غير موجود.",
+      });
+      return;
+    }
+
+    if (user.role === "super_admin") {
+      res.status(403).json({
+        success: false,
+        message: "لا يمكن تغيير صلاحيات المدير الرئيسي.",
+      });
+      return;
+    }
+
+    if (data.role === "super_admin") {
+      res.status(403).json({
+        success: false,
+        message: "لا يمكن إنشاء مدير رئيسي من هذه العملية.",
+      });
+      return;
+    }
+
+    user.role = data.role;
+
+    await user.save();
+
+    res.status(200).json({
+      success: true,
+      message: "تم تحديث صلاحية المستخدم بنجاح.",
+      user: {
+        id: user._id.toString(),
+        fullName: user.fullName,
+        role: user.role,
+        status: user.status,
+      },
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        success: false,
+        message: "صلاحية المستخدم غير صحيحة.",
+        errors: error.issues,
+      });
+      return;
+    }
+
+    console.error("Update user role error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ داخلي في الخادم.",
+    });
+  }
+}
+
+export async function deleteUser(
+  req: AuthenticatedRequest,
+  res: Response,
+): Promise<void> {
+  try {
+    const user = await UserModel.findById(req.params.id);
+
+    if (!user) {
+      res.status(404).json({
+        success: false,
+        message: "المستخدم غير موجود.",
+      });
+      return;
+    }
+
+    if (user.role === "super_admin") {
+      res.status(403).json({
+        success: false,
+        message: "لا يمكن حذف المدير الرئيسي.",
+      });
+      return;
+    }
+
+    await UserModel.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: "تم حذف المستخدم بنجاح.",
+    });
+  } catch (error) {
+    console.error("Delete user error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "حدث خطأ داخلي في الخادم.",
+    });
+  }
+}

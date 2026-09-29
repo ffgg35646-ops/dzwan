@@ -1,0 +1,204 @@
+
+================================================================================
+1. PROJECT STRUCTURE
+================================================================================
+[OK]   Backend file src/server.ts
+[OK]   Backend file src/config/database.ts
+[OK]   Backend file src/config/env.ts
+[OK]   Backend file src/services/auth.service.ts
+[OK]   Backend file src/controllers/auth.controller.ts
+[OK]   Backend file src/controllers/order.controller.ts
+[OK]   Backend file src/routes/auth.routes.ts
+[OK]   Backend file src/routes/order.routes.ts
+[OK]   Backend file src/middleware/auth.middleware.ts
+[OK]   Backend file package.json
+[OK]   Backend file tsconfig.json
+[OK]   Backend file vercel.json
+[OK]   Backend file .env.example
+[OK]   Admin file src/App.tsx
+[OK]   Admin file src/lib/api.ts
+[OK]   Admin file src/main.tsx
+[OK]   Admin file src/pages/Dashboard.tsx
+[OK]   Admin file src/pages/Orders.tsx
+[OK]   Admin file src/pages/Customers.tsx
+[OK]   Admin file src/pages/Products.tsx
+[OK]   Admin file src/pages/Establishments.tsx
+[OK]   Admin file src/pages/Captains.tsx
+[OK]   Admin file src/pages/Leaders.tsx
+[OK]   Admin file src/pages/Locations.tsx
+[OK]   Admin file src/pages/Users.tsx
+[OK]   Admin file .env.example
+
+================================================================================
+2. ADMIN ROUTES
+================================================================================
+[OK]   Admin route /
+[OK]   Admin route /dashboard
+[OK]   Admin route /captains
+[OK]   Admin route /establishments
+[OK]   Admin route /locations
+[OK]   Admin route /users
+[OK]   Admin route /orders
+[OK]   Admin route /leaders
+[OK]   Admin route /customers
+[OK]   Admin route /products
+[WARN] Old /shops navigation still exists
+[WARN] Old /pricing navigation still exists
+[WARN] Old /reports navigation still exists
+[WARN] Old /settings navigation still exists
+
+================================================================================
+3. ADMIN API USAGE
+================================================================================
+[OK]   Admin API reference -> /auth/logout
+[OK]   Admin API reference -> /captains
+[OK]   Admin API reference -> /captains/${captain._id}
+[OK]   Admin API reference -> /captains/${captain._id}/approve
+[OK]   Admin API reference -> /captains/${editCaptain._id}
+[OK]   Admin API reference -> /captains/${rejectCaptain._id}/reject
+[OK]   Admin API reference -> /customers
+[OK]   Admin API reference -> /customers/${customer._id}
+[OK]   Admin API reference -> /customers/${customerId}/addresses
+[OK]   Admin API reference -> /customers/${editCustomer._id}
+[OK]   Admin API reference -> /establishments
+[OK]   Admin API reference -> /establishments/${editItem._id}
+[OK]   Admin API reference -> /establishments/${item._id}
+[OK]   Admin API reference -> /establishments/${item._id}/approve
+[OK]   Admin API reference -> /establishments/${rejectItem._id}/reject
+[OK]   Admin API reference -> /leaders
+[OK]   Admin API reference -> /leaders/${id}/approve
+[OK]   Admin API reference -> /leaders/${id}/reject
+[OK]   Admin API reference -> /locations
+[OK]   Admin API reference -> /locations/${governorateId}/areas
+[OK]   Admin API reference -> /locations/${governorateId}/areas/${area._id}
+[OK]   Admin API reference -> /locations/${item._id}
+[OK]   Admin API reference -> /notifications
+[OK]   Admin API reference -> /orders
+[OK]   Admin API reference -> /orders/${order._id}/status
+[OK]   Admin API reference -> /orders/${orderId}/assign-captain
+[OK]   Admin API reference -> /products
+[OK]   Admin API reference -> /products/${editProduct._id}
+[OK]   Admin API reference -> /products/${product._id}
+[OK]   Admin API reference -> /system/status
+[OK]   Admin API reference -> /users
+[OK]   Admin API reference -> /users/${user._id}
+[OK]   Admin API reference -> /users/${user._id}/status
+[WARN] Expected API reference not found /auth/me
+[WARN] Expected API reference not found /auth/refresh
+[OK]   Expected API reference /auth/logout
+[OK]   Expected API reference /orders
+[OK]   Expected API reference /captains
+[OK]   Expected API reference /establishments
+[OK]   Expected API reference /customers
+[OK]   Expected API reference /products
+[OK]   Expected API reference /leaders
+[OK]   Expected API reference /locations
+[OK]   Expected API reference /users
+[OK]   Expected API reference /notifications
+[OK]   Expected API reference /system/status
+
+================================================================================
+4. ERROR HANDLING
+================================================================================
+[OK]   Central Admin API error mapper
+[FAIL] Missing Axios response interceptor
+[OK]   Automatic refresh flow referenced
+[OK]   React Error Boundary
+[OK]   Unhandled promise protection
+[OK]   Backend global error handler
+[OK]   Backend JSON 404 response
+
+================================================================================
+5. AUTH / JWT
+================================================================================
+[WARN] Access token type -> not detected by static audit
+[WARN] Refresh token type -> not detected by static audit
+[OK]   Access expiry
+[OK]   Refresh expiry
+[WARN] Refresh endpoint -> not detected by static audit
+
+================================================================================
+6. ROLES / PERMISSIONS
+================================================================================
+[OK]   Role referenced: super_admin
+[OK]   Role referenced: admin
+[OK]   Role referenced: governorate_leader
+[OK]   Role referenced: area_leader
+[OK]   Role referenced: captain
+[OK]   Role referenced: shop
+[OK]   Role referenced: customer
+[OK]   ProtectedRoute exists
+[OK]   ProtectedRoute supports roles
+[OK]   ProtectedRoute uses Outlet
+
+================================================================================
+8. VERCEL / PRODUCTION READINESS
+================================================================================
+[OK]   backend/vercel.json exists
+[OK]   backend/api/index.ts exists
+[OK]   Express app exported
+[OK]   Vercel runtime guard
+[OK]   app.listen protected from Vercel
+
+================================================================================
+9. GIT / SECRET SAFETY
+================================================================================
+[OK]   backend/.gitignore exists
+[OK]   backend/.gitignore contains .env
+[OK]   backend/.gitignore contains .env.local
+[OK]   backend/.gitignore contains node_modules/
+[OK]   backend/.gitignore contains dist/
+[OK]   admin/.gitignore exists
+[OK]   admin/.gitignore contains .env
+[OK]   admin/.gitignore contains .env.local
+[OK]   admin/.gitignore contains node_modules/
+[OK]   admin/.gitignore contains dist/
+
+================================================================================
+10. BUILDS
+================================================================================
+[OK]   Backend build
+[OK]   Admin build
+
+================================================================================
+11. DEP0169 / url.parse SOURCE
+================================================================================
+(node:24355) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+[WARN] url.parse warning detected -> راجع السطور أعلاه لتحديد dependency المصدر
+
+================================================================================
+12. DEPENDENCY AUDIT
+================================================================================
+[OK]   backend dependency count -> 18
+[OK]   backend dependency -> cookie-parser
+[OK]   backend dependency -> cors
+[OK]   backend dependency -> express
+[OK]   backend dependency -> helmet
+[OK]   backend dependency -> jsonwebtoken
+[OK]   backend dependency -> mongoose
+[OK]   admin dependency count -> 17
+[OK]   admin dependency -> axios
+[OK]   admin dependency -> react
+[OK]   admin dependency -> react-router-dom
+
+================================================================================
+13. AUTOMATED TESTS
+================================================================================
+[OK]   Full API test suite exists
+[OK]   Full API test suite executable
+
+================================================================================
+14. SERVER ERROR LEAK AUDIT
+================================================================================
+[WARN] Technical error string found in source -> backend/src/server.ts -> CastError
+
+================================================================================
+15. API URL AUDIT
+================================================================================
+
+================================================================================
+FINAL SUMMARY
+================================================================================
+Problems: 1
+Warnings: 11
+[RESULT] Static audit found issues that need review.

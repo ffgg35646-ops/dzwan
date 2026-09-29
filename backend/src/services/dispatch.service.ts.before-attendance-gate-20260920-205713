@@ -1,0 +1,491 @@
+import { Types } from "mongoose";
+import { UserModel } from "../models/User.js";
+import { OrderModel } from "../models/Order.js";
+import { EstablishmentModel } from "../models/Establishment.js";
+import { CaptainShiftModel } from "../models/CaptainShift.js";
+import { DispatchSettingsModel } from "../models/DispatchSettings.js";
+import { CaptainWorkAreaModel } from "../models/CaptainWorkArea.js";
+import { LocationModel } from "../models/Location.js";
+import { CaptainLocationModel } from "../models/CaptainLocation.js";
+import { rankDispatchCandidates } from "./smart-dispatch-score.service.js";
+
+interface DispatchCandidate {
+  captainId: Types.ObjectId;
+  fullName: string;
+  phone: string;
+  isOnline: boolean;
+  activeOrders: number;
+  distanceKm: number;
+  priority: number;
+}
+
+interface FindCaptainResult {
+  captain: DispatchCandidate | null;
+  reason: string;
+}
+
+function distanceKm(
+  latitude1: number,
+  longitude1: number,
+  latitude2: number,
+  longitude2: number,
+): number {
+  const toRad = (value: number) =>
+    (value * Math.PI) / 180;
+
+  const R = 6371;
+  const dLat = toRad(latitude2 - latitude1);
+  const dLng = toRad(longitude2 - longitude1);
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(latitude1)) *
+      Math.cos(toRad(latitude2)) *
+      Math.sin(dLng / 2) ** 2;
+
+  return (
+    R *
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a),
+    )
+  );
+}
+
+function minutes(value: string): number {
+  const [hour, minute] = value.split(":").map(Number);
+
+  if (
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute)
+  ) {
+    return -1;
+  }
+
+  return hour * 60 + minute;
+}
+
+function isInsideShift(
+  startTime: string,
+  endTime: string,
+): boolean {
+  const now = new Date();
+
+  const current =
+    now.getHours() * 60 + now.getMinutes();
+
+  const start = minutes(startTime);
+  const end = minutes(endTime);
+
+  if (start < 0 || end < 0) {
+    return false;
+  }
+
+  if (start === end) {
+    return true;
+  }
+
+  if (start < end) {
+    return current >= start && current < end;
+  }
+
+  return current >= start || current < end;
+}
+
+async function captainHasActiveShift(
+  captainId: Types.ObjectId,
+): Promise<boolean> {
+  const now = new Date();
+
+  const weekStart = new Date(now);
+  const day = weekStart.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+
+  weekStart.setDate(
+    weekStart.getDate() + diff,
+  );
+  weekStart.setHours(0, 0, 0, 0);
+
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(
+    weekEnd.getDate() + 7,
+  );
+
+  const assignment =
+    await CaptainShiftModel.findOne({
+      captainId,
+      shiftId: { $exists: true },
+      weekStart: {
+        $gte: weekStart,
+        $lt: weekEnd,
+      },
+    })
+      .select("shiftId")
+      .lean();
+
+  if (!assignment?.shiftId) {
+    return false;
+  }
+
+  const shift =
+    await CaptainShiftModel.findOne({
+      _id: assignment.shiftId,
+      isActive: true,
+    })
+      .select("startTime endTime")
+      .lean();
+
+  if (!shift) {
+    return false;
+  }
+
+  return isInsideShift(
+    String(shift.startTime),
+    String(shift.endTime),
+  );
+}
+
+export async function findBestCaptain(
+  input: {
+    orderId: Types.ObjectId;
+    excludeCaptainIds?: Types.ObjectId[];
+  },
+): Promise<FindCaptainResult> {
+  const order = await OrderModel.findById(
+    input.orderId,
+  )
+    .select(
+      "establishmentId captainId status",
+    )
+    .lean();
+
+  if (!order) {
+    return {
+      captain: null,
+      reason: "الطلب غير موجود.",
+    };
+  }
+
+  if (order.captainId) {
+    return {
+      captain: null,
+      reason: "الطلب مسند بالفعل إلى كابتن.",
+    };
+  }
+
+  const establishment =
+    await EstablishmentModel.findById(
+      order.establishmentId,
+    )
+      .select(
+        "governorateId areaId status latitude longitude",
+      )
+      .lean();
+
+  if (!establishment) {
+    return {
+      captain: null,
+      reason: "المنشأة غير موجودة.",
+    };
+  }
+
+  if (establishment.status !== "active") {
+    return {
+      captain: null,
+      reason: "المنشأة غير مفعلة.",
+    };
+  }
+
+  // لا يتم ترشيح أي كابتن إذا كانت محافظة المنشأة
+  // أو منطقتها التشغيلية معطلة للكباتن.
+  const location = await LocationModel.findById(
+    establishment.governorateId,
+  )
+    .select("isActive captainsEnabled areas")
+    .lean();
+
+  if (!location || location.isActive === false) {
+    return {
+      captain: null,
+      reason: "محافظة المنشأة غير متاحة حاليًا.",
+    };
+  }
+
+  if (location.captainsEnabled === false) {
+    return {
+      captain: null,
+      reason: "المحافظة غير متاحة للكباتن حاليًا.",
+    };
+  }
+
+  const area = location.areas.find(
+    (item) =>
+      String(item._id) === String(establishment.areaId),
+  );
+
+  if (!area || area.isActive === false) {
+    return {
+      captain: null,
+      reason: "منطقة المنشأة غير متاحة حاليًا.",
+    };
+  }
+
+  if (area.captainsEnabled === false) {
+    return {
+      captain: null,
+      reason: "المنطقة غير متاحة للكباتن حاليًا.",
+    };
+  }
+
+  const settings =
+    (await DispatchSettingsModel.findOne()
+      .lean()) ??
+    {
+      autoDispatchEnabled: true,
+      queueEnabled: true,
+      maxActiveOrdersPerCaptain: 3,
+      assignmentTimeoutSeconds: 60,
+      maxAssignmentAttempts: 5,
+      onlineOnly: true,
+      requireSameArea: true,
+      requireSameGovernorate: true,
+      requireCaptainShift: true,
+    };
+
+  const filter: Record<string, unknown> = {
+    role: "captain",
+    status: "active",
+    operationalEnabled: true,
+  };
+
+  if (settings.requireSameGovernorate) {
+    filter.governorateId =
+      establishment.governorateId;
+  }
+
+  if (settings.requireSameArea) {
+    filter.areaId = establishment.areaId;
+  }
+
+  if (settings.onlineOnly) {
+    filter.isOnline = true;
+  }
+
+  if (
+    input.excludeCaptainIds &&
+    input.excludeCaptainIds.length > 0
+  ) {
+    filter._id = {
+      $nin: input.excludeCaptainIds,
+    };
+  }
+
+  const captains = await UserModel.find(filter)
+    .select(
+      "_id fullName phone isOnline lastSeenAt",
+    )
+    .lean();
+
+  if (captains.length === 0) {
+    return {
+      captain: null,
+      reason:
+        "لا يوجد كابتن متاح حاليًا.",
+    };
+  }
+
+  const captainIds = captains.map(
+    (captain) => captain._id,
+  );
+
+  const activeOrders =
+    await OrderModel.aggregate<{
+      _id: Types.ObjectId;
+      count: number;
+    }>([
+      {
+        $match: {
+          captainId: {
+            $in: captainIds,
+          },
+          status: {
+            $in: [
+              "assigned",
+              "picked_up",
+              "on_the_way",
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$captainId",
+          count: {
+            $sum: 1,
+          },
+        },
+      },
+    ]);
+
+  const ordersMap = new Map(
+    activeOrders.map((item) => [
+      item._id.toString(),
+      item.count,
+    ]),
+  );
+
+  const captainIdsForLocation = captains.map(
+    (captain) => captain._id,
+  );
+
+  const captainLocations =
+    await CaptainLocationModel.find({
+      captainId: {
+        $in: captainIdsForLocation,
+      },
+    })
+      .select("captainId latitude longitude updatedAt")
+      .lean();
+
+  const locationMap = new Map(
+    captainLocations.map((item: any) => [
+      String(item.captainId),
+      item,
+    ]),
+  );
+
+  const candidates: DispatchCandidate[] = [];
+
+  for (const captain of captains) {
+    const workArea = await CaptainWorkAreaModel.findOne({
+      captainId: captain._id,
+      governorateId: establishment.governorateId,
+      areaId: establishment.areaId,
+      isActive: true,
+    })
+      .select("_id")
+      .lean();
+
+    if (!workArea) {
+      continue;
+    }
+    const activeCount =
+      ordersMap.get(
+        captain._id.toString(),
+      ) ?? 0;
+
+    if (
+      activeCount >=
+      settings.maxActiveOrdersPerCaptain
+    ) {
+      continue;
+    }
+
+    if (settings.requireCaptainShift) {
+      const insideShift =
+        await captainHasActiveShift(
+          captain._id,
+        );
+
+      if (!insideShift) {
+        continue;
+      }
+    }
+
+    const captainLocation =
+      locationMap.get(String(captain._id));
+
+    const hasCaptainLocation =
+      captainLocation &&
+      Number.isFinite(Number(captainLocation.latitude)) &&
+      Number.isFinite(Number(captainLocation.longitude));
+
+    const hasEstablishmentLocation =
+      (establishment as any).latitude != null &&
+      (establishment as any).longitude != null;
+
+    const distance =
+      hasCaptainLocation &&
+      hasEstablishmentLocation
+        ? distanceKm(
+            Number(captainLocation.latitude),
+            Number(captainLocation.longitude),
+            Number((establishment as any).latitude),
+            Number((establishment as any).longitude),
+          )
+        : 999999;
+
+    candidates.push({
+      captainId: captain._id,
+      fullName: captain.fullName,
+      phone: captain.phone,
+      isOnline: captain.isOnline,
+      activeOrders: activeCount,
+      distanceKm: distance,
+      priority: 0,
+    });
+  }
+
+  if (candidates.length === 0) {
+    return {
+      captain: null,
+      reason:
+        "لا يوجد كابتن متاح ضمن السعة والشفت الحالي.",
+    };
+  }
+
+  const ranked =
+    rankDispatchCandidates(
+      candidates.map((candidate) => ({
+        isOnline: candidate.isOnline,
+        inShift: true,
+        sameGovernorate: true,
+        sameArea: true,
+        inWorkArea: true,
+        inGeofence: false,
+        activeOrders: candidate.activeOrders,
+        maxActiveOrders:
+          settings.maxActiveOrdersPerCaptain,
+        distanceKm:
+          Number(candidate.distanceKm || 0),
+        priority:
+          Number(candidate.priority || 0),
+        candidate,
+      }))
+    );
+
+  const rankedWinner =
+    ranked[0]?.captain ?? null;
+
+  const winner = rankedWinner
+    ? candidates.find(
+        (candidate) =>
+          String(candidate.captainId) ===
+          String(
+            (rankedWinner as any).captainId ??
+              (rankedWinner as any)._id
+          )
+      ) ?? candidates[0]
+    : candidates[0];
+
+  return {
+    captain: winner,
+    reason:
+      "تم اختيار الكابتن الأفضل حسب المنطقة والشفت والسعة والمسافة والطلبات النشطة وقواعد التقييم.",
+  };
+}
+
+export async function captainCanWorkNow(
+  captainId: Types.ObjectId,
+): Promise<boolean> {
+  const settings =
+    await DispatchSettingsModel.findOne()
+      .lean();
+
+  if (!settings?.requireCaptainShift) {
+    return true;
+  }
+
+  return captainHasActiveShift(captainId);
+}

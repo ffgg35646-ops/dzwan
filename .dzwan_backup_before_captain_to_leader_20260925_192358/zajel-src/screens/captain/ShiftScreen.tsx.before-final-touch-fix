@@ -1,0 +1,527 @@
+import React, { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+
+import Screen from "../../components/Screen";
+import {
+  checkShift,
+  getAvailableShifts,
+  selectWeeklyShift,
+  changeWeeklyShift,
+} from "../../api/captain";
+
+function formatShiftTime(value: any) {
+  const raw = String(value ?? "").trim();
+
+  if (!raw) {
+    return "--:--";
+  }
+
+  const match = raw.match(/^(\d{1,2}):(\d{2})/);
+
+  if (!match) {
+    return raw;
+  }
+
+  let hour = Number(match[1]);
+  const minute = match[2];
+
+  if (!Number.isFinite(hour)) {
+    return raw;
+  }
+
+  const suffix = hour >= 12 ? "م" : "ص";
+
+  hour = hour % 12;
+  if (hour === 0) {
+    hour = 12;
+  }
+
+  return `${hour}:${minute} ${suffix}`;
+}
+
+function getShiftId(item: any) {
+  return String(
+    item?._id ??
+      item?.id ??
+      "",
+  );
+}
+
+function getShiftStart(item: any) {
+  return (
+    item?.startTime ??
+    item?.start ??
+    item?.from ??
+    ""
+  );
+}
+
+function getShiftEnd(item: any) {
+  return (
+    item?.endTime ??
+    item?.end ??
+    item?.to ??
+    ""
+  );
+}
+
+function getShifts(result: any) {
+  const candidates = [
+    result?.data,
+    result?.shifts,
+    result?.data?.shifts,
+    result?.items,
+  ];
+
+  for (const value of candidates) {
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return [];
+}
+
+export default function ShiftScreen() {
+  const [shifts, setShifts] = useState<any[]>([]);
+  const [assignment, setAssignment] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const selectedShiftId = String(
+    assignment?.shiftId?._id ??
+      assignment?.shiftId?.id ??
+      assignment?.shiftId ??
+      "",
+  );
+
+  async function load() {
+    try {
+      setLoading(true);
+
+      const [shiftsResult, currentResult] =
+        await Promise.all([
+          getAvailableShifts(),
+          checkShift().catch(() => null),
+        ]);
+
+      setShifts(getShifts(shiftsResult));
+
+      setAssignment(
+        currentResult?.assignment ??
+          null,
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر تحميل الشفتات",
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "تعذر الاتصال بالخادم.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function chooseShift(id: string) {
+    if (!id || savingId) {
+      return;
+    }
+
+    console.log("SHIFT CLICKED:", id);
+
+    setActionMessage("جاري حفظ الشفت...");
+    setSavingId(id);
+
+    try {
+      if (selectedShiftId) {
+        await changeWeeklyShift(id);
+
+        setActionMessage(
+          "✅ تم تغيير الشفت بنجاح.",
+        );
+      } else {
+        await selectWeeklyShift(id);
+
+        setActionMessage(
+          "✅ تم اختيار الشفت بنجاح.",
+        );
+      }
+
+      await load();
+    } catch (error: any) {
+      console.log(
+        "SHIFT SAVE ERROR:",
+        error?.response?.data ||
+          error?.message ||
+          error,
+      );
+
+      setActionMessage(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          "❌ تعذر اختيار الشفت.",
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+
+  return (
+    <Screen>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.eyebrow}>
+              جدول العمل
+            </Text>
+
+            <Text style={styles.title}>
+              الشفتات
+            </Text>
+          </View>
+
+          <View style={styles.headerIcon}>
+            <Ionicons
+              name="time-outline"
+              size={24}
+              color="#F97316"
+            />
+          </View>
+        </View>
+
+        <Text style={styles.subtitle}>
+          اختر شفتك من المواعيد التي حددتها الإدارة.
+        </Text>
+
+        {actionMessage ? (
+          <View style={styles.actionMessage}>
+            <Text style={styles.actionMessageText}>
+              {actionMessage}
+            </Text>
+          </View>
+        ) : null}
+
+
+        {loading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator
+              size="small"
+              color="#F97316"
+            />
+
+            <Text style={styles.loadingText}>
+              جاري تحميل الشفتات...
+            </Text>
+          </View>
+        ) : shifts.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons
+              name="calendar-outline"
+              size={38}
+              color="#B8AAA0"
+            />
+
+            <Text style={styles.emptyTitle}>
+              لا توجد شفتات متاحة
+            </Text>
+
+            <Text style={styles.emptyText}>
+              ستظهر هنا الشفتات التي تحددها الإدارة.
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.list}
+          >
+            {shifts.map((item) => {
+              const id = getShiftId(item);
+
+              if (!id) {
+                return null;
+              }
+
+              const selected =
+                selectedShiftId === id;
+
+              const start = formatShiftTime(
+                getShiftStart(item),
+              );
+
+              const end = formatShiftTime(
+                getShiftEnd(item),
+              );
+
+              const busy =
+                savingId === id;
+
+              return (
+                <Pressable
+                  key={id}
+                  disabled={Boolean(savingId)}
+                  onPress={() => {
+                    void chooseShift(id);
+                  }}
+                  {...(Platform.OS === "web"
+                    ? ({
+                        onClick: () => {
+                          void chooseShift(id);
+                        },
+                      } as any)
+                    : {})}
+                  style={({ pressed }) => [
+                    styles.shiftCard,
+                    selected &&
+                      styles.shiftCardSelected,
+                    pressed &&
+                      styles.shiftCardPressed,
+                  ]}
+                >
+                  <View style={styles.timeIcon}>
+                    <Ionicons
+                      name="time-outline"
+                      size={23}
+                      color={
+                        selected
+                          ? "#F97316"
+                          : "#8D8175"
+                      }
+                    />
+                  </View>
+
+                  <View style={styles.timeBox}>
+                    <Text style={styles.timeLabel}>
+                      موعد الشفت
+                    </Text>
+
+                    <Text style={styles.timeText}>
+                      {start} – {end}
+                    </Text>
+                  </View>
+
+                  <View
+                    style={[
+                      styles.choice,
+                      selected &&
+                        styles.choiceSelected,
+                    ]}
+                  >
+                    {busy ? (
+                      <ActivityIndicator
+                        size="small"
+                        color="#F97316"
+                      />
+                    ) : selected ? (
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={25}
+                        color="#16A34A"
+                      />
+                    ) : (
+                      <Text style={styles.choiceText}>
+                        اختيار
+                      </Text>
+                    )}
+                  </View>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        )}
+      </View>
+    </Screen>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+
+  header: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  eyebrow: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: "#9A8E84",
+    textAlign: "right",
+  },
+
+  title: {
+    marginTop: 3,
+    fontSize: 24,
+    fontWeight: "900",
+    color: "#2F241C",
+    textAlign: "right",
+  },
+
+  headerIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 15,
+    backgroundColor: "#FFF2E8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  subtitle: {
+    marginTop: 12,
+    marginBottom: 14,
+    color: "#8D8175",
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  actionMessage: {
+    marginBottom: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: "#FFF7ED",
+    borderWidth: 1,
+    borderColor: "#FED7AA",
+  },
+
+  actionMessageText: {
+    color: "#9A3412",
+    fontSize: 12,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  loading: {
+    minHeight: 180,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  loadingText: {
+    marginTop: 10,
+    color: "#8D8175",
+    fontWeight: "700",
+  },
+
+  empty: {
+    marginTop: 12,
+    borderRadius: 18,
+    backgroundColor: "#FFF9F4",
+    borderWidth: 1,
+    borderColor: "#EEDFD2",
+    padding: 28,
+    alignItems: "center",
+  },
+
+  emptyTitle: {
+    marginTop: 10,
+    fontSize: 15,
+    fontWeight: "900",
+    color: "#2F241C",
+  },
+
+  emptyText: {
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#8D8175",
+    textAlign: "center",
+  },
+
+  list: {
+    paddingBottom: 24,
+  },
+
+  shiftCard: {
+    minHeight: 78,
+    marginBottom: 10,
+    paddingHorizontal: 13,
+    paddingVertical: 11,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#E8DED7",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+  },
+
+  shiftCardSelected: {
+    backgroundColor: "#FFF8F0",
+    borderColor: "#FDBA74",
+  },
+
+  shiftCardPressed: {
+    opacity: 0.9,
+  },
+
+  timeIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: "#FFF2E8",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 10,
+  },
+
+  timeBox: {
+    flex: 1,
+  },
+
+  timeLabel: {
+    fontSize: 11,
+    fontWeight: "800",
+    color: "#9A8E84",
+    textAlign: "right",
+  },
+
+  timeText: {
+    marginTop: 3,
+    fontSize: 17,
+    fontWeight: "900",
+    color: "#2F241C",
+    textAlign: "right",
+  },
+
+  choice: {
+    minWidth: 78,
+    minHeight: 38,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    backgroundColor: "#FFF2E8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  choiceSelected: {
+    backgroundColor: "#DCFCE7",
+  },
+
+  choiceText: {
+    color: "#F97316",
+    fontSize: 12,
+    fontWeight: "900",
+  },
+});

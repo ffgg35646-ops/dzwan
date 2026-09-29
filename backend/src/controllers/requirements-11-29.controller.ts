@@ -1,0 +1,915 @@
+import type { Request, Response } from "express";
+import { Types } from "mongoose";
+import { LocationModel } from "../models/Location.js";
+import { DispatchSettingsModel } from "../models/DispatchSettings.js";
+import { CaptainShiftModel } from "../models/CaptainShift.js";
+import { OrderModel } from "../models/Order.js";
+import { EstablishmentModel } from "../models/Establishment.js";
+import {
+  assertWithinShift,
+  assertCaptainCapacity,
+  setCaptainOnline,
+  clockIn,
+  clockOut,
+  saveOrderEvent,
+  getTimeline,
+  saveCash,
+  getCashStatement,
+  rateCaptain,
+  captainRating,
+  createComplaint,
+  getComplaint,
+  getCaptainWorkAreas,
+} from "../services/requirements-11-29-runtime.service.js";
+import { getCaptainKpi } from "../services/r23-kpi-final.service.js";
+import { getEstablishmentReport } from "../services/r24-establishment-report.service.js";
+import { getAdminReport } from "../services/r25-admin-report.service.js";
+import { getOperationsDashboard } from "../services/r26-dashboard.service.js";
+
+function actor(req: Request) {
+  return (req as any).user?.sub || null;
+}
+
+function error(res: Response, e: any) {
+  const message =
+    e?.message ||
+    "OPERATION_FAILED";
+
+  const map: Record<string, number> = {
+    CAPTAIN_OUTSIDE_SHIFT: 403,
+    CAPTAIN_ACTIVE_ORDER_LIMIT_REACHED: 409,
+    ALREADY_CLOCKED_IN: 409,
+    NOT_CLOCKED_IN: 409,
+    INVALID_RATING: 400,
+  };
+
+  return res.status(
+    map[message] || 400
+  ).json({
+    success: false,
+    error: message,
+  });
+}
+
+export async function shiftCheck(
+  req: Request,
+  res: Response
+) {
+  try {
+    const captainId =
+      String((req as any).user?.sub || "");
+
+    if (!captainId) {
+      return res.status(401).json({
+        success: false,
+        error: "غير مصرح.",
+      });
+    }
+
+    const now = new Date();
+
+    const {
+      getWeekStart,
+    } = await import("../services/captain-shift-management.service.js");
+
+    const weekStart = getWeekStart(now);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+
+    const assignment = await CaptainShiftModel.findOne({
+      captainId,
+      shiftId: { $exists: true },
+      weekStart: {
+        $gte: weekStart,
+        $lt: weekEnd,
+      },
+    }).lean();
+
+    if (!assignment?.shiftId) {
+      return res.status(200).json({
+        success: true,
+        insideShift: false,
+        start: null,
+        end: null,
+        shift: null,
+        assignment: null,
+        message: "لا يوجد شفت فعال هذا الأسبوع.",
+      });
+    }
+
+    const shift = await CaptainShiftModel.findOne({
+      _id: assignment.shiftId,
+      isActive: true,
+    })
+      .select("_id name startTime endTime isActive")
+      .lean();
+
+    if (!shift) {
+      return res.status(200).json({
+        success: true,
+        insideShift: false,
+        start: null,
+        end: null,
+        shift: null,
+        assignment,
+        message: "الشفت المحدد غير فعال.",
+      });
+    }
+
+    const current =
+      now.getHours() * 60 +
+      now.getMinutes();
+
+    const [startHour, startMinute] =
+      String(shift.startTime).split(":").map(Number);
+
+    const [endHour, endMinute] =
+      String(shift.endTime).split(":").map(Number);
+
+    const start =
+      startHour * 60 + startMinute;
+
+    const end =
+      endHour * 60 + endMinute;
+
+    const insideShift =
+      start === end
+        ? true
+        : start < end
+          ? current >= start && current < end
+          : current >= start || current < end;
+
+    return res.json({
+      success: true,
+      insideShift,
+      start: shift.startTime,
+      end: shift.endTime,
+      shift,
+      assignment,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+
+export async function weeklyShiftAssignment(
+  req: any,
+  res: any,
+) {
+  try {
+    const captainId = String(
+      req.user?.sub || "",
+    );
+
+    if (!captainId) {
+      return res.status(401).json({
+        assignment: null,
+        shift: null,
+      });
+    }
+
+    const now = new Date();
+
+    const weekStart = new Date(now);
+    const day = weekStart.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+
+    weekStart.setDate(
+      weekStart.getDate() + diff,
+    );
+    weekStart.setHours(0, 0, 0, 0);
+
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(
+      weekEnd.getDate() + 7,
+    );
+
+    const assignment =
+      await CaptainShiftModel.findOne({
+        captainId,
+        shiftId: {
+          $exists: true,
+          $ne: null,
+        },
+        weekStart: {
+          $gte: weekStart,
+          $lt: weekEnd,
+        },
+      }).lean();
+
+    if (!assignment?.shiftId) {
+      return res.json({
+        assignment: null,
+        shift: null,
+      });
+    }
+
+    const shift =
+      await CaptainShiftModel.findById(
+        assignment.shiftId,
+      ).lean();
+
+    return res.json({
+      assignment: {
+        ...assignment,
+        shiftId: shift || assignment.shiftId,
+      },
+      shift: shift || null,
+    });
+  } catch (error: any) {
+    console.error(
+      "weeklyShiftAssignment error:",
+      error,
+    );
+
+    return res.status(500).json({
+      assignment: null,
+      shift: null,
+      message:
+        error?.message ||
+        "تعذر تحميل الاختيار الأسبوعي.",
+    });
+  }
+}
+
+export async function captainOnline(
+  req: Request,
+  res: Response
+) {
+  try {
+    const captainId =
+      String(req.params.captainId);
+
+    const online =
+      String(req.body.online) === "true";
+
+    if (online) {
+      assertWithinShift(
+        String(
+          req.body.start ||
+          "16:00"
+        ),
+        String(
+          req.body.end ||
+          "00:00"
+        )
+      );
+    }
+
+    const captain =
+      await setCaptainOnline(
+        captainId,
+        online
+      );
+
+    res.json({
+      success: true,
+      captain,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function captainCapacity(
+  req: Request,
+  res: Response
+) {
+  try {
+    const settings =
+      await DispatchSettingsModel.findOne()
+        .select("maxActiveOrdersPerCaptain")
+        .lean();
+
+    const maxActiveOrders =
+      Number(settings?.maxActiveOrdersPerCaptain) > 0
+        ? Number(settings?.maxActiveOrdersPerCaptain)
+        : 3;
+
+    const result =
+      await assertCaptainCapacity(
+        String(req.params.captainId),
+        maxActiveOrders
+      );
+
+    res.json({
+      success: true,
+      ...result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function attendanceIn(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await clockIn(
+        String(req.params.captainId),
+      );
+
+    res.json({
+      success: true,
+      attendance: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function attendanceOut(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await clockOut(
+        String(req.params.captainId)
+      );
+
+    res.json({
+      success: true,
+      attendance: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function orderEvent(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await saveOrderEvent(
+        String(req.params.orderId),
+        String(req.body.event),
+        {
+          status: req.body.status,
+          actorId: actor(req),
+          captainId:
+            req.body.captainId ||
+            null,
+          note:
+            req.body.note ||
+            null,
+          metadata:
+            req.body.metadata ||
+            {},
+        }
+      );
+
+    res.status(201).json({
+      success: true,
+      event: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function orderTimeline(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await getTimeline(
+        String(req.params.orderId)
+      );
+
+    res.json({
+      success: true,
+      timeline: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function cash(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await saveCash(
+        String(req.params.captainId),
+        String(req.params.orderId),
+        Number(
+          req.body.paidEstablishment ||
+          0
+        ),
+        Number(
+          req.body.collectedCustomer ||
+          0
+        )
+      );
+
+    res.status(201).json({
+      success: true,
+      transactions: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function cashStatement(
+  req: Request,
+  res: Response
+) {
+  try {
+    const start =
+      req.query.start
+        ? new Date(
+            String(req.query.start)
+          )
+        : undefined;
+
+    const end =
+      req.query.end
+        ? new Date(
+            String(req.query.end)
+          )
+        : undefined;
+
+    const result =
+      await getCashStatement(
+        String(req.params.captainId),
+        start,
+        end
+      );
+
+    res.json({
+      success: true,
+      statement: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function rating(
+  req: Request,
+  res: Response
+) {
+  try {
+    const authenticatedUser = (req as any).user;
+
+    if (!authenticatedUser) {
+      return res.status(401).json({
+        success: false,
+        error: "AUTHENTICATION_REQUIRED",
+      });
+    }
+
+    if (authenticatedUser.role !== "shop") {
+      return res.status(403).json({
+        success: false,
+        error: "ONLY_ESTABLISHMENT_CAN_RATE",
+      });
+    }
+
+    const orderId = String(req.params.orderId);
+    const captainId = String(req.body.captainId);
+    const establishmentId = String(req.body.establishmentId);
+    const stars = Number(req.body.stars);
+    const review =
+      typeof req.body.review === "string"
+        ? req.body.review
+        : undefined;
+
+    if (
+      !Types.ObjectId.isValid(orderId) ||
+      !Types.ObjectId.isValid(captainId) ||
+      !Types.ObjectId.isValid(establishmentId)
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_RATING_IDS",
+      });
+    }
+
+    if (
+      !Number.isInteger(stars) ||
+      stars < 1 ||
+      stars > 5
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "INVALID_RATING",
+      });
+    }
+
+    const order = await OrderModel.findById(orderId).lean();
+
+    if (!order) {
+      return res.status(404).json({
+        success: false,
+        error: "ORDER_NOT_FOUND",
+      });
+    }
+
+    if (
+      order.status !== "delivered" &&
+      order.status !== "completed"
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "ORDER_NOT_FINISHED",
+      });
+    }
+
+    if (!order.establishmentId) {
+      return res.status(400).json({
+        success: false,
+        error: "ORDER_ESTABLISHMENT_MISSING",
+      });
+    }
+
+    if (
+      String(order.establishmentId) !== establishmentId
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "ESTABLISHMENT_NOT_ORDER_OWNER",
+      });
+    }
+
+    if (
+      !order.captainId ||
+      String(order.captainId) !== captainId
+    ) {
+      return res.status(400).json({
+        success: false,
+        error: "CAPTAIN_NOT_ASSIGNED_TO_ORDER",
+      });
+    }
+
+    const establishment =
+      await EstablishmentModel.findById(
+        establishmentId
+      )
+        .select("ownerUserId")
+        .lean();
+
+    if (!establishment) {
+      return res.status(404).json({
+        success: false,
+        error: "ESTABLISHMENT_NOT_FOUND",
+      });
+    }
+
+    if (
+      !establishment.ownerUserId ||
+      String(establishment.ownerUserId) !==
+        String(authenticatedUser.sub)
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "ESTABLISHMENT_ACCESS_DENIED",
+      });
+    }
+
+    const result =
+      await rateCaptain(
+        orderId,
+        captainId,
+        establishmentId,
+        stars,
+        review
+      );
+
+    res.status(201).json({
+      success: true,
+      rating: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function ratingSummary(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await captainRating(
+        String(req.params.captainId)
+      );
+
+    res.json({
+      success: true,
+      rating: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function kpi(
+  req: Request,
+  res: Response
+) {
+  try {
+    const end = req.query.end
+      ? new Date(
+          String(req.query.end)
+        )
+      : new Date();
+
+    const start = req.query.start
+      ? new Date(
+          String(req.query.start)
+        )
+      : new Date(
+          end.getTime() -
+          30 * 24 * 60 * 60 * 1000
+        );
+
+    const result =
+      await getCaptainKpi(
+        String(req.params.captainId),
+        start,
+        end
+      );
+
+    res.json({
+      success: true,
+      period: {
+        start,
+        end,
+      },
+      kpi: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function establishmentReport(
+  req: Request,
+  res: Response
+) {
+  try {
+    const authenticatedUser =
+      (req as any).user;
+
+    if (!authenticatedUser) {
+      return res.status(401).json({
+        success: false,
+        error: "AUTHENTICATION_REQUIRED",
+      });
+    }
+
+    if (authenticatedUser.role !== "shop") {
+      return res.status(403).json({
+        success: false,
+        error: "ONLY_ESTABLISHMENT_CAN_VIEW_REPORT",
+      });
+    }
+
+    const establishmentId =
+      String(req.params.establishmentId);
+
+    const establishment =
+      await EstablishmentModel.findById(
+        establishmentId
+      ).select("ownerUserId");
+
+    if (!establishment) {
+      return res.status(404).json({
+        success: false,
+        error: "ESTABLISHMENT_NOT_FOUND",
+      });
+    }
+
+    if (
+      !establishment.ownerUserId ||
+      String(establishment.ownerUserId) !==
+        String(authenticatedUser.sub)
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: "ESTABLISHMENT_ACCESS_DENIED",
+      });
+    }
+
+    const result =
+      await getEstablishmentReport(
+        String(
+          req.params.establishmentId
+        ),
+        req.query.start
+          ? new Date(
+              String(req.query.start)
+            )
+          : undefined,
+        req.query.end
+          ? new Date(
+              String(req.query.end)
+            )
+          : undefined
+      );
+
+    res.json({
+      success: true,
+      report: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function adminReport(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await getAdminReport({
+        governorateId:
+          req.query.governorateId
+            ? String(
+                req.query.governorateId
+              )
+            : undefined,
+        areaId:
+          req.query.areaId
+            ? String(
+                req.query.areaId
+              )
+            : undefined,
+        establishmentId:
+          req.query.establishmentId
+            ? String(
+                req.query.establishmentId
+              )
+            : undefined,
+        establishmentType:
+          req.query.establishmentType ===
+          "restaurant" ||
+          req.query.establishmentType ===
+          "shop"
+            ? (String(
+                req.query.establishmentType
+              ) as "restaurant" | "shop")
+            : undefined,
+        captainId:
+          req.query.captainId
+            ? String(
+                req.query.captainId
+              )
+            : undefined,
+        status:
+          req.query.status
+            ? String(
+                req.query.status
+              )
+            : undefined,
+        start:
+          req.query.start
+            ? new Date(
+                String(
+                  req.query.start
+                )
+              )
+            : undefined,
+        end:
+          req.query.end
+            ? new Date(
+                String(
+                  req.query.end
+                )
+              )
+            : undefined,
+      });
+
+    res.json({
+      success: true,
+      report: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function dashboard(
+  _req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await getOperationsDashboard();
+
+    res.json({
+      success: true,
+      dashboard: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function workAreas(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await getCaptainWorkAreas(
+        String(req.params.captainId)
+      );
+
+    const workAreas = [];
+
+    for (const item of result) {
+      const location =
+        await LocationModel.findById(
+          item.governorateId
+        ).lean();
+
+      const area = location?.areas?.find(
+        (area: any) =>
+          String(area._id) ===
+          String(item.areaId)
+      );
+
+      workAreas.push({
+        ...item,
+        governorateName:
+          location?.name ?? null,
+        areaName:
+          area?.name ?? null,
+        governorateActive:
+          location?.isActive ?? false,
+        captainsEnabled:
+          location?.captainsEnabled ?? false,
+        areaActive:
+          area?.isActive ?? false,
+        areaCaptainsEnabled:
+          area?.captainsEnabled ?? false,
+      });
+    }
+
+    res.json({
+      success: true,
+      workAreas,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function complaint(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await createComplaint({
+        ...req.body,
+        openedBy: actor(req),
+      });
+
+    res.status(201).json({
+      success: true,
+      complaint: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}
+
+export async function complaintDetails(
+  req: Request,
+  res: Response
+) {
+  try {
+    const result =
+      await getComplaint(
+        String(req.params.id)
+      );
+
+    if (!result) {
+      return res.status(404).json({
+        success: false,
+        error: "COMPLAINT_NOT_FOUND",
+      });
+    }
+
+    res.json({
+      success: true,
+      complaint: result,
+    });
+  } catch (e) {
+    return error(res, e);
+  }
+}

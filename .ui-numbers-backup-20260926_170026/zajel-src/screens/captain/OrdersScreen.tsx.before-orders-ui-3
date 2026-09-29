@@ -1,0 +1,1867 @@
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+
+import Screen from "../../components/Screen";
+import LoadingState from "../../components/LoadingState";
+import OrderStatusBadge from "../../components/OrderStatusBadge";
+import { useAppTheme } from "../../theme/useAppTheme";
+import {
+  getOrder,
+  getOrders,
+} from "../../api/orders";
+
+const HISTORY_STATUSES = [
+  "delivered",
+  "completed",
+  "rejected",
+] as const;
+
+const HISTORY_PAGE_SIZE = 7;
+
+function getOrderId(order: any): string {
+  return String(order?._id || order?.id || "");
+}
+
+function getCustomerName(order: any): string {
+  return (
+    order?.customerSnapshot?.name ||
+    order?.customerSnapshot?.fullName ||
+    order?.customer?.name ||
+    order?.customer?.fullName ||
+    order?.customerName ||
+    "—"
+  );
+}
+
+function getCustomerPhone(order: any): string {
+  return (
+    order?.customerSnapshot?.phone ||
+    order?.customer?.phone ||
+    order?.customerPhone ||
+    "—"
+  );
+}
+
+function getCustomerAddress(order: any): string {
+  return (
+    order?.customerSnapshot?.address ||
+    order?.address?.address ||
+    order?.addressId?.address ||
+    order?.deliveryAddress ||
+    "—"
+  );
+}
+
+function getRestaurantName(order: any): string {
+  return (
+    order?.establishmentId?.name ||
+    order?.establishment?.name ||
+    order?.establishmentName ||
+    "—"
+  );
+}
+
+function getRestaurantAddress(order: any): string {
+  return (
+    order?.establishmentId?.address ||
+    order?.establishment?.address ||
+    order?.establishmentAddress ||
+    "—"
+  );
+}
+
+function getOrderDate(order: any): string {
+  return (
+    order?.createdAt ||
+    order?.updatedAt ||
+    null
+  );
+}
+
+function getDeliveryDate(order: any): string {
+  return (
+    order?.completedAt ||
+    order?.deliveredAt ||
+    order?.updatedAt ||
+    null
+  );
+}
+
+function formatDateTime(value: any): string {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "—";
+  }
+
+  return `${date.toLocaleDateString("ar-IQ", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  })} - ${date.toLocaleTimeString("ar-IQ", {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`;
+}
+
+function getHistoryStatus(status: string): {
+  label: string;
+  color: string;
+  background: string;
+  icon: keyof typeof Ionicons.glyphMap;
+} {
+  if (
+    status === "delivered" ||
+    status === "completed"
+  ) {
+    return {
+      label: "مكتمل",
+      color: "#16A34A",
+      background: "#DCFCE7",
+      icon: "checkmark-circle",
+    };
+  }
+
+  return {
+    label: "مرفوض",
+    color: "#DC2626",
+    background: "#FEE2E2",
+    icon: "close-circle",
+  };
+}
+
+function extractOrders(response: any): any[] {
+  const list = Array.isArray(response)
+    ? response
+    : response?.orders ||
+      response?.items ||
+      response?.data ||
+      [];
+
+  return Array.isArray(list) ? list : [];
+}
+
+function sortNewestFirst(list: any[]): any[] {
+  return [...list].sort((a, b) => {
+    const aTime = new Date(
+      a?.createdAt ||
+        a?.updatedAt ||
+        0,
+    ).getTime();
+
+    const bTime = new Date(
+      b?.createdAt ||
+        b?.updatedAt ||
+        0,
+    ).getTime();
+
+    return bTime - aTime;
+  });
+}
+
+function getPageNumbers(
+  currentPage: number,
+  totalPages: number,
+): Array<number | "..."> {
+  if (totalPages <= 7) {
+    return Array.from(
+      { length: totalPages },
+      (_, index) => index + 1,
+    );
+  }
+
+  const pages: Array<number | "..."> = [1];
+
+  if (currentPage > 4) {
+    pages.push("...");
+  }
+
+  const start = Math.max(
+    2,
+    currentPage - 1,
+  );
+
+  const end = Math.min(
+    totalPages - 1,
+    currentPage + 1,
+  );
+
+  for (let page = start; page <= end; page += 1) {
+    pages.push(page);
+  }
+
+  if (currentPage < totalPages - 3) {
+    pages.push("...");
+  }
+
+  pages.push(totalPages);
+
+  return pages;
+}
+
+export default function CaptainOrdersScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const navigation = useNavigation<any>();
+
+  const [orders, setOrders] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const [historyPage, setHistoryPage] =
+    useState(1);
+
+  const [expandedOrderId, setExpandedOrderId] =
+    useState<string | null>(null);
+
+  const [detailsById, setDetailsById] =
+    useState<Record<string, any>>({});
+
+  const [detailsLoadingId, setDetailsLoadingId] =
+    useState<string | null>(null);
+
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) {
+        setLoading(true);
+      }
+
+      try {
+        const response = await getOrders();
+
+        const list = sortNewestFirst(
+          extractOrders(response),
+        );
+
+        setOrders(list);
+      } catch {
+        // لا نكسر الشاشة عند فشل التحديث.
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    load();
+
+    const timer = setInterval(() => {
+      load(true);
+    }, 15000);
+
+    return () => clearInterval(timer);
+  }, [load]);
+
+  const activeOrders = useMemo(
+    () =>
+      orders.filter((order) =>
+        [
+          "pending",
+          "confirmed",
+          "preparing",
+          "ready_for_pickup",
+          "assigned",
+          "heading_to_shop",
+          "arrived_at_shop",
+          "picked_up",
+          "on_the_way",
+        ].includes(order?.status),
+      ),
+    [orders],
+  );
+
+  const historyOrders = useMemo(
+    () =>
+      orders.filter((order) =>
+        HISTORY_STATUSES.includes(
+          order?.status,
+        ),
+      ),
+    [orders],
+  );
+
+  const historyTotalPages = Math.max(
+    1,
+    Math.ceil(
+      historyOrders.length /
+        HISTORY_PAGE_SIZE,
+    ),
+  );
+
+  const safeHistoryPage = Math.min(
+    historyPage,
+    historyTotalPages,
+  );
+
+  const paginatedHistory = useMemo(() => {
+    const start =
+      (safeHistoryPage - 1) *
+      HISTORY_PAGE_SIZE;
+
+    return historyOrders.slice(
+      start,
+      start + HISTORY_PAGE_SIZE,
+    );
+  }, [
+    historyOrders,
+    safeHistoryPage,
+  ]);
+
+  const stats = useMemo(() => {
+    const completed = historyOrders.filter(
+      (order) =>
+        order?.status === "completed" ||
+        order?.status === "delivered",
+    ).length;
+
+    const rejected = historyOrders.filter(
+      (order) =>
+        order?.status === "rejected",
+    ).length;
+
+    return {
+      total: orders.length,
+      active: activeOrders.length,
+      completed,
+      rejected,
+    };
+  }, [
+    activeOrders.length,
+    historyOrders,
+    orders.length,
+  ]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    load(true);
+  };
+
+  async function toggleHistoryDetails(
+    orderId: string,
+  ) {
+    if (!orderId) return;
+
+    if (expandedOrderId === orderId) {
+      setExpandedOrderId(null);
+      return;
+    }
+
+    setExpandedOrderId(orderId);
+
+    if (detailsById[orderId]) {
+      return;
+    }
+
+    try {
+      setDetailsLoadingId(orderId);
+
+      const freshOrder =
+        await getOrder(orderId);
+
+      setDetailsById((current) => ({
+        ...current,
+        [orderId]:
+          freshOrder?.order ||
+          freshOrder?.data ||
+          freshOrder,
+      }));
+    } catch {
+      // نحتفظ ببيانات القائمة إذا تعذر تحميل التفاصيل.
+    } finally {
+      setDetailsLoadingId(null);
+    }
+  }
+
+  function renderActiveOrder(order: any) {
+    const orderId = getOrderId(order);
+
+    return (
+      <View
+        key={orderId}
+        style={styles.activeCard}
+      >
+        <View style={styles.historyRow}>
+          <View style={styles.historyMain}>
+            <View style={styles.orderIcon}>
+              <Ionicons
+                name="bicycle-outline"
+                size={20}
+                color={
+                  appTheme.primaryColor
+                }
+              />
+            </View>
+
+            <View style={styles.historyTexts}>
+              <Text
+                style={styles.orderNumber}
+                numberOfLines={1}
+              >
+                #{order?.orderNumber ||
+                  orderId ||
+                  "—"}
+              </Text>
+
+              <Text
+                style={styles.dateText}
+                numberOfLines={1}
+              >
+                {formatDateTime(
+                  getOrderDate(order),
+                )}
+              </Text>
+            </View>
+          </View>
+
+          <OrderStatusBadge
+            status={order?.status}
+          />
+        </View>
+
+        <View style={styles.activeMetaRow}>
+          <View style={styles.activeMetaItem}>
+            <Ionicons
+              name="person-outline"
+              size={16}
+              color={
+                appTheme.secondaryTextColor
+              }
+            />
+
+            <Text
+              style={styles.activeMetaText}
+              numberOfLines={1}
+            >
+              {getCustomerName(order)}
+            </Text>
+          </View>
+
+          <View style={styles.activeMetaItem}>
+            <Ionicons
+              name="cash-outline"
+              size={16}
+              color={
+                appTheme.secondaryTextColor
+              }
+            />
+
+            <Text
+              style={styles.activeMetaText}
+              numberOfLines={1}
+            >
+              {order?.total ??
+                order?.subtotal ??
+                0}{" "}
+              د.ع
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.86}
+          style={styles.primaryOutlineButton}
+          onPress={() =>
+            navigation.navigate(
+              "OrderDetails",
+              { orderId },
+            )
+          }
+        >
+          <Ionicons
+            name="open-outline"
+            size={17}
+            color={
+              appTheme.primaryColor
+            }
+          />
+
+          <Text
+            style={styles.primaryOutlineButtonText}
+          >
+            عرض تفاصيل الطلب
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  function renderHistoryOrder(order: any) {
+    const orderId = getOrderId(order);
+    const isExpanded =
+      expandedOrderId === orderId;
+
+    const details =
+      detailsById[orderId] || order;
+
+    const historyStatus =
+      getHistoryStatus(
+        order?.status,
+      );
+
+    return (
+      <View
+        key={orderId}
+        style={styles.historyCard}
+      >
+        <View style={styles.historyRow}>
+          <View style={styles.historyMain}>
+            <View
+              style={[
+                styles.orderIcon,
+                {
+                  backgroundColor:
+                    historyStatus.background,
+                },
+              ]}
+            >
+              <Ionicons
+                name="receipt-outline"
+                size={19}
+                color={
+                  historyStatus.color
+                }
+              />
+            </View>
+
+            <View style={styles.historyTexts}>
+              <Text
+                style={styles.orderNumber}
+                numberOfLines={1}
+              >
+                #{order?.orderNumber ||
+                  orderId ||
+                  "—"}
+              </Text>
+
+              <Text
+                style={styles.dateText}
+                numberOfLines={1}
+              >
+                {formatDateTime(
+                  getOrderDate(order),
+                )}
+              </Text>
+            </View>
+          </View>
+
+          <View
+            style={[
+              styles.statusPill,
+              {
+                backgroundColor:
+                  historyStatus.background,
+              },
+            ]}
+          >
+            <Ionicons
+              name={historyStatus.icon}
+              size={16}
+              color={
+                historyStatus.color
+              }
+            />
+
+            <Text
+              style={[
+                styles.statusPillText,
+                {
+                  color:
+                    historyStatus.color,
+                },
+              ]}
+            >
+              {historyStatus.label}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.historySummary}>
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>
+              الزبون
+            </Text>
+
+            <Text
+              style={styles.summaryValue}
+              numberOfLines={1}
+            >
+              {getCustomerName(order)}
+            </Text>
+          </View>
+
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>
+              الإجمالي
+            </Text>
+
+            <Text style={styles.summaryMoney}>
+              {order?.total ??
+                order?.subtotal ??
+                0}{" "}
+              د.ع
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          activeOpacity={0.86}
+          style={styles.detailsButton}
+          onPress={() =>
+            toggleHistoryDetails(orderId)
+          }
+        >
+          {detailsLoadingId ===
+          orderId ? (
+            <ActivityIndicator
+              size="small"
+              color={
+                appTheme.primaryColor
+              }
+            />
+          ) : (
+            <Ionicons
+              name={
+                isExpanded
+                  ? "chevron-up-outline"
+                  : "chevron-down-outline"
+              }
+              size={17}
+              color={
+                appTheme.primaryColor
+              }
+            />
+          )}
+
+          <Text
+            style={styles.detailsButtonText}
+          >
+            {isExpanded
+              ? "إخفاء التفاصيل"
+              : "عرض تفاصيل الطلب"}
+          </Text>
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={styles.detailsPanel}>
+            <DetailRow
+              icon="storefront-outline"
+              label="المطعم / المحل"
+              value={getRestaurantName(
+                details,
+              )}
+            />
+
+            <DetailRow
+              icon="person-outline"
+              label="اسم الزبون"
+              value={getCustomerName(
+                details,
+              )}
+            />
+
+            <DetailRow
+              icon="call-outline"
+              label="هاتف الزبون"
+              value={getCustomerPhone(
+                details,
+              )}
+            />
+
+            <DetailRow
+              icon="location-outline"
+              label="عنوان التوصيل"
+              value={getCustomerAddress(
+                details,
+              )}
+            />
+
+            <DetailRow
+              icon="navigate-outline"
+              label="عنوان المطعم / المحل"
+              value={getRestaurantAddress(
+                details,
+              )}
+            />
+
+            <DetailRow
+              icon="calendar-outline"
+              label="تاريخ الطلب"
+              value={formatDateTime(
+                getOrderDate(details),
+              )}
+            />
+
+            <DetailRow
+              icon="checkmark-done-outline"
+              label="تاريخ التوصيل"
+              value={formatDateTime(
+                getDeliveryDate(details),
+              )}
+            />
+
+            <DetailRow
+              icon="wallet-outline"
+              label="الإجمالي"
+              value={`${details?.total ?? details?.subtotal ?? 0} د.ع`}
+              money
+            />
+
+            {Number(
+              details?.deliveryFee ?? 0,
+            ) > 0 && (
+              <DetailRow
+                icon="bicycle-outline"
+                label="أجرة التوصيل"
+                value={`${details?.deliveryFee ?? 0} د.ع`}
+              />
+            )}
+
+            {details?.customerNote && (
+              <DetailRow
+                icon="chatbubble-ellipses-outline"
+                label="ملاحظات الزبون"
+                value={
+                  details.customerNote
+                }
+              />
+            )}
+
+            {Array.isArray(
+              details?.items,
+            ) &&
+              details.items.length >
+                0 && (
+                <View
+                  style={
+                    styles.itemsSection
+                  }
+                >
+                  <View
+                    style={
+                      styles.detailTitleRow
+                    }
+                  >
+                    <Ionicons
+                      name="list-outline"
+                      size={17}
+                      color={
+                        appTheme.primaryColor
+                      }
+                    />
+
+                    <Text
+                      style={
+                        styles.detailTitle
+                      }
+                    >
+                      المنتجات
+                    </Text>
+                  </View>
+
+                  {details.items
+                    .slice(0, 5)
+                    .map(
+                      (
+                        item: any,
+                        index: number,
+                      ) => (
+                        <View
+                          key={`${item?.productId || item?.name || "item"}-${index}`}
+                          style={
+                            styles.productRow
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.productName
+                            }
+                            numberOfLines={
+                              2
+                            }
+                          >
+                            {item?.name ||
+                              "منتج"}
+                          </Text>
+
+                          <Text
+                            style={
+                              styles.productQuantity
+                            }
+                          >
+                            ×
+                            {item?.quantity ??
+                              1}
+                          </Text>
+
+                          <Text
+                            style={
+                              styles.productPrice
+                            }
+                          >
+                            {item?.totalPrice ??
+                              item?.unitPrice ??
+                              0}{" "}
+                            د.ع
+                          </Text>
+                        </View>
+                      ),
+                    )}
+                </View>
+              )}
+
+            {details?.cancellationReason && (
+              <DetailRow
+                icon="information-circle-outline"
+                label="سبب الرفض / الإلغاء"
+                value={
+                  details.cancellationReason
+                }
+                danger
+              />
+            )}
+          </View>
+        )}
+      </View>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Screen>
+        <LoadingState message="جاري تحميل الطلبات..." />
+      </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <ScrollView
+        showsVerticalScrollIndicator={
+          false
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={
+              appTheme.primaryColor
+            }
+            colors={[
+              appTheme.primaryColor,
+            ]}
+          />
+        }
+        contentContainerStyle={
+          styles.container
+        }
+      >
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons
+              name="receipt-outline"
+              size={24}
+              color={
+                appTheme.primaryColor
+              }
+            />
+          </View>
+
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>
+              زاجل ديلفري
+            </Text>
+
+            <Text style={styles.title}>
+              الطلبات
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.stats}>
+          <Stat
+            icon="layers-outline"
+            label="كل الطلبات"
+            value={stats.total}
+            appTheme={appTheme}
+          />
+
+          <Stat
+            icon="bicycle-outline"
+            label="النشطة"
+            value={stats.active}
+            appTheme={appTheme}
+          />
+
+          <Stat
+            icon="checkmark-circle-outline"
+            label="المكتملة"
+            value={stats.completed}
+            appTheme={appTheme}
+          />
+
+          <Stat
+            icon="close-circle-outline"
+            label="المرفوضة"
+            value={stats.rejected}
+            appTheme={appTheme}
+          />
+        </View>
+
+        {activeOrders.length > 0 && (
+          <>
+            <View
+              style={styles.sectionHeader}
+            >
+              <View>
+                <Text
+                  style={
+                    styles.sectionTitle
+                  }
+                >
+                  الطلبات الحالية
+                </Text>
+
+                <Text
+                  style={
+                    styles.sectionSubtitle
+                  }
+                >
+                  الطلبات التي ما زالت قيد التنفيذ
+                </Text>
+              </View>
+
+              <View
+                style={
+                  styles.sectionCount
+                }
+              >
+                <Text
+                  style={
+                    styles.sectionCountText
+                  }
+                >
+                  {activeOrders.length}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.sectionList}>
+              {activeOrders.map(
+                renderActiveOrder,
+              )}
+            </View>
+          </>
+        )}
+
+        <View
+          style={[
+            styles.sectionHeader,
+            {
+              marginTop:
+                activeOrders.length >
+                0
+                  ? 24
+                  : 6,
+            },
+          ]}
+        >
+          <View style={styles.sectionHeaderText}>
+            <Text style={styles.sectionTitle}>
+              تاريخ الطلبات
+            </Text>
+
+            <Text
+              style={styles.sectionSubtitle}
+            >
+              الطلبات المكتملة والمرفوضة
+            </Text>
+          </View>
+
+          <View style={styles.historyTotalBadge}>
+            <Text
+              style={
+                styles.historyTotalBadgeText
+              }
+            >
+              {historyOrders.length}
+            </Text>
+          </View>
+        </View>
+
+        {historyOrders.length === 0 ? (
+          <View style={styles.empty}>
+            <View
+              style={styles.emptyIcon}
+            >
+              <Ionicons
+                name="time-outline"
+                size={40}
+                color={
+                  appTheme.primaryColor
+                }
+              />
+            </View>
+
+            <Text style={styles.emptyTitle}>
+              لا يوجد تاريخ طلبات حتى الآن
+            </Text>
+
+            <Text
+              style={styles.emptyText}
+            >
+              ستظهر هنا الطلبات المكتملة والمرفوضة تلقائيًا.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={styles.sectionList}>
+              {paginatedHistory.map(
+                renderHistoryOrder,
+              )}
+            </View>
+
+            {historyTotalPages > 1 && (
+              <View
+                style={styles.paginationBox}
+              >
+                <TouchableOpacity
+                  disabled={
+                    safeHistoryPage === 1
+                  }
+                  onPress={() =>
+                    setHistoryPage(
+                      (page) =>
+                        Math.max(
+                          1,
+                          page - 1,
+                        ),
+                    )
+                  }
+                  style={[
+                    styles.pageArrow,
+                    safeHistoryPage ===
+                      1 &&
+                      styles.pageDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name="chevron-back"
+                    size={18}
+                    color={
+                      safeHistoryPage ===
+                      1
+                        ? "#B8B0A8"
+                        : appTheme.primaryColor
+                    }
+                  />
+                </TouchableOpacity>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={
+                    false
+                  }
+                  contentContainerStyle={
+                    styles.pagination
+                  }
+                >
+                  {getPageNumbers(
+                    safeHistoryPage,
+                    historyTotalPages,
+                  ).map(
+                    (
+                      page,
+                      index,
+                    ) =>
+                      page ===
+                      "..." ? (
+                        <View
+                          key={`dots-${index}`}
+                          style={
+                            styles.dots
+                          }
+                        >
+                          <Text
+                            style={
+                              styles.dotsText
+                            }
+                          >
+                            …
+                          </Text>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          key={page}
+                          activeOpacity={
+                            0.84
+                          }
+                          onPress={() =>
+                            setHistoryPage(
+                              page,
+                            )
+                          }
+                          style={[
+                            styles.pageButton,
+                            page ===
+                              safeHistoryPage &&
+                              styles.pageButtonActive,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.pageButtonText,
+                              page ===
+                                safeHistoryPage &&
+                                styles.pageButtonTextActive,
+                            ]}
+                          >
+                            {page}
+                          </Text>
+                        </TouchableOpacity>
+                      ),
+                  )}
+                </ScrollView>
+
+                <TouchableOpacity
+                  disabled={
+                    safeHistoryPage ===
+                    historyTotalPages
+                  }
+                  onPress={() =>
+                    setHistoryPage(
+                      (page) =>
+                        Math.min(
+                          historyTotalPages,
+                          page + 1,
+                        ),
+                    )
+                  }
+                  style={[
+                    styles.pageArrow,
+                    safeHistoryPage ===
+                      historyTotalPages &&
+                      styles.pageDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={
+                      safeHistoryPage ===
+                      historyTotalPages
+                        ? "#B8B0A8"
+                        : appTheme.primaryColor
+                    }
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Text
+              style={styles.paginationHint}
+            >
+              الصفحة {safeHistoryPage} من{" "}
+              {historyTotalPages}
+            </Text>
+          </>
+        )}
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function DetailRow({
+  icon,
+  label,
+  value,
+  money,
+  danger,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  money?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <View style={stylesStatic.detailRow}>
+      <View style={stylesStatic.detailIcon}>
+        <Ionicons
+          name={icon}
+          size={17}
+          color={
+            danger
+              ? "#DC2626"
+              : "#7A5A3A"
+          }
+        />
+      </View>
+
+      <View style={stylesStatic.detailContent}>
+        <Text
+          style={
+            stylesStatic.detailLabel
+          }
+        >
+          {label}
+        </Text>
+
+        <Text
+          style={[
+            stylesStatic.detailValue,
+            money &&
+              stylesStatic.detailMoney,
+            danger &&
+              stylesStatic.detailDanger,
+          ]}
+        >
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function Stat({
+  icon,
+  label,
+  value,
+  appTheme,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: number;
+  appTheme: ReturnType<typeof useAppTheme>;
+}) {
+  const styles = createStyles(appTheme);
+
+  return (
+    <View style={styles.stat}>
+      <View style={styles.statIcon}>
+        <Ionicons
+          name={icon}
+          size={17}
+          color={appTheme.primaryColor}
+        />
+      </View>
+
+      <Text style={styles.statValue}>
+        {value}
+      </Text>
+
+      <Text style={styles.statLabel}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+const stylesStatic = StyleSheet.create({
+  detailRow: {
+    flexDirection: "row-reverse",
+    alignItems: "flex-start",
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F1E8DF",
+  },
+
+  detailIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#F7EFE7",
+    marginLeft: 10,
+  },
+
+  detailContent: {
+    flex: 1,
+    alignItems: "flex-end",
+  },
+
+  detailLabel: {
+    color: "#8D8175",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  detailValue: {
+    marginTop: 3,
+    color: "#21170F",
+    fontSize: 13,
+    lineHeight: 19,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  detailMoney: {
+    color: "#0F766E",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  detailDanger: {
+    color: "#DC2626",
+  },
+});
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>,
+) =>
+  StyleSheet.create({
+
+    container: {
+paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 30,
+    },
+
+
+    header: {
+marginBottom: 16,
+        paddingHorizontal: 2,
+    },
+
+    headerIcon: {
+      width: 48,
+      height: 48,
+      borderRadius: 16,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor:
+        appTheme.primaryColor + "14",
+      marginLeft: 12,
+    },
+
+    headerText: {
+      flex: 1,
+    },
+
+    eyebrow: {
+      color: appTheme.primaryColor,
+      fontSize: 11,
+      fontWeight: "800",
+      textAlign: "right",
+      marginBottom: 2,
+    },
+
+    title: {
+      color: appTheme.textColor,
+      fontSize: 28,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    stats: {
+      flexDirection: "row-reverse",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 22,
+    },
+
+    stat: {
+      flex: 1,
+      minWidth: "22%",
+      minHeight: 98,
+      padding: 10,
+      borderRadius: 18,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      backgroundColor:
+        appTheme.cardColor,
+      alignItems: "flex-end",
+    },
+
+    statIcon: {
+      width: 31,
+      height: 31,
+      borderRadius: 11,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor:
+        appTheme.primaryColor + "12",
+    },
+
+    statValue: {
+      marginTop: 6,
+      color: appTheme.textColor,
+      fontSize: 21,
+      fontWeight: "900",
+    },
+
+    statLabel: {
+      marginTop: 1,
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "700",
+    },
+
+    sectionHeader: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 12,
+    },
+
+    sectionHeaderText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    sectionTitle: {
+      color: appTheme.textColor,
+      fontSize: 19,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+
+    sectionSubtitle: {
+      marginTop: 3,
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "600",
+      textAlign: "right",
+    },
+
+    sectionCount: {
+      minWidth: 36,
+      height: 36,
+      paddingHorizontal: 10,
+      borderRadius: 13,
+      backgroundColor:
+        appTheme.primaryColor + "12",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 10,
+    },
+
+    sectionCountText: {
+      color:
+        appTheme.primaryColor,
+      fontSize: 14,
+      fontWeight: "900",
+    },
+
+    historyTotalBadge: {
+      minWidth: 38,
+      height: 38,
+      paddingHorizontal: 10,
+      borderRadius: 14,
+      backgroundColor: "#F7EFE7",
+      alignItems: "center",
+      justifyContent: "center",
+      marginRight: 10,
+    },
+
+    historyTotalBadgeText: {
+      color: "#7A5A3A",
+      fontSize: 14,
+      fontWeight: "900",
+    },
+
+    sectionList: {
+      gap: 10,
+    },
+
+
+    activeCard: {
+backgroundColor: "#FFF9F1",
+        borderRadius: 22,
+        padding: 16,
+        marginBottom: 14,
+        borderWidth: 1,
+        borderColor: "#F3D9B7",
+        shadowColor: "#000",
+        shadowOpacity: 0.07,
+        shadowRadius: 10,
+        shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
+    },
+
+
+    historyCard: {
+backgroundColor: "#FFFFFF",
+        borderRadius: 20,
+        padding: 15,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: "#F0E4D8",
+        shadowColor: "#000",
+        shadowOpacity: 0.05,
+        shadowRadius: 9,
+        shadowOffset: { width: 0, height: 3 },
+        elevation: 2,
+    },
+
+
+    historyRow: {
+flexDirection: "row",
+        alignItems: "flex-start",
+        justifyContent: "space-between",
+        gap: 12,
+    },
+
+
+    historyMain: {
+flex: 1,
+        minWidth: 0,
+    },
+
+
+    orderIcon: {
+width: 44,
+        height: 44,
+        borderRadius: 14,
+        backgroundColor: "#FFF0DE",
+        alignItems: "center",
+        justifyContent: "center",
+        marginRight: 11,
+    },
+
+
+    historyTexts: {
+flex: 1,
+        minWidth: 0,
+    },
+
+
+    orderNumber: {
+fontSize: 16,
+        fontWeight: "800",
+        color: "#2F241C",
+        marginBottom: 4,
+    },
+
+    dateText: {
+      marginTop: 3,
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "600",
+      textAlign: "right",
+    },
+
+
+    statusPill: {
+alignSelf: "flex-start",
+        borderRadius: 999,
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        marginTop: 3,
+    },
+
+
+    statusPillText: {
+fontSize: 11,
+        fontWeight: "800",
+    },
+
+
+    historySummary: {
+marginTop: 13,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: "#F3E9DE",
+    },
+
+    summaryItem: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+
+    summaryLabel: {
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "700",
+    },
+
+    summaryValue: {
+      marginTop: 4,
+      color: appTheme.textColor,
+      fontSize: 12,
+      fontWeight: "800",
+      maxWidth: "100%",
+      textAlign: "right",
+    },
+
+    summaryMoney: {
+      marginTop: 4,
+      color: appTheme.primaryDarkColor,
+      fontSize: 13,
+      fontWeight: "900",
+    },
+
+    activeMetaRow: {
+      flexDirection: "row-reverse",
+      gap: 12,
+      marginTop: 13,
+      paddingTop: 12,
+      borderTopWidth: 1,
+      borderTopColor:
+        appTheme.borderColor,
+    },
+
+    activeMetaItem: {
+      flex: 1,
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 5,
+      minWidth: 0,
+    },
+
+    activeMetaText: {
+      flex: 1,
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "700",
+      textAlign: "right",
+    },
+
+
+    primaryOutlineButton: {
+marginTop: 13,
+        minHeight: 44,
+        borderRadius: 14,
+        borderWidth: 1.5,
+        borderColor: "#F28C28",
+        backgroundColor: "#FFF7EC",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: 14,
+    },
+
+
+    primaryOutlineButtonText: {
+fontSize: 13,
+        fontWeight: "800",
+        color: "#D96F10",
+        marginLeft: 7,
+    },
+
+    detailsButton: {
+      marginTop: 13,
+      minHeight: 42,
+      borderRadius: 14,
+      backgroundColor: "#F8F3EE",
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 7,
+    },
+
+    detailsButtonText: {
+      color:
+        appTheme.primaryColor,
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    detailsPanel: {
+      marginTop: 11,
+      paddingHorizontal: 12,
+      paddingTop: 4,
+      paddingBottom: 8,
+      borderRadius: 16,
+      backgroundColor: "#FCF9F6",
+      borderWidth: 1,
+      borderColor: "#EFE3D7",
+    },
+
+    detailTitleRow: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 7,
+      marginTop: 10,
+      marginBottom: 7,
+    },
+
+    detailTitle: {
+      color:
+        appTheme.textColor,
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    itemsSection: {
+      paddingBottom: 5,
+    },
+
+    productRow: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      paddingVertical: 8,
+      borderTopWidth: 1,
+      borderTopColor: "#F1E8DF",
+      gap: 8,
+    },
+
+    productName: {
+      flex: 1,
+      color:
+        appTheme.textColor,
+      fontSize: 11,
+      fontWeight: "700",
+      textAlign: "right",
+    },
+
+    productQuantity: {
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 11,
+      fontWeight: "800",
+    },
+
+    productPrice: {
+      color:
+        appTheme.primaryDarkColor,
+      fontSize: 11,
+      fontWeight: "900",
+      minWidth: 76,
+      textAlign: "left",
+    },
+
+    paginationBox: {
+      marginTop: 18,
+      padding: 8,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor:
+        appTheme.borderColor,
+      backgroundColor:
+        appTheme.cardColor,
+      flexDirection: "row",
+      alignItems: "center",
+    },
+
+    pagination: {
+      flexGrow: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 6,
+    },
+
+    pageButton: {
+      width: 37,
+      height: 37,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#F7F2ED",
+    },
+
+    pageButtonActive: {
+      backgroundColor:
+        appTheme.primaryColor,
+    },
+
+    pageButtonText: {
+      color:
+        appTheme.textColor,
+      fontSize: 12,
+      fontWeight: "900",
+    },
+
+    pageButtonTextActive: {
+      color: "#FFFFFF",
+    },
+
+    pageArrow: {
+      width: 37,
+      height: 37,
+      borderRadius: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor: "#F7F2ED",
+    },
+
+    pageDisabled: {
+      opacity: 0.7,
+    },
+
+    dots: {
+      width: 25,
+      height: 37,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+
+    dotsText: {
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 18,
+      fontWeight: "900",
+    },
+
+    paginationHint: {
+      marginTop: 8,
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 10,
+      fontWeight: "700",
+      textAlign: "center",
+    },
+
+    empty: {
+      marginTop: 4,
+      minHeight: 210,
+      alignItems: "center",
+      justifyContent: "center",
+      paddingHorizontal: 30,
+      paddingVertical: 30,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor:
+        appTheme.borderColor,
+      backgroundColor:
+        appTheme.cardColor,
+    },
+
+    emptyIcon: {
+      width: 78,
+      height: 78,
+      borderRadius: 25,
+      alignItems: "center",
+      justifyContent: "center",
+      backgroundColor:
+        appTheme.primaryColor + "10",
+    },
+
+    emptyTitle: {
+      marginTop: 14,
+      color: appTheme.textColor,
+      fontSize: 16,
+      fontWeight: "900",
+      textAlign: "center",
+    },
+
+    emptyText: {
+      marginTop: 7,
+      color:
+        appTheme.secondaryTextColor,
+      fontSize: 12,
+      lineHeight: 19,
+      fontWeight: "600",
+      textAlign: "center",
+    },
+  });

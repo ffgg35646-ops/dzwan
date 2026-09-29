@@ -1,0 +1,55 @@
+import { useState } from "react";
+import { api } from "../lib/api";
+
+export default function CaptainRatings() {
+  const [captainId, setCaptainId] = useState("");
+  const [data, setData] = useState<any>(null);
+
+  async function load() {
+    if (!captainId) return;
+    const response = await api.get(
+      `/completion/ratings/${captainId}`,
+    );
+    setData(response.data);
+  }
+
+  return (
+    <div className="admin-page">
+      <h1>تقييمات الكابتن</h1>
+
+      <div className="admin-card">
+        <input
+          value={captainId}
+          onChange={(e) =>
+            setCaptainId(e.target.value)
+          }
+          placeholder="معرف الكابتن"
+        />
+
+        <button onClick={load}>
+          عرض التقييمات
+        </button>
+      </div>
+
+      {data && (
+        <>
+          <h2>
+            المتوسط: {data.average} / 5
+          </h2>
+
+          {data.ratings.map((rating: any) => (
+            <div
+              key={rating._id}
+              className="admin-card"
+            >
+              <strong>
+                {"★".repeat(rating.stars)}
+              </strong>
+              <p>{rating.comment || "بدون تعليق"}</p>
+            </div>
+          ))}
+        </>
+      )}
+    </div>
+  );
+}

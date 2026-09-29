@@ -1,0 +1,409 @@
+import React, { useState } from "react";
+import {
+  Alert,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import {
+  useNavigation,
+  useRoute,
+} from "@react-navigation/native";
+import { Ionicons } from "@expo/vector-icons";
+
+import Screen from "../../components/Screen";
+import AppButton from "../../components/AppButton";
+import AppInput from "../../components/AppInput";
+import PhotoPickerButton from "../../components/PhotoPickerButton";
+import { useAppTheme } from "../../theme/useAppTheme";
+import {
+  submitDeliveryOtp,
+  submitDeliveryPhoto,
+  completeDelivery,
+} from "../../api/captainOrder";
+
+export default function DeliveryProofScreen() {
+  const appTheme = useAppTheme();
+  const styles = createStyles(appTheme);
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+
+  const orderId = String(route.params?.orderId || "");
+
+  const [method, setMethod] = useState<"otp" | "photo">("otp");
+  const [otp, setOtp] = useState("");
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submitOtp() {
+    if (!orderId) {
+      Alert.alert("طلب غير صالح", "تعذر تحديد رقم الطلب.");
+      return;
+    }
+
+    if (!otp.trim()) {
+      Alert.alert("رمز التسليم", "أدخل رمز التسليم أولًا.");
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      await submitDeliveryOtp(orderId, otp.trim());
+      await completeDelivery(orderId);
+
+      Alert.alert(
+        "تم التسليم",
+        "تم التحقق من الرمز وإكمال الطلب بنجاح."
+      );
+
+      navigation.goBack();
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر إتمام التسليم",
+        error?.response?.data?.message ||
+          "تعذر التحقق من رمز التسليم."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitPhotoProof() {
+    if (!orderId) {
+      Alert.alert("طلب غير صالح", "تعذر تحديد رقم الطلب.");
+      return;
+    }
+
+    if (!photo) {
+      Alert.alert(
+        "الصورة مطلوبة",
+        "التقط صورة إثبات التسليم أولًا."
+      );
+      return;
+    }
+
+    setBusy(true);
+
+    try {
+      await submitDeliveryPhoto(orderId, photo);
+      await completeDelivery(orderId);
+
+      Alert.alert(
+        "تم التسليم",
+        "تم حفظ إثبات التسليم وإكمال الطلب بنجاح."
+      );
+
+      navigation.goBack();
+    } catch (error: any) {
+      Alert.alert(
+        "تعذر إتمام التسليم",
+        error?.response?.data?.message ||
+          "تعذر حفظ إثبات التسليم."
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Screen>
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View
+            style={[
+              styles.headerIcon,
+              {
+                backgroundColor: `${appTheme.successColor}12`,
+              },
+            ]}
+          >
+            <Ionicons
+              name="checkmark-done-outline"
+              size={28}
+              color={appTheme.successColor}
+            />
+          </View>
+
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>آخر خطوة</Text>
+            <Text style={styles.title}>إثبات التسليم</Text>
+          </View>
+        </View>
+
+        <View style={styles.successBanner}>
+          <Ionicons
+            name="shield-checkmark-outline"
+            size={23}
+            color={appTheme.successColor}
+          />
+
+          <Text style={styles.successText}>
+            لا يتم إنهاء الطلب إلا بعد تسجيل إثبات التسليم.
+          </Text>
+        </View>
+
+        <View style={styles.methodCard}>
+          <Text style={styles.sectionTitle}>
+            اختر طريقة الإثبات
+          </Text>
+
+          <View style={styles.methods}>
+            <View style={styles.methodButton}>
+              <AppButton
+                title="رمز OTP"
+                secondary={method !== "otp"}
+                onPress={() => setMethod("otp")}
+              />
+            </View>
+
+            <View style={styles.methodButton}>
+              <AppButton
+                title="صورة"
+                secondary={method !== "photo"}
+                onPress={() => setMethod("photo")}
+              />
+            </View>
+          </View>
+        </View>
+
+        {method === "otp" ? (
+          <View style={styles.proofCard}>
+            <View style={styles.cardHeader}>
+              <View
+                style={[
+                  styles.cardIcon,
+                  {
+                    backgroundColor: `${appTheme.primaryColor}12`,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="keypad-outline"
+                  size={23}
+                  color={appTheme.primaryColor}
+                />
+              </View>
+
+              <View style={styles.cardHeaderText}>
+                <Text style={styles.cardTitle}>
+                  رمز التسليم
+                </Text>
+                <Text style={styles.cardSubtitle}>
+                  أدخل الرمز الذي أعطاك إياه العميل
+                </Text>
+              </View>
+            </View>
+
+            <AppInput
+              placeholder="أدخل رمز OTP"
+              value={otp}
+              onChangeText={setOtp}
+              keyboardType="number-pad"
+              maxLength={8}
+            />
+
+            <AppButton
+              title="تأكيد التسليم"
+              onPress={submitOtp}
+              loading={busy}
+            />
+          </View>
+        ) : (
+          <View style={styles.proofCard}>
+            <View style={styles.cardHeader}>
+              <View
+                style={[
+                  styles.cardIcon,
+                  {
+                    backgroundColor: `${appTheme.infoColor}12`,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name="camera-outline"
+                  size={23}
+                  color={appTheme.infoColor}
+                />
+              </View>
+
+              <View style={styles.cardHeaderText}>
+                <Text style={styles.cardTitle}>
+                  صورة إثبات التسليم
+                </Text>
+                <Text style={styles.cardSubtitle}>
+                  التقط صورة واضحة تثبت إتمام التسليم
+                </Text>
+              </View>
+            </View>
+
+            <PhotoPickerButton
+              title={
+                photo
+                  ? "إعادة تصوير الإثبات"
+                  : "تصوير إثبات التسليم"
+              }
+              onSelected={setPhoto}
+            />
+
+            {photo && (
+              <View style={styles.selected}>
+                <Ionicons
+                  name="checkmark-circle"
+                  size={18}
+                  color={appTheme.successColor}
+                />
+                <Text style={styles.selectedText}>
+                  تم اختيار صورة الإثبات
+                </Text>
+              </View>
+            )}
+
+            <AppButton
+              title="تأكيد التسليم"
+              onPress={submitPhotoProof}
+              loading={busy}
+              disabled={!photo}
+            />
+          </View>
+        )}
+
+        <Text style={styles.footerHint}>
+          بعد نجاح التحقق سيتم تحديث حالة الطلب إلى "تم التسليم".
+        </Text>
+      </View>
+    </Screen>
+  );
+}
+
+const createStyles = (
+  appTheme: ReturnType<typeof useAppTheme>
+) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      padding: 20,
+      gap: 15,
+    },
+    header: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 13,
+    },
+    headerIcon: {
+      width: 58,
+      height: 58,
+      borderRadius: 19,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    headerText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+    eyebrow: {
+      color: appTheme.successColor,
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    title: {
+      color: appTheme.textColor,
+      fontSize: 28,
+      fontWeight: "900",
+      marginTop: 2,
+      textAlign: "right",
+    },
+    successBanner: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 9,
+      padding: 14,
+      borderRadius: 18,
+      backgroundColor: `${appTheme.successColor}0D`,
+      borderWidth: 1,
+      borderColor: `${appTheme.successColor}25`,
+    },
+    successText: {
+      flex: 1,
+      color: appTheme.textColor,
+      fontSize: 12,
+      fontWeight: "700",
+      lineHeight: 19,
+      textAlign: "right",
+    },
+    methodCard: {
+      padding: 16,
+      borderRadius: 21,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      gap: 12,
+    },
+    sectionTitle: {
+      color: appTheme.textColor,
+      fontSize: 15,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+    methods: {
+      flexDirection: "row-reverse",
+      gap: 9,
+    },
+    methodButton: {
+      flex: 1,
+    },
+    proofCard: {
+      padding: 17,
+      borderRadius: 22,
+      backgroundColor: appTheme.cardColor,
+      borderWidth: 1,
+      borderColor: appTheme.borderColor,
+      gap: 14,
+    },
+    cardHeader: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 11,
+    },
+    cardIcon: {
+      width: 45,
+      height: 45,
+      borderRadius: 15,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    cardHeaderText: {
+      flex: 1,
+      alignItems: "flex-end",
+    },
+    cardTitle: {
+      color: appTheme.textColor,
+      fontSize: 16,
+      fontWeight: "900",
+      textAlign: "right",
+    },
+    cardSubtitle: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      lineHeight: 17,
+      marginTop: 2,
+      textAlign: "right",
+    },
+    selected: {
+      flexDirection: "row-reverse",
+      alignItems: "center",
+      gap: 6,
+    },
+    selectedText: {
+      color: appTheme.successColor,
+      fontSize: 12,
+      fontWeight: "800",
+    },
+    footerHint: {
+      color: appTheme.secondaryTextColor,
+      fontSize: 11,
+      lineHeight: 18,
+      textAlign: "center",
+      marginTop: "auto",
+    },
+  });

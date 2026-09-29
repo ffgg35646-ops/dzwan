@@ -1,0 +1,125 @@
+import {
+  Schema,
+  model,
+  Document,
+  Types,
+} from "mongoose";
+
+export type RewardTarget =
+  | "captain"
+  | "establishment";
+
+export type RewardRecipientMode =
+  | "all"
+  | "selected";
+
+export interface IRewardRule extends Document {
+  name: string;
+
+  target: RewardTarget;
+
+  recipientMode:
+    RewardRecipientMode;
+
+  captainIds?: Types.ObjectId[];
+
+  establishmentIds?: Types.ObjectId[];
+
+  conditionType:
+    | "orders_count"
+    | "rating"
+    | "attendance"
+    | "custom";
+
+  threshold: number;
+  rewardValue: number;
+
+  isActive: boolean;
+  startsAt?: Date;
+  endsAt?: Date;
+}
+
+const schema =
+  new Schema<IRewardRule>(
+    {
+      name: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+
+      target: {
+        type: String,
+        enum: [
+          "captain",
+          "establishment",
+        ],
+        required: true,
+      },
+
+      recipientMode: {
+        type: String,
+        enum: [
+          "all",
+          "selected",
+        ],
+        default: "all",
+        required: true,
+      },
+
+      captainIds: {
+        type: [
+          Schema.Types.ObjectId,
+        ],
+        ref: "User",
+        default: [],
+      },
+
+      establishmentIds: {
+        type: [
+          Schema.Types.ObjectId,
+        ],
+        ref: "Establishment",
+        default: [],
+      },
+
+      conditionType: {
+        type: String,
+        enum: [
+          "orders_count",
+          "rating",
+          "attendance",
+          "custom",
+        ],
+        required: true,
+      },
+
+      threshold: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
+
+      rewardValue: {
+        type: Number,
+        required: true,
+        min: 0,
+      },
+
+      isActive: {
+        type: Boolean,
+        default: true,
+      },
+
+      startsAt: Date,
+      endsAt: Date,
+    },
+    {
+      timestamps: true,
+    },
+  );
+
+export default model<IRewardRule>(
+  "RewardRule",
+  schema,
+);

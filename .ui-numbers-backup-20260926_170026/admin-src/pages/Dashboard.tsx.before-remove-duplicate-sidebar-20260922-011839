@@ -1,0 +1,1266 @@
+import { useEffect, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  Activity,
+  Bell,
+  ChevronDown,
+  Clock3,
+  ClipboardList,
+  DollarSign,
+  LayoutDashboard,
+  LogOut,
+  Map,
+  Package,
+  ShoppingBag,
+  Truck,
+  Users,
+  X,
+} from "lucide-react";
+import { setAccessToken, api } from "../lib/api";
+import type { AdminUser } from "../types/auth";
+const navigation = [
+  {
+    label: "الرئيسية",
+    path: "/dashboard",
+    icon: LayoutDashboard,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "الطلبات",
+    path: "/orders",
+    icon: Package,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "الكباتن",
+    path: "/captains",
+    icon: Truck,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "شفتات الكباتن",
+    path: "/captain-shifts",
+    icon: ClipboardList,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "حضور وانصراف الكباتن",
+    path: "/captain-attendance",
+    icon: ClipboardList,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "طلبات التسجيل",
+    path: "/registration-requests",
+    icon: ClipboardList,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "المطاعم والمحلات",
+    path: "/establishments",
+    icon: ShoppingBag,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "المنتجات",
+    path: "/products",
+    icon: Package,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "العملاء",
+    path: "/customers",
+    icon: Users,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "القادة",
+    path: "/leaders",
+    icon: Users,
+    roles: ["super_admin"],
+  },
+  {
+    label: "المحافظات والمناطق",
+    path: "/locations",
+    icon: Map,
+    roles: ["super_admin"],
+  },
+  {
+    label: "الإشعارات",
+    path: "/notifications",
+    icon: Bell,
+    roles: ["super_admin", "admin"],
+  },
+  {
+    label: "المستخدمون",
+    path: "/users",
+    icon: Users,
+    roles: ["super_admin"],
+  },
+];
+
+
+type DashboardActivityItem = {
+  id: string;
+  name: string;
+  orders: number;
+};
+
+type DashboardStats = {
+  todayOrders: number;
+  activeOrders: number;
+  onlineCaptains: number;
+  activeEstablishments: number;
+  topRestaurants: DashboardActivityItem[];
+  topShops: DashboardActivityItem[];
+  topAreas: DashboardActivityItem[];
+  todayOrderStatistics: {
+    total: number;
+    pending: number;
+    active: number;
+    delivered: number;
+    cancelled: number;
+  };
+};
+
+const ACTIVE_ORDER_STATUSES = [
+  "pending",
+  "confirmed",
+  "preparing",
+  "ready_for_pickup",
+  "assigned",
+  "picked_up",
+  "on_the_way",
+];
+
+
+const orderStatusLabels: Record<string, string> = {
+  pending: "جديد",
+  confirmed: "مؤكد",
+  preparing: "جاري التجهيز",
+  ready_for_pickup: "جاهز للاستلام",
+  assigned: "تم إسناده",
+  picked_up: "تم الاستلام",
+  on_the_way: "في الطريق",
+  delivered: "تم التسليم",
+  cancelled: "ملغي",
+  rejected: "مرفوض",
+};
+
+export default function Dashboard() {
+  const [registrationPendingCount, setRegistrationPendingCount] =
+    useState(0);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadRegistrationPendingCount() {
+      try {
+        const [captainsResponse, establishmentsResponse] =
+          await Promise.all([
+            api.get("/captain-registration"),
+            api.get("/establishment-registration"),
+          ]);
+
+        const captains = Array.isArray(
+          captainsResponse.data?.registrations,
+        )
+          ? captainsResponse.data.registrations
+          : [];
+
+        const establishments = Array.isArray(
+          establishmentsResponse.data?.registrations,
+        )
+          ? establishmentsResponse.data.registrations
+          : [];
+
+        const count =
+          captains.filter(
+            (row: { status?: string }) => row.status === "pending",
+          ).length +
+          establishments.filter(
+            (row: { status?: string }) => row.status === "pending",
+          ).length;
+
+        if (mounted) setRegistrationPendingCount(count);
+      } catch {
+        if (mounted) setRegistrationPendingCount(0);
+      }
+    }
+
+    void loadRegistrationPendingCount();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const [user, setUser] = useState<AdminUser | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  const [systemStatus, setSystemStatus] =
+    useState<{
+      api: "online" | "offline" | "unknown";
+      database: "online" | "offline" | "unknown";
+    }>({
+      api: "unknown",
+      database: "unknown",
+    });
+
+
+  const [, setNotificationCount] = useState(0);
+  const [, setNotifications] =
+    useState<
+      Array<{
+        _id: string;
+        title: string;
+        message: string;
+        isRead: boolean;
+        createdAt: string;
+      }>
+    >([]);
+
+
+  const [dashboardStats, setDashboardStats] =
+    useState<DashboardStats>({
+      todayOrders: 0,
+      activeOrders: 0,
+      onlineCaptains: 0,
+      activeEstablishments: 0,
+      topRestaurants: [],
+      topShops: [],
+      topAreas: [],
+      todayOrderStatistics: {
+        total: 0,
+        pending: 0,
+        active: 0,
+        delivered: 0,
+        cancelled: 0,
+      },
+    });
+
+  const [latestOrders, setLatestOrders] = useState<
+    Array<{
+      _id: string;
+      orderNumber: string;
+      status: string;
+      total: number;
+      createdAt: string;
+    }>
+  >([]);
+
+  useEffect(() => {
+    /* notification-poll */
+    const interval = window.setInterval(
+      async () => {
+        try {
+          const response = await api.get(
+            "/notifications",
+          );
+
+          setNotificationCount(
+            Number(
+              response.data?.unreadCount ?? 0,
+            ),
+          );
+
+          setNotifications(
+            Array.isArray(
+              response.data?.notifications,
+            )
+              ? response.data.notifications
+              : [],
+          );
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.error(
+              "Notification polling error:",
+              error,
+            );
+          }
+        }
+      },
+      30000,
+    );
+
+    return () =>
+      window.clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    async function loadUser() {
+      try {
+        const response = await api.get<{
+          success: boolean;
+          user: AdminUser;
+        }>("/auth/me");
+
+        const currentUser = response.data.user;
+
+        if (
+          currentUser.role !== "admin" &&
+          currentUser.role !== "super_admin"
+        ) {
+          navigate("/", { replace: true });
+          return;
+        }
+
+        setUser(currentUser);
+
+        try {
+          const [
+            ordersResponse,
+            captainsResponse,
+            establishmentsResponse,
+            notificationsResponse,
+            systemStatusResponse,
+            operationsDashboardResponse,
+          ] = await Promise.all([
+            api.get("/orders"),
+            api.get("/captains"),
+            api.get("/establishments"),
+            api.get("/notifications"),
+            api.get("/system/status"),
+            api.get("/requirements/dashboard/operations"),
+          ]);
+
+          setSystemStatus({
+            api:
+              systemStatusResponse.data?.services?.api?.status ===
+              "online"
+                ? "online"
+                : systemStatusResponse.data?.services?.api?.status ===
+                    "offline"
+                  ? "offline"
+                  : "unknown",
+
+            database:
+              systemStatusResponse.data?.services?.database?.status ===
+              "online"
+                ? "online"
+                : systemStatusResponse.data?.services?.database?.status ===
+                    "offline"
+                  ? "offline"
+                  : "unknown",
+          });
+
+          const orders = Array.isArray(
+            ordersResponse.data?.orders,
+          )
+            ? ordersResponse.data.orders
+            : [];
+
+          const captains = Array.isArray(
+            captainsResponse.data?.captains,
+          )
+            ? captainsResponse.data.captains
+            : [];
+
+          const establishments = Array.isArray(
+            establishmentsResponse.data?.establishments,
+          )
+            ? establishmentsResponse.data.establishments
+            : [];
+
+          const operationsDashboard =
+            operationsDashboardResponse.data?.dashboard ??
+            operationsDashboardResponse.data?.data ??
+            operationsDashboardResponse.data ??
+            null;
+
+          setNotificationCount(
+            Number(
+              notificationsResponse.data?.unreadCount ?? 0,
+            ),
+          );
+
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const todayOrders = orders.filter(
+            (order: { createdAt: string }) =>
+              new Date(order.createdAt) >= today,
+          ).length;
+
+          const activeOrders = orders.filter(
+            (order: { status: string }) =>
+              ACTIVE_ORDER_STATUSES.includes(order.status),
+          ).length;
+
+          const onlineCaptains = captains.filter(
+            (captain: { isOnline?: boolean }) =>
+              captain.isOnline === true,
+          ).length;
+
+          const activeEstablishments =
+            establishments.filter(
+              (item: { status?: string }) =>
+                item.status === "active",
+            ).length;
+
+          setDashboardStats({
+            todayOrders:
+              Number(
+                operationsDashboard?.todayOrders ??
+                todayOrders,
+              ),
+            activeOrders:
+              Number(
+                operationsDashboard?.activeOrders ??
+                activeOrders,
+              ),
+            onlineCaptains:
+              Number(
+                operationsDashboard?.onlineCaptains ??
+                onlineCaptains,
+              ),
+            activeEstablishments:
+              Number(
+                operationsDashboard?.activeEstablishments ??
+                activeEstablishments,
+              ),
+            topRestaurants:
+              Array.isArray(
+                operationsDashboard?.topRestaurants,
+              )
+                ? operationsDashboard.topRestaurants
+                : [],
+            topShops:
+              Array.isArray(
+                operationsDashboard?.topShops,
+              )
+                ? operationsDashboard.topShops
+                : [],
+            topAreas:
+              Array.isArray(
+                operationsDashboard?.topAreas,
+              )
+                ? operationsDashboard.topAreas
+                : [],
+            todayOrderStatistics:
+              operationsDashboard?.todayOrderStatistics ?? {
+                total: todayOrders,
+                pending: 0,
+                active: activeOrders,
+                delivered: 0,
+                cancelled: 0,
+              },
+          });
+
+          setLatestOrders(
+            orders
+              .slice()
+              .sort(
+                (
+                  a: { createdAt: string },
+                  b: { createdAt: string },
+                ) =>
+                  new Date(b.createdAt).getTime() -
+                  new Date(a.createdAt).getTime(),
+              )
+              .slice(0, 5),
+          );
+        } catch (dashboardError) {
+          console.error(
+            "Dashboard statistics error:",
+            dashboardError,
+          );
+        }
+      } catch {
+        navigate("/", { replace: true });
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadUser();
+  }, [navigate]);
+
+  async function logout() {
+    try {
+      await api.post("/auth/logout");
+      setAccessToken(null);
+    } finally {
+      navigate("/", { replace: true });
+    }
+  }
+
+  function isActive(path: string) {
+    if (path === "/dashboard") {
+      return (
+        location.pathname === "/dashboard" ||
+        location.pathname === "/"
+      );
+    }
+
+    return location.pathname.startsWith(path);
+  }
+
+  if (loading) {
+    return (
+      <div className="dashboard-loading" dir="rtl">
+        <div className="loading-spinner" />
+        <span>جارٍ تحميل لوحة التحكم...</span>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <div className="admin-app" dir="rtl">
+
+      <div className="desktop-sidebar">
+        <aside className="admin-sidebar">
+
+          <div className="sidebar-brand">
+            <img
+              src="/logo.svg"
+              alt="زاجل ديلفري"
+              className="sidebar-logo"
+            />
+          </div>
+
+          <div className="sidebar-section-title">
+            القائمة الرئيسية
+          </div>
+
+          <nav className="sidebar-nav">
+            {navigation
+              .filter((item) =>
+                item.roles.includes(user.role),
+              )
+              .map((item) => {
+                const Icon = item.icon;
+
+                return (
+                <button
+                  key={item.label}
+                  type="button"
+                  className={`sidebar-link${
+                    isActive(item.path) ? " active" : ""
+                  }`}
+                  onClick={() => navigate(item.path)}
+                >
+                  <Icon size={18} />
+                  <span>{item.label}</span>
+                  {item.path === "/registration-requests" &&
+                  registrationPendingCount > 0 ? (
+                    <span className="registration-nav-badge">
+                      {registrationPendingCount}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="sidebar-bottom">
+
+            <div className="sidebar-user">
+
+              <div className="sidebar-avatar">
+                {user.fullName.slice(0, 1)}
+              </div>
+
+              <div className="sidebar-user-info">
+
+                <div className="sidebar-user-name">
+                  {user.fullName}
+                </div>
+
+                <div className="sidebar-user-role">
+                  {user.role === "super_admin"
+                    ? "المدير العام"
+                    : "مدير"}
+                </div>
+
+              </div>
+
+            </div>
+
+            <button
+              type="button"
+              className="sidebar-logout"
+              onClick={logout}
+            >
+              <LogOut size={17} />
+              تسجيل الخروج
+            </button>
+
+          </div>
+
+        </aside>
+      </div>
+
+      {menuOpen && (
+        <div className="mobile-sidebar-layer">
+
+          <button
+            type="button"
+            className="mobile-sidebar-overlay"
+            aria-label="إغلاق القائمة"
+            onClick={() => setMenuOpen(false)}
+          />
+
+          <div className="mobile-sidebar-panel">
+
+            <button
+              type="button"
+              className="mobile-close"
+              aria-label="إغلاق القائمة"
+              onClick={() => setMenuOpen(false)}
+            >
+              <X size={19} />
+            </button>
+
+            <aside className="admin-sidebar">
+
+              <div className="sidebar-brand">
+                <img
+                  src="/logo.svg"
+                  alt="زاجل ديلفري"
+                  className="sidebar-logo"
+                />
+              </div>
+
+              <div className="sidebar-section-title">
+                القائمة الرئيسية
+              </div>
+
+              <nav className="sidebar-nav">
+                {navigation
+                  .filter((item) =>
+                    item.roles.includes(user.role),
+                  )
+                  .map((item) => {
+                    const Icon = item.icon;
+
+                    return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      className={`sidebar-link${
+                        isActive(item.path) ? " active" : ""
+                      }`}
+                      onClick={() => {
+                        navigate(item.path);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <Icon size={18} />
+                      <span>{item.label}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+
+              <div className="sidebar-bottom">
+
+                <div className="sidebar-user">
+
+                  <div className="sidebar-avatar">
+                    {user.fullName.slice(0, 1)}
+                  </div>
+
+                  <div className="sidebar-user-info">
+
+                    <div className="sidebar-user-name">
+                      {user.fullName}
+                    </div>
+
+                    <div className="sidebar-user-role">
+                      {user.role === "super_admin"
+                        ? "المدير العام"
+                        : "مدير"}
+                    </div>
+
+                  </div>
+
+                </div>
+
+                <button
+                  type="button"
+                  className="sidebar-logout"
+                  onClick={logout}
+                >
+                  <LogOut size={17} />
+                  تسجيل الخروج
+                </button>
+
+              </div>
+
+            </aside>
+
+          </div>
+
+        </div>
+      )}
+
+      <main className="admin-main">
+
+        <div className="admin-content">
+
+
+          <div className="dashboard">
+
+            <section className="dashboard-intro">
+
+              <div>
+
+                <span className="dashboard-label">
+                  لوحة الإدارة
+                </span>
+
+                <h1>
+                  الرئيسية
+                </h1>
+
+                <p>
+                  تابع تشغيل زاجل ديلفري والطلبات والكباتن والمحلات من مكان واحد.
+                </p>
+
+              </div>
+
+              <div className="system-pill">
+                <span />
+                النظام يعمل بشكل طبيعي
+              </div>
+
+            </section>
+
+            <section className="stats-grid">
+
+              {[
+                {
+                  title: "طلبات اليوم",
+                  value: dashboardStats.todayOrders,
+                  description: "إجمالي الطلبات اليوم",
+                  Icon: Package,
+                  color: "orange",
+                },
+                {
+                  title: "الطلبات النشطة",
+                  value: dashboardStats.activeOrders,
+                  description: "طلبات قيد التنفيذ",
+                  Icon: Clock3,
+                  color: "yellow",
+                },
+                {
+                  title: "الكباتن المتصلون",
+                  value: dashboardStats.onlineCaptains,
+                  description: "جاهزون لاستلام الطلبات",
+                  Icon: Truck,
+                  color: "orange",
+                },
+                {
+                  title: "المحلات النشطة",
+                  value: dashboardStats.activeEstablishments,
+                  description: "المحلات والمطاعم العاملة",
+                  Icon: ShoppingBag,
+                  color: "yellow",
+                },
+              ].map(
+                ({
+                  title,
+                  value,
+                  description,
+                  Icon,
+                  color,
+                }) => (
+                  <article
+                    className="stat-card"
+                    key={title}
+                  >
+                    <div className="stat-top">
+                      <div>
+                        <div className="stat-title">
+                          {title}
+                        </div>
+
+                        <div className="stat-value">
+                          {value}
+                        </div>
+                      </div>
+
+                      <div className={`stat-icon ${color}`}>
+                        <Icon size={20} />
+                      </div>
+                    </div>
+
+                    <div className="stat-description">
+                      {description}
+                    </div>
+                  </article>
+                ),
+              )}
+
+            </section>
+
+            <section className="dashboard-grid">
+
+              <article className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>أكثر المطاعم نشاطًا اليوم</h2>
+                    <p>حسب عدد الطلبات المسجلة اليوم</p>
+                  </div>
+                </div>
+
+                <div className="status-list">
+                  {dashboardStats.topRestaurants.length === 0 ? (
+                    <div className="empty-state">
+                      لا توجد بيانات اليوم.
+                    </div>
+                  ) : (
+                    dashboardStats.topRestaurants.map((item, index) => (
+                      <div className="status-row" key={item.id}>
+                        <div>
+                          <strong>
+                            {index + 1}. {item.name}
+                          </strong>
+                          <small>طلبات اليوم</small>
+                        </div>
+
+                        <em className="status-neutral">
+                          {item.orders} طلب
+                        </em>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </article>
+
+              <article className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>أكثر المحلات نشاطًا اليوم</h2>
+                    <p>حسب عدد الطلبات المسجلة اليوم</p>
+                  </div>
+                </div>
+
+                <div className="status-list">
+                  {dashboardStats.topShops.length === 0 ? (
+                    <div className="empty-state">
+                      لا توجد بيانات اليوم.
+                    </div>
+                  ) : (
+                    dashboardStats.topShops.map((item, index) => (
+                      <div className="status-row" key={item.id}>
+                        <div>
+                          <strong>
+                            {index + 1}. {item.name}
+                          </strong>
+                          <small>طلبات اليوم</small>
+                        </div>
+
+                        <em className="status-neutral">
+                          {item.orders} طلب
+                        </em>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </article>
+
+              <article className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>أكثر المناطق نشاطًا اليوم</h2>
+                    <p>حسب وجهات الطلبات اليوم</p>
+                  </div>
+                </div>
+
+                <div className="status-list">
+                  {dashboardStats.topAreas.length === 0 ? (
+                    <div className="empty-state">
+                      لا توجد بيانات اليوم.
+                    </div>
+                  ) : (
+                    dashboardStats.topAreas.map((item, index) => (
+                      <div className="status-row" key={item.id}>
+                        <div>
+                          <strong>
+                            {index + 1}. {item.name}
+                          </strong>
+                          <small>طلبات اليوم</small>
+                        </div>
+
+                        <em className="status-neutral">
+                          {item.orders} طلب
+                        </em>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </article>
+
+              <article className="panel">
+                <div className="panel-header">
+                  <div>
+                    <h2>إحصائيات الطلبات اليوم</h2>
+                    <p>ملخص مباشر من قاعدة البيانات</p>
+                  </div>
+                </div>
+
+                <div className="status-list">
+                  <div className="status-row">
+                    <div>
+                      <strong>كل الطلبات</strong>
+                    </div>
+                    <em className="status-neutral">
+                      {dashboardStats.todayOrderStatistics.total}
+                    </em>
+                  </div>
+
+                  <div className="status-row">
+                    <div>
+                      <strong>قيد الانتظار</strong>
+                    </div>
+                    <em className="status-neutral">
+                      {dashboardStats.todayOrderStatistics.pending}
+                    </em>
+                  </div>
+
+                  <div className="status-row">
+                    <div>
+                      <strong>نشطة</strong>
+                    </div>
+                    <em className="status-neutral">
+                      {dashboardStats.todayOrderStatistics.active}
+                    </em>
+                  </div>
+
+                  <div className="status-row">
+                    <div>
+                      <strong>تم التسليم</strong>
+                    </div>
+                    <em className="status-success">
+                      {dashboardStats.todayOrderStatistics.delivered}
+                    </em>
+                  </div>
+
+                  <div className="status-row">
+                    <div>
+                      <strong>ملغاة</strong>
+                    </div>
+                    <em className="status-neutral">
+                      {dashboardStats.todayOrderStatistics.cancelled}
+                    </em>
+                  </div>
+                </div>
+              </article>
+
+            </section>
+
+            <section className="dashboard-grid">
+
+              <article className="panel">
+
+                <div className="panel-header">
+
+                  <div>
+                    <h2>
+                      آخر الطلبات
+                    </h2>
+
+                    <p>
+                      أحدث الطلبات المسجلة في المنصة
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="panel-link"
+                    onClick={() => navigate("/orders")}
+                  >
+                    عرض جميع الطلبات
+                  </button>
+
+                </div>
+
+                {latestOrders.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon">
+                      <Package size={25} />
+                    </div>
+
+                    <h3>
+                      لا توجد طلبات حتى الآن
+                    </h3>
+
+                    <p>
+                      ستظهر الطلبات هنا بمجرد بدء استقبال الطلبات.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="status-list">
+                    {latestOrders.map((order) => (
+                      <button
+                        key={order._id}
+                        type="button"
+                        className="status-row"
+                        onClick={() =>
+                          navigate("/orders")
+                        }
+                      >
+                        <div>
+                          <strong>
+                            {order.orderNumber}
+                          </strong>
+
+                          <small>
+                            {new Date(
+                              order.createdAt,
+                            ).toLocaleString("ar-EG", {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}
+                          </small>
+                        </div>
+
+                        <div>
+                          <em className="status-neutral">
+                            {order.total.toFixed(2)} ج.م
+                          </em>
+
+                          <small>
+                            {orderStatusLabels[order.status] ||
+                              order.status}
+                          </small>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+              </article>
+
+              <article className="panel">
+
+                <div className="panel-header">
+
+                  <div>
+                    <h2>
+                      حالة التشغيل
+                    </h2>
+
+                    <p>
+                      الخدمات الأساسية في زاجل ديلفري
+                    </p>
+                  </div>
+
+                  <Activity
+                    size={18}
+                    className="panel-muted-icon"
+                  />
+
+                </div>
+
+                <div className="status-list">
+
+                  <div className="status-row">
+
+                    <div>
+                      <strong>الخادم</strong>
+                      <small>واجهة برمجة التطبيقات</small>
+                    </div>
+
+                    <em
+                      className={
+                        systemStatus.api === "online"
+                          ? "status-success"
+                          : "status-neutral"
+                      }
+                    >
+                      {systemStatus.api === "online"
+                        ? "متصل"
+                        : systemStatus.api === "offline"
+                          ? "غير متصل"
+                          : "غير معروف"}
+                    </em>
+
+                  </div>
+
+                  <div className="status-row">
+
+                    <div>
+                      <strong>قاعدة البيانات</strong>
+                      <small>MongoDB</small>
+                    </div>
+
+                    <em
+                      className={
+                        systemStatus.database === "online"
+                          ? "status-success"
+                          : systemStatus.database === "offline"
+                            ? "status-neutral"
+                            : "status-neutral"
+                      }
+                    >
+                      {systemStatus.database === "online"
+                        ? "متصلة"
+                        : systemStatus.database === "offline"
+                          ? "غير متصلة"
+                          : "غير معروفة"}
+                    </em>
+
+                  </div>
+
+                  <div className="status-row">
+
+                    <div>
+                      <strong>نظام الطلبات</strong>
+                      <small>استقبال الطلبات</small>
+                    </div>
+
+                    <em className="status-success">
+                      جاهز
+                    </em>
+
+                  </div>
+
+                  <div className="status-row">
+
+                    <div>
+                      <strong>الكباتن</strong>
+                      <small>المتاحون الآن</small>
+                    </div>
+
+                    <em className="status-neutral">
+                      {dashboardStats.onlineCaptains} متصل
+                    </em>
+
+                  </div>
+
+                </div>
+
+              </article>
+
+            </section>
+
+            <section className="panel quick-panel">
+
+              <div className="panel-header">
+
+                <div>
+                  <h2>
+                    الوصول السريع
+                  </h2>
+
+                  <p>
+                    أهم العمليات الإدارية
+                  </p>
+                </div>
+
+              </div>
+
+              <div className="quick-grid">
+
+                <button
+                  type="button"
+                  className="quick-item"
+                  onClick={() => navigate("/captains")}
+                >
+                  <span className="quick-item-icon">
+                    <Users size={18} />
+                  </span>
+
+                  <span>
+                    <strong>
+                      إدارة الكباتن
+                    </strong>
+
+                    <small>
+                      إضافة ومتابعة الكباتن
+                    </small>
+                  </span>
+
+                  <ChevronDown size={16} />
+                </button>
+
+                <button
+                  type="button"
+                  className="quick-item"
+                  onClick={() => navigate("/establishments")}
+                >
+                  <span className="quick-item-icon">
+                    <ShoppingBag size={18} />
+                  </span>
+
+                  <span>
+                    <strong>
+                      إدارة المحلات
+                    </strong>
+
+                    <small>
+                      المحلات والمطاعم
+                    </small>
+                  </span>
+
+                  <ChevronDown size={16} />
+                </button>
+
+                <button
+                  type="button"
+                  className="quick-item"
+                  onClick={() => navigate("/locations")}
+                >
+                  <span className="quick-item-icon">
+                    <Map size={18} />
+                  </span>
+
+                  <span>
+                    <strong>
+                      المحافظات والمناطق
+                    </strong>
+
+                    <small>
+                      إدارة المناطق
+                    </small>
+                  </span>
+
+                  <ChevronDown size={16} />
+                </button>
+
+                <button
+                  type="button"
+                  className="quick-item"
+                  onClick={() => navigate("/products")}
+                >
+                  <span className="quick-item-icon">
+                    <DollarSign size={18} />
+                  </span>
+
+                  <span>
+                    <strong>
+                      إدارة التسعير
+                    </strong>
+
+                    <small>
+                      الأسعار وقواعد التوصيل
+                    </small>
+                  </span>
+
+                  <ChevronDown size={16} />
+                </button>
+
+              </div>
+
+            </section>
+
+          </div>
+
+        </div>
+
+      </main>
+
+    </div>
+  );
+}

@@ -1,0 +1,40 @@
+import mongoose from "mongoose";
+import { UserModel } from "../models/User.js";
+import CaptainAttendanceModel from "../models/CaptainAttendance.js";
+import CaptainRegistrationModel from "../models/CaptainRegistration.js";
+
+export async function getCaptainCompleteProfile(
+  captainId: string
+) {
+  if (!mongoose.isValidObjectId(captainId)) {
+    throw new Error("INVALID_CAPTAIN_ID");
+  }
+
+  const captain = await UserModel.findOne({
+    _id: captainId,
+    role: "captain",
+  }).lean();
+
+  if (!captain) {
+    throw new Error("CAPTAIN_NOT_FOUND");
+  }
+
+  const [registration, attendance] =
+    await Promise.all([
+      CaptainRegistrationModel.findOne({
+        phone: captain.phone,
+      }).lean(),
+      CaptainAttendanceModel.find({
+        captainId,
+      })
+        .sort({ date: -1 })
+        .limit(100)
+        .lean(),
+    ]);
+
+  return {
+    captain,
+    registration,
+    attendance,
+  };
+}

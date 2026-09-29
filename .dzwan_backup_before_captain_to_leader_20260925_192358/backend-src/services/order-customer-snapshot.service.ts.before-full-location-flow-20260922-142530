@@ -1,0 +1,58 @@
+export interface OrderCustomerSnapshot {
+  name: string;
+  phone: string;
+  addressText: string;
+  note?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+}
+
+export function buildOrderCustomerSnapshot(input: any): OrderCustomerSnapshot {
+  const name = String(
+    input?.customer?.name ??
+    input?.customerName ??
+    ""
+  ).trim();
+
+  const phone = String(
+    input?.customer?.phone ??
+    input?.customerPhone ??
+    ""
+  ).trim();
+
+  const addressText = String(
+    input?.customer?.addressText ??
+    input?.deliveryAddress ??
+    input?.addressText ??
+    ""
+  ).trim();
+
+  if (!name) throw new Error("CUSTOMER_NAME_REQUIRED");
+  if (!phone) throw new Error("CUSTOMER_PHONE_REQUIRED");
+  if (!addressText) throw new Error("DELIVERY_ADDRESS_REQUIRED");
+
+  const latitude =
+    input?.customer?.latitude ??
+    input?.deliveryLatitude ??
+    null;
+
+  const longitude =
+    input?.customer?.longitude ??
+    input?.deliveryLongitude ??
+    null;
+
+  return {
+    name,
+    phone,
+    addressText,
+    note:
+      input?.customer?.note ??
+      input?.customerNote ??
+      input?.deliveryNote ??
+      null,
+    latitude:
+      latitude == null ? null : Number(latitude),
+    longitude:
+      longitude == null ? null : Number(longitude),
+  };
+}

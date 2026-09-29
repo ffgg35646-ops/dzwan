@@ -1,0 +1,5 @@
+import { apiGet } from "./request";
+
+export async function getMyWorkAreas() {
+  return await apiGet("/captain-work-area/me");
+}

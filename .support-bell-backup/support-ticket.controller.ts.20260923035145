@@ -1,0 +1,468 @@
+
+import { Request, Response } from "express";
+import { Types } from "mongoose";
+import { SupportTicketModel } from "../models/SupportTicket.js";
+
+function user(req: Request): any {
+  return (req as any).user || {};
+}
+
+function uid(req: Request) {
+  return String(
+    user(req)?.sub ||
+    user(req)?._id ||
+    user(req)?.id ||
+    "",
+  );
+}
+
+function role(req: Request) {
+  return String(
+    user(req)?.role || "",
+  ).toLowerCase();
+}
+
+function admin(req: Request) {
+  return [
+    "admin",
+    "super_admin",
+    "governorate_leader",
+    "area_leader",
+  ].includes(role(req));
+}
+
+async function nextNumber() {
+  const latest =
+    await SupportTicketModel.findOne(
+      {},
+      { ticketNumber: 1 },
+    )
+      .sort({ createdAt: -1 })
+      .lean();
+
+  const match = String(
+    latest?.ticketNumber || "",
+  ).match(/T-(\d+)$/);
+
+  const next = match
+    ? Number(match[1]) + 1
+    : 1001;
+
+  return `T-${next}`;
+}
+
+function sourceFromRole(value: string) {
+  if (value === "captain") return "captain";
+  if (
+    value === "shop" ||
+    value === "restaurant"
+  ) {
+    return "shop";
+  }
+
+  return null;
+}
+
+export async function createSupportTicket(
+  req: Request,
+  res: Response,
+) {
+  try {
+    const openedBy = uid(req);
+    const source = sourceFromRole(role(req));
+
+    if (
+      !openedBy ||
+      !Types.ObjectId.isValid(openedBy)
+    ) {
+      return res.status(401).json({
+        message: "يجب تسجيل الدخول.",
+      });
+    }
+
+    if (!source) {
+      return res.status(403).json({
+        message:
+          "هذا الحساب لا يمكنه إنشاء تذكرة دعم.",
+      });
+    }
+
+    const type = String(
+      req.body?.type || "",
+    ).toLowerCase();
+
+    const title = String(
+      req.body?.title || "",
+    ).trim();
+
+    const description = String(
+      req.body?.description || "",
+    ).trim();
+
+    const orderReference = String(
+      req.body?.orderId || "",
+    ).trim();
+
+    if (
+      type !== "complaint" &&
+      type !== "emergency"
+    ) {
+      return res.status(400).json({
+        message: "نوع التذكرة غير صحيح.",
+      });
+    }
+
+    if (title.length < 2) {
+      return res.status(400).json({
+        message: "موضوع التذكرة مطلوب.",
+      });
+    }
+
+    if (description.length < 2) {
+      return res.status(400).json({
+        message: "تفاصيل التذكرة مطلوبة.",
+      });
+    }
+
+    const ticketNumber =
+      await nextNumber();
+
+    const ticket =
+      await SupportTicketModel.create({
+        ticketNumber,
+        openedBy,
+        source,
+        type,
+        title,
+        description,
+        orderReference,
+        status: "open",
+        messages: [
+          {
+            senderId: openedBy,
+            senderRole: role(req),
+            body: description,
+          },
+        ],
+      });
+
+    return res.status(201).json({
+      ticket,
+    });
+  } catch (error: any) {
+    console.error(
+      "createSupportTicket:",
+      error,
+    );
+
+    return res.status(500).json({
+      message:
+        error?.message ||
+        "تعذر إنشاء التذكرة.",
+    });
+  }
+}
+
+export async function listMySupportTickets(
+  req: Request,
+  res: Response,
+) {
+  const openedBy = uid(req);
+  const currentRole = role(req);
+
+  console.log(
+    "SUPPORT LIST AUTH:",
+    {
+      user: user(req),
+      openedBy,
+      currentRole,
+      validObjectId: Types.ObjectId.isValid(openedBy),
+    },
+  );
+
+  if (!openedBy || !Types.ObjectId.isValid(openedBy)) {
+    return res.status(401).json({
+      success: false,
+      message: "تعذر تحديد صاحب حساب الدعم.",
+      debug: {
+        openedBy,
+        currentRole,
+        user: user(req),
+      },
+    });
+  }
+
+  const tickets =
+    await SupportTicketModel.find({
+      openedBy,
+    })
+      .sort({
+        lastMessageAt: -1,
+      })
+      .lean();
+
+  return res.json({ tickets });
+}
+
+export async function getMySupportTicket(
+  req: Request,
+  res: Response,
+) {
+  const openedBy = uid(req);
+
+  const ticket =
+    await SupportTicketModel.findOne({
+      _id: req.params.id,
+      openedBy,
+    }).lean();
+
+  if (!ticket) {
+    return res.status(404).json({
+      message: "التذكرة غير موجودة.",
+    });
+  }
+
+  return res.json({ ticket });
+}
+
+export async function addMySupportMessage(
+  req: Request,
+  res: Response,
+) {
+  const openedBy = uid(req);
+  const body = String(
+    req.body?.body || "",
+  ).trim();
+
+  if (!body) {
+    return res.status(400).json({
+      message: "الرسالة مطلوبة.",
+    });
+  }
+
+  const ticket =
+    await SupportTicketModel.findOne({
+      _id: req.params.id,
+      openedBy,
+    });
+
+  if (!ticket) {
+    return res.status(404).json({
+      message: "التذكرة غير موجودة.",
+    });
+  }
+
+  if (ticket.status === "closed") {
+    return res.status(400).json({
+      message: "التذكرة مغلقة.",
+    });
+  }
+
+  ticket.messages.push({
+    senderId: new Types.ObjectId(openedBy),
+    senderRole: role(req),
+    body,
+  } as any);
+
+  ticket.status = "in_progress";
+  ticket.lastMessageAt = new Date();
+
+  await ticket.save();
+
+  return res.json({ ticket });
+}
+
+export async function listSupportTickets(
+  req: Request,
+  res: Response,
+) {
+  if (!admin(req)) {
+    return res.status(403).json({
+      message: "غير مصرح.",
+    });
+  }
+
+  const filter: any = {};
+
+  if (
+    req.query.source === "captain" ||
+    req.query.source === "shop"
+  ) {
+    filter.source = req.query.source;
+  }
+
+  if (
+    req.query.type === "complaint" ||
+    req.query.type === "emergency"
+  ) {
+    filter.type = req.query.type;
+  }
+
+  if (
+    req.query.status === "open" ||
+    req.query.status === "in_progress" ||
+    req.query.status === "closed"
+  ) {
+    filter.status = req.query.status;
+  }
+
+  const tickets =
+    await SupportTicketModel.find(filter)
+      .populate(
+        "openedBy",
+        "fullName name phone email role",
+      )
+      .sort({
+        lastMessageAt: -1,
+      })
+      .lean();
+
+  return res.json({ tickets });
+}
+
+export async function getSupportTicket(
+  req: Request,
+  res: Response,
+) {
+  if (!admin(req)) {
+    return res.status(403).json({
+      message: "غير مصرح.",
+    });
+  }
+
+  const ticket =
+    await SupportTicketModel.findById(
+      req.params.id,
+    )
+      .populate(
+        "openedBy",
+        "fullName name phone email role",
+      )
+      .lean();
+
+  if (!ticket) {
+    return res.status(404).json({
+      message: "التذكرة غير موجودة.",
+    });
+  }
+
+  return res.json({ ticket });
+}
+
+export async function addAdminSupportMessage(
+  req: Request,
+  res: Response,
+) {
+  if (!admin(req)) {
+    return res.status(403).json({
+      message: "غير مصرح.",
+    });
+  }
+
+  const body = String(
+    req.body?.body || "",
+  ).trim();
+
+  if (!body) {
+    return res.status(400).json({
+      message: "الرد مطلوب.",
+    });
+  }
+
+  const ticket =
+    await SupportTicketModel.findById(
+      req.params.id,
+    );
+
+  if (!ticket) {
+    return res.status(404).json({
+      message: "التذكرة غير موجودة.",
+    });
+  }
+
+  if (ticket.status === "closed") {
+    return res.status(400).json({
+      message: "التذكرة مغلقة.",
+    });
+  }
+
+  const adminId = uid(req);
+
+  ticket.messages.push({
+    senderId: new Types.ObjectId(adminId),
+    senderRole: role(req),
+    body,
+  } as any);
+
+  ticket.status = "in_progress";
+  ticket.lastMessageAt = new Date();
+
+  await ticket.save();
+
+  return res.json({ ticket });
+}
+
+export async function updateSupportTicketStatus(
+  req: Request,
+  res: Response,
+) {
+  if (!admin(req)) {
+    return res.status(403).json({
+      message: "غير مصرح.",
+    });
+  }
+
+  const status = String(
+    req.body?.status || "",
+  );
+
+  if (
+    ![
+      "open",
+      "in_progress",
+      "closed",
+    ].includes(status)
+  ) {
+    return res.status(400).json({
+      message: "حالة غير صحيحة.",
+    });
+  }
+
+  const ticket =
+    await SupportTicketModel.findById(
+      req.params.id,
+    );
+
+  if (!ticket) {
+    return res.status(404).json({
+      message: "التذكرة غير موجودة.",
+    });
+  }
+
+  ticket.status = status;
+  ticket.lastMessageAt = new Date();
+
+  await ticket.save();
+
+  return res.json({ ticket });
+}
+
+export async function getSupportUnreadCount(
+  req: Request,
+  res: Response,
+) {
+  if (!admin(req)) {
+    return res.status(403).json({
+      message: "غير مصرح.",
+    });
+  }
+
+  const count =
+    await SupportTicketModel.countDocuments({
+      status: {
+        $in: ["open", "in_progress"],
+      },
+    });
+
+  return res.json({ count });
+}

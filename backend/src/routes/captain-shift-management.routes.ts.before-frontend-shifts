@@ -1,0 +1,47 @@
+import { Router } from "express";
+import {
+  requireAuth,
+  requireAdmin,
+} from "../middleware/auth.middleware.js";
+
+import {
+  createShift,
+  updateShift,
+  selectWeeklyShift,
+  changeWeeklyShift,
+  checkCurrentShift,
+} from "../controllers/captain-shift-management.controller.js";
+
+const router = Router();
+
+router.post(
+  "/",
+  requireAdmin,
+  createShift
+);
+
+router.patch(
+  "/:id",
+  requireAdmin,
+  updateShift
+);
+
+router.post(
+  "/weekly/select",
+  requireAuth,
+  selectWeeklyShift
+);
+
+router.post(
+  "/weekly/change",
+  requireAuth,
+  changeWeeklyShift
+);
+
+router.get(
+  "/current/check",
+  requireAuth,
+  checkCurrentShift
+);
+
+export default router;

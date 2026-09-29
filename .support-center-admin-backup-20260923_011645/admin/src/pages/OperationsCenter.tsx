@@ -1,0 +1,1024 @@
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import {
+  AlertTriangle,
+  BellRing,
+  CheckCircle2,
+  Clock3,
+  RefreshCw,
+  RotateCcw,
+  ShieldAlert,
+  UserRound,
+  XCircle,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { api, getApiErrorMessage } from "../lib/api";
+
+type Captain = {
+  _id: string;
+  fullName?: string;
+  phone?: string;
+  status?: string;
+};
+
+type Emergency = {
+  _id: string;
+  type: string;
+  description: string;
+  status: "open" | "acknowledged" | "resolved";
+  createdAt: string;
+  captainId?: Captain | string | null;
+  orderId?: {
+    _id: string;
+    orderNumber?: string;
+    status?: string;
+    captainId?: string | null;
+  } | string | null;
+};
+
+type StuckAlert = {
+  _id: string;
+  orderId: {
+    _id: string;
+    orderNumber?: string;
+    status?: string;
+    captainId?: string | null;
+  } | string;
+  status: "open" | "acknowledged" | "resolved";
+  reason: string;
+  detectedAt: string;
+};
+
+const card: CSSProperties = {
+  background: "#fff",
+  border: "1px solid #E2E8F0",
+  borderRadius: 20,
+  padding: 20,
+  boxShadow: "0 8px 30px rgba(15, 23, 42, .05)",
+};
+
+function getId(value: unknown) {
+  if (!value) return "";
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const item = value as { _id?: unknown };
+    return typeof item._id === "string" ? item._id : "";
+  }
+
+  return "";
+}
+
+function orderLabel(value: unknown) {
+  if (!value) return "غير معروف";
+
+  if (typeof value === "object" && value !== null) {
+    const item = value as {
+      orderNumber?: unknown;
+      _id?: unknown;
+    };
+
+    if (typeof item.orderNumber === "string" && item.orderNumber) {
+      return `#${item.orderNumber}`;
+    }
+
+    if (typeof item._id === "string") {
+      return `#${item._id.slice(-8)}`;
+    }
+  }
+
+  if (typeof value === "string") {
+    return `#${value.slice(-8)}`;
+  }
+
+  return "غير معروف";
+}
+
+function captainLabel(value: unknown) {
+  if (typeof value === "object" && value !== null) {
+    const item = value as {
+      fullName?: unknown;
+      phone?: unknown;
+    };
+
+    if (typeof item.fullName === "string" && item.fullName) {
+      return item.fullName;
+    }
+
+    if (typeof item.phone === "string" && item.phone) {
+      return item.phone;
+    }
+  }
+
+  return "غير معين";
+}
+
+function emergencyLabel(type: string) {
+  switch (type) {
+    case "vehicle_breakdown":
+      return "عطل في المركبة";
+    case "customer_issue":
+      return "مشكلة مع العميل";
+    case "establishment_issue":
+      return "مشكلة مع المطعم / المحل";
+    case "accident":
+      return "حادث";
+    case "cannot_complete":
+      return "لا يستطيع إكمال الطلب";
+    case "other":
+      return "سبب آخر";
+    default:
+      return type || "طوارئ";
+  }
+}
+
+function formatDate(value?: string) {
+  if (!value) return "غير معروف";
+
+  try {
+    return new Intl.DateTimeFormat("ar-IQ", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
+}
+
+export default function OperationsCenter() {
+  const navigate = useNavigate();
+
+  const [emergencies, setEmergencies] = useState<Emergency[]>([]);
+  const [stuck, setStuck] = useState<StuckAlert[]>([]);
+  const [captains, setCaptains] = useState<Captain[]>([]);
+  const [selectedCaptain, setSelectedCaptain] =
+    useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState("");
+  const [error, setError] = useState("");
+
+  const activeEmergencies = useMemo(
+    () =>
+      emergencies.filter(
+        (item) =>
+          item.status === "open" ||
+          item.status === "acknowledged",
+      ),
+    [emergencies],
+  );
+
+  const activeStuck = useMemo(
+    () =>
+      stuck.filter(
+        (item) =>
+          item.status === "open" ||
+          item.status === "acknowledged",
+      ),
+    [stuck],
+  );
+
+  const load = useCallback(async (silent = false) => {
+    try {
+      if (silent) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+
+      setError("");
+
+      const [emergencyRes, stuckRes, captainRes] =
+        await Promise.all([
+          api.get("/ops/emergencies"),
+          api.get("/ops/stuck"),
+          api.get("/captains"),
+        ]);
+
+      setEmergencies(
+        Array.isArray(emergencyRes.data?.emergencies)
+          ? emergencyRes.data.emergencies
+          : [],
+      );
+
+      setStuck(
+        Array.isArray(stuckRes.data?.alerts)
+          ? stuckRes.data.alerts
+          : [],
+      );
+
+      setCaptains(
+        Array.isArray(captainRes.data?.captains)
+          ? captainRes.data.captains
+          : [],
+      );
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر تحميل مركز العمليات.",
+        ),
+      );
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+
+    const timer = window.setInterval(() => {
+      void load(true);
+    }, 15000);
+
+    return () => window.clearInterval(timer);
+  }, [load]);
+
+  async function resolveEmergency(item: Emergency) {
+    if (!window.confirm("هل تريد إغلاق حالة الطوارئ؟")) {
+      return;
+    }
+
+    try {
+      setSaving(`resolve-${item._id}`);
+
+      await api.patch(
+        `/ops/emergencies/${item._id}/resolve`,
+      );
+
+      const orderId = getId(item.orderId);
+
+      if (orderId) {
+        try {
+          await api.post(
+            `/ops/orders/${orderId}/timeline`,
+            {
+              type: "emergency_resolved",
+              title: "تم إغلاق حالة الطوارئ",
+              description: item.description,
+            },
+          );
+        } catch (timelineError) {
+          console.warn(
+            "Timeline error:",
+            timelineError,
+          );
+        }
+      }
+
+      await load(true);
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر إغلاق حالة الطوارئ.",
+        ),
+      );
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function reassign(item: Emergency) {
+    const orderId = getId(item.orderId);
+    const captainId = selectedCaptain[item._id];
+    const oldCaptainId = getId(item.captainId);
+
+    if (!orderId) {
+      setError("الطوارئ غير مرتبطة بطلب.");
+      return;
+    }
+
+    if (!captainId) {
+      setError("اختر الكابتن الجديد أولًا.");
+      return;
+    }
+
+    if (captainId === oldCaptainId) {
+      setError("اختر كابتنًا مختلفًا.");
+      return;
+    }
+
+    try {
+      setSaving(`reassign-${item._id}`);
+
+      await api.post(
+        `/orders/${orderId}/reassign-captain`,
+        { captainId },
+      );
+
+      await load(true);
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر إعادة إسناد الطلب.",
+        ),
+      );
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function redispatch(
+    orderId: string,
+    sourceId: string,
+    emergencyId?: string,
+    stuckId?: string,
+  ) {
+    if (
+      !window.confirm(
+        "هل تريد إعادة الطلب إلى Smart Dispatch؟",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setSaving(`dispatch-${sourceId}`);
+
+      await api.post(
+        `/ops/orders/${orderId}/re-dispatch`,
+      );
+
+      if (emergencyId) {
+        await api.patch(
+          `/ops/emergencies/${emergencyId}/resolve`,
+        );
+      }
+
+      if (stuckId) {
+        await api.patch(
+          `/ops/stuck/${stuckId}/resolve`,
+        );
+      }
+
+      await load(true);
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر إعادة الطلب إلى Dispatch.",
+        ),
+      );
+    } finally {
+      setSaving("");
+    }
+  }
+
+  async function resolveStuck(item: StuckAlert) {
+    if (
+      !window.confirm(
+        "هل تريد إغلاق تنبيه الطلب العالق؟",
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setSaving(`stuck-${item._id}`);
+
+      await api.patch(
+        `/ops/stuck/${item._id}/resolve`,
+      );
+
+      await load(true);
+    } catch (err) {
+      setError(
+        getApiErrorMessage(
+          err,
+          "تعذر إغلاق التنبيه.",
+        ),
+      );
+    } finally {
+      setSaving("");
+    }
+  }
+
+  if (loading) {
+    return (
+      <main dir="rtl" style={{ padding: 28 }}>
+        <div style={card}>
+          جاري تحميل مركز العمليات...
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main dir="rtl" style={{ padding: 28 }}>
+      <div
+        style={{
+          maxWidth: 1350,
+          margin: "0 auto",
+        }}
+      >
+        <section
+          style={{
+            ...card,
+            marginBottom: 20,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 15,
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 7,
+                color: "#DC2626",
+                fontWeight: 900,
+                fontSize: 12,
+              }}
+            >
+              <ShieldAlert size={16} />
+              OPERATIONS CENTER
+            </div>
+
+            <h1
+              style={{
+                margin: "6px 0 0",
+                fontSize: 28,
+                color: "#0F172A",
+              }}
+            >
+              مركز العمليات
+            </h1>
+
+            <p
+              style={{
+                margin: "7px 0 0",
+                color: "#64748B",
+              }}
+            >
+              متابعة الطوارئ والطلبات العالقة والتدخل السريع.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void load()}
+            disabled={refreshing}
+            style={{
+              minHeight: 44,
+              padding: "0 15px",
+              borderRadius: 12,
+              border: "1px solid #CBD5E1",
+              background: "#fff",
+              fontWeight: 800,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <RefreshCw size={17} />
+            تحديث
+          </button>
+        </section>
+
+        {error && (
+          <div
+            style={{
+              ...card,
+              marginBottom: 20,
+              background: "#FEF2F2",
+              borderColor: "#FECACA",
+              color: "#B91C1C",
+              fontWeight: 800,
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <section
+          style={{
+            display: "grid",
+            gridTemplateColumns:
+              "repeat(auto-fit,minmax(220px,1fr))",
+            gap: 15,
+            marginBottom: 25,
+          }}
+        >
+          <div style={card}>
+            <BellRing color="#DC2626" />
+            <span
+              style={{
+                display: "block",
+                marginTop: 8,
+                color: "#64748B",
+                fontWeight: 700,
+              }}
+            >
+              طوارئ مفتوحة
+            </span>
+            <strong
+              style={{
+                display: "block",
+                marginTop: 4,
+                fontSize: 30,
+              }}
+            >
+              {activeEmergencies.length}
+            </strong>
+          </div>
+
+          <div style={card}>
+            <AlertTriangle color="#D97706" />
+            <span
+              style={{
+                display: "block",
+                marginTop: 8,
+                color: "#64748B",
+                fontWeight: 700,
+              }}
+            >
+              طلبات عالقة
+            </span>
+            <strong
+              style={{
+                display: "block",
+                marginTop: 4,
+                fontSize: 30,
+              }}
+            >
+              {activeStuck.length}
+            </strong>
+          </div>
+
+          <div style={card}>
+            <UserRound color="#2563EB" />
+            <span
+              style={{
+                display: "block",
+                marginTop: 8,
+                color: "#64748B",
+                fontWeight: 700,
+              }}
+            >
+              الكباتن النشطون
+            </span>
+            <strong
+              style={{
+                display: "block",
+                marginTop: 4,
+                fontSize: 30,
+              }}
+            >
+              {
+                captains.filter(
+                  (captain) =>
+                    captain.status === "active",
+                ).length
+              }
+            </strong>
+          </div>
+        </section>
+
+        <section style={{ marginBottom: 28 }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
+            <BellRing color="#DC2626" />
+            <h2 style={{ margin: 0 }}>
+              🚨 طوارئ الكباتن
+            </h2>
+          </div>
+
+          {activeEmergencies.length === 0 ? (
+            <div style={card}>
+              <CheckCircle2 color="#16A34A" />
+              <div style={{ marginTop: 8 }}>
+                لا توجد حالات طوارئ مفتوحة.
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gap: 14,
+              }}
+            >
+              {activeEmergencies.map((item) => {
+                const orderId = getId(item.orderId);
+                const currentCaptain =
+                  getId(item.captainId);
+                const busy =
+                  saving === `resolve-${item._id}` ||
+                  saving === `reassign-${item._id}` ||
+                  saving === `dispatch-${item._id}`;
+
+                return (
+                  <article
+                    key={item._id}
+                    style={{
+                      ...card,
+                      borderColor: "#FECACA",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent:
+                          "space-between",
+                        gap: 12,
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 7,
+                            color: "#B91C1C",
+                            fontWeight: 900,
+                          }}
+                        >
+                          <XCircle size={18} />
+                          {emergencyLabel(item.type)}
+                        </div>
+
+                        <h3
+                          style={{
+                            margin: "8px 0 0",
+                          }}
+                        >
+                          الطلب {orderLabel(item.orderId)}
+                        </h3>
+                      </div>
+
+                      <span
+                        style={{
+                          background: "#FEE2E2",
+                          color: "#991B1B",
+                          borderRadius: 999,
+                          padding: "6px 10px",
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {item.status === "acknowledged"
+                          ? "قيد المعالجة"
+                          : "مفتوحة"}
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 13,
+                        color: "#475569",
+                        lineHeight: 1.8,
+                      }}
+                    >
+                      <div>
+                        <strong>الكابتن:</strong>{" "}
+                        {captainLabel(item.captainId)}
+                      </div>
+
+                      <div>
+                        <strong>السبب:</strong>{" "}
+                        {item.description}
+                      </div>
+
+                      <div>
+                        <strong>الوقت:</strong>{" "}
+                        {formatDate(item.createdAt)}
+                      </div>
+                    </div>
+
+                    {orderId && (
+                      <div
+                        style={{
+                          marginTop: 15,
+                          display: "grid",
+                          gridTemplateColumns:
+                            "repeat(auto-fit,minmax(210px,1fr))",
+                          gap: 10,
+                        }}
+                      >
+                        <select
+                          value={
+                            selectedCaptain[item._id] || ""
+                          }
+                          disabled={busy}
+                          onChange={(event) =>
+                            setSelectedCaptain(
+                              (current) => ({
+                                ...current,
+                                [item._id]:
+                                  event.target.value,
+                              }),
+                            )
+                          }
+                          style={{
+                            minHeight: 44,
+                            border: "1px solid #CBD5E1",
+                            borderRadius: 12,
+                            padding: "0 12px",
+                            background: "#fff",
+                          }}
+                        >
+                          <option value="">
+                            اختر كابتنًا جديدًا
+                          </option>
+
+                          {captains
+                            .filter(
+                              (captain) =>
+                                captain.status === "active" &&
+                                captain._id !== currentCaptain,
+                            )
+                            .map((captain) => (
+                              <option
+                                key={captain._id}
+                                value={captain._id}
+                              >
+                                {captain.fullName ||
+                                  captain.phone ||
+                                  "كابتن"}
+                              </option>
+                            ))}
+                        </select>
+
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void reassign(item)
+                          }
+                          style={{
+                            minHeight: 44,
+                            border: 0,
+                            borderRadius: 12,
+                            background: "#2563EB",
+                            color: "#fff",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          إعادة تعيين الكابتن
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void redispatch(
+                              orderId,
+                              item._id,
+                              item._id,
+                            )
+                          }
+                          style={{
+                            minHeight: 44,
+                            border: 0,
+                            borderRadius: 12,
+                            background: "#7C3AED",
+                            color: "#fff",
+                            fontWeight: 900,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 7,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <RotateCcw size={17} />
+                          إعادة إلى Dispatch
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void resolveEmergency(item)
+                          }
+                          style={{
+                            minHeight: 44,
+                            border: "1px solid #CBD5E1",
+                            borderRadius: 12,
+                            background: "#fff",
+                            color: "#334155",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <CheckCircle2
+                            size={16}
+                            style={{
+                              verticalAlign: "middle",
+                              marginLeft: 5,
+                            }}
+                          />
+                          إبقاء الكابتن وإغلاق الطوارئ
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(`/orders/${orderId}`)
+                          }
+                          style={{
+                            minHeight: 44,
+                            border: "1px solid #CBD5E1",
+                            borderRadius: 12,
+                            background: "#F8FAFC",
+                            fontWeight: 900,
+                            cursor: "pointer",
+                          }}
+                        >
+                          فتح الطلب
+                        </button>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
+            <Clock3 color="#D97706" />
+            <h2 style={{ margin: 0 }}>
+              ⚠️ الطلبات العالقة
+            </h2>
+          </div>
+
+          {activeStuck.length === 0 ? (
+            <div style={card}>
+              <CheckCircle2 color="#16A34A" />
+              <div style={{ marginTop: 8 }}>
+                لا توجد طلبات عالقة مفتوحة.
+              </div>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gap: 14,
+              }}
+            >
+              {activeStuck.map((item) => {
+                const orderId = getId(item.orderId);
+                const busy =
+                  saving === `stuck-${item._id}` ||
+                  saving === `dispatch-${item._id}`;
+
+                return (
+                  <article
+                    key={item._id}
+                    style={{
+                      ...card,
+                      borderColor: "#FDE68A",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        color: "#B45309",
+                        fontWeight: 900,
+                      }}
+                    >
+                      <AlertTriangle size={18} />
+                      طلب عالق
+                    </div>
+
+                    <h3
+                      style={{
+                        margin: "8px 0 0",
+                      }}
+                    >
+                      {orderLabel(item.orderId)}
+                    </h3>
+
+                    <p
+                      style={{
+                        color: "#475569",
+                        lineHeight: 1.8,
+                      }}
+                    >
+                      {item.reason}
+                    </p>
+
+                    <div
+                      style={{
+                        color: "#64748B",
+                        fontSize: 12,
+                      }}
+                    >
+                      اكتُشف: {formatDate(item.detectedAt)}
+                    </div>
+
+                    <div
+                      style={{
+                        marginTop: 14,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 10,
+                      }}
+                    >
+                      {orderId && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            void redispatch(
+                              orderId,
+                              item._id,
+                              undefined,
+                              item._id,
+                            )
+                          }
+                          style={{
+                            minHeight: 44,
+                            border: 0,
+                            borderRadius: 12,
+                            background: "#7C3AED",
+                            color: "#fff",
+                            fontWeight: 900,
+                            padding: "0 15px",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 7,
+                          }}
+                        >
+                          <RotateCcw size={17} />
+                          إعادة إلى Dispatch
+                        </button>
+                      )}
+
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void resolveStuck(item)
+                        }
+                        style={{
+                          minHeight: 44,
+                          border: "1px solid #CBD5E1",
+                          borderRadius: 12,
+                          background: "#fff",
+                          fontWeight: 900,
+                          padding: "0 15px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        إغلاق التنبيه
+                      </button>
+
+                      {orderId && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(`/orders/${orderId}`)
+                          }
+                          style={{
+                            minHeight: 44,
+                            border: "1px solid #CBD5E1",
+                            borderRadius: 12,
+                            background: "#F8FAFC",
+                            fontWeight: 900,
+                            padding: "0 15px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          فتح الطلب
+                        </button>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      </div>
+    </main>
+  );
+}
