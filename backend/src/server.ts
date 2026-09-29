@@ -21,9 +21,11 @@ import path from "node:path";
 import orderPickupPhotoRoutes from "./routes/order-pickup-photo.routes.js";
 import cors from "cors";
 import * as helmetPackage from "helmet";
+
 const helmet =
   (helmetPackage as any).default ??
   helmetPackage;
+
 import cookieParser from "cookie-parser";
 import { connectDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
@@ -78,41 +80,6 @@ app.disable("x-powered-by");
 
 app.use(helmet());
 
-const allowedOrigins = new Set([
-  "http://localhost:5173",
-  "http://localhost:5174",
-  "http://127.0.0.1:5173",
-  "http://127.0.0.1:5174",
-  "http://192.168.100.11:5173",
-  "http://192.168.100.11:5174",
-  "http://192.168.100.15:5173",
-  "http://192.168.100.15:5174",
-]);
-
-const corsOptions =
-  process.env.NODE_ENV === "production"
-    ? {
-        origin(
-          origin: string | undefined,
-          callback: (
-            error: Error | null,
-            allowed?: boolean,
-          ) => void,
-        ) {
-          if (!origin || allowedOrigins.has(origin)) {
-            callback(null, true);
-            return;
-          }
-
-          callback(new Error("Origin not allowed by CORS"));
-        },
-        credentials: true,
-      }
-    : {
-        origin: true,
-        credentials: true,
-      };
-
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -121,12 +88,20 @@ app.use(
         return;
       }
 
-      const allowed =
+      const isLocalhost =
         /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(
           origin,
         );
 
-      callback(null, allowed);
+      const isVercel =
+        /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(
+          origin,
+        );
+
+      callback(
+        null,
+        isLocalhost || isVercel,
+      );
     },
 
     credentials: true,
