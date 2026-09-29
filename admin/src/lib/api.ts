@@ -1,31 +1,37 @@
-
 import axios, {
   type AxiosError,
   type InternalAxiosRequestConfig,
 } from "axios";
 
-  import.meta.env.VITE_API_URL ||
-  "/api";
-
 const ACCESS_TOKEN_KEY = "dzwan_access_token";
 
 export function getStoredAccessToken(): string | null {
   if (!import.meta.env.DEV) return null;
+
   try {
-    return window.localStorage.getItem(ACCESS_TOKEN_KEY);
+    return window.localStorage.getItem(
+      ACCESS_TOKEN_KEY,
+    );
   } catch {
     return null;
   }
 }
 
-export function setAccessToken(token: string | null): void {
+export function setAccessToken(
+  token: string | null,
+): void {
   if (!import.meta.env.DEV) return;
 
   try {
     if (token) {
-      window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
+      window.localStorage.setItem(
+        ACCESS_TOKEN_KEY,
+        token,
+      );
     } else {
-      window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+      window.localStorage.removeItem(
+        ACCESS_TOKEN_KEY,
+      );
     }
   } catch {
     // Ignore localStorage errors.
@@ -33,7 +39,9 @@ export function setAccessToken(token: string | null): void {
 }
 
 export const api = axios.create({
-  baseURL: "/api",
+  baseURL:
+    import.meta.env.VITE_API_URL ||
+    "/api",
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
@@ -52,7 +60,8 @@ api.interceptors.request.use(
       !url.includes("/auth/logout")
     ) {
       config.headers = config.headers ?? {};
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization =
+        `Bearer ${token}`;
     }
 
     return config;
@@ -145,13 +154,20 @@ api.interceptors.response.use(
         originalRequest._retry = true;
 
         try {
-          const refreshResponse: any = await refreshSession();
+          const refreshResponse: any =
+            await refreshSession();
 
           const refreshedToken =
             refreshResponse?.data?.accessToken;
 
-          if (typeof refreshedToken === "string" && refreshedToken) {
-            setAccessToken(refreshedToken);
+          if (
+            typeof refreshedToken ===
+              "string" &&
+            refreshedToken
+          ) {
+            setAccessToken(
+              refreshedToken,
+            );
           }
 
           return api(originalRequest);
@@ -163,6 +179,7 @@ api.interceptors.response.use(
 
           setAccessToken(null);
           window.location.assign("/");
+
           return Promise.reject(error);
         }
       }
@@ -175,7 +192,8 @@ api.interceptors.response.use(
           url: originalRequest?.url,
           method: originalRequest?.method,
           status,
-          response: error.response?.data,
+          response:
+            error.response?.data,
         },
       );
     }
