@@ -7,8 +7,8 @@
     },
     "backend": {
       "root": "backend/",
-      "framework": "express",
-      "installCommand": "npm install --include=dev"
+      "entrypoint": "src/server.mts",
+      "installCommand": "npm install"
     }
   },
   "rewrites": [
