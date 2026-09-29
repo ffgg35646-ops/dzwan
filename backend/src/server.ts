@@ -156,6 +156,8 @@ app.use(
 
 app.get("/api/health", async (_req, res) => {
   try {
+    await ensureDatabaseConnection();
+
     const mongoose =
       (await import("mongoose")).default;
 
@@ -186,7 +188,7 @@ app.get("/api/health", async (_req, res) => {
       success: false,
       service: "DZWAN API",
       status: "degraded",
-      database: "unknown",
+      database: "disconnected",
     });
   }
 });
@@ -195,6 +197,8 @@ app.get(
   "/api/system/status",
   async (_req, res) => {
     try {
+      await ensureDatabaseConnection();
+
       const mongoose =
         (await import("mongoose")).default;
 
@@ -233,7 +237,7 @@ app.get(
           },
 
           database: {
-            status: "unknown",
+            status: "offline",
           },
         },
       });
