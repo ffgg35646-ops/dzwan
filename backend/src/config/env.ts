@@ -1,7 +1,3 @@
-if (process.env.VERCEL !== "1") {
-  process.loadEnvFile(".env.local");
-}
-
 const mongodbUri =
   process.env.MONGODB_URI ?? "";
 
