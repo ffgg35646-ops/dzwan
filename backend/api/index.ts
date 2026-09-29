@@ -1,4 +1,4 @@
-import { app } from "../src/server.js";
+import { app } from "../src/server.mjs";
 import { connectDatabase } from "../src/config/database.js";
 
 let initialized = false;
