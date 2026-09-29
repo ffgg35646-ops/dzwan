@@ -7,8 +7,7 @@
     },
     "backend": {
       "root": "backend",
-      "framework": "express",
-      "entrypoint": "src/server.ts"
+      "framework": "express"
     }
   },
   "rewrites": [
