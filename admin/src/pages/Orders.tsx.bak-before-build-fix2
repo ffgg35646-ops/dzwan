@@ -3479,6 +3479,26 @@ const [captains, setCaptains] = useState<Captain[]>([]);
                     rejectedCardCaptainOrderId ===
                     order._id;
 
+                  const availableEstablishment =
+                    order.establishmentId &&
+                    typeof order.establishmentId === "object"
+                      ? order.establishmentId
+                      : null;
+
+                  const availableGovernorateId =
+                    String(
+                      order.governorateId ||
+                        availableEstablishment?.governorateId ||
+                        "",
+                    );
+
+                  const availableAreaId =
+                    String(
+                      order.areaId ||
+                        availableEstablishment?.areaId ||
+                        "",
+                    );
+
                   const isAvailableOrder =
                     !order.captainId &&
                     (

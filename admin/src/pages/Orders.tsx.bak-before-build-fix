@@ -3479,12 +3479,47 @@ const [captains, setCaptains] = useState<Captain[]>([]);
                     rejectedCardCaptainOrderId ===
                     order._id;
 
+                  const availableEstablishment =
+                    order.establishmentId &&
+                    typeof order.establishmentId === "object"
+                      ? order.establishmentId
+                      : null;
+
+                  const availableGovernorateId =
+                    String(
+                      order.governorateId ||
+                        availableEstablishment?.governorateId ||
+                        "",
+                    );
+
+                  const availableAreaId =
+                    String(
+                      order.areaId ||
+                        availableEstablishment?.areaId ||
+                        "",
+                    );
+
+                  const availableOrderCaptains =
+                    availableCaptains.filter(
+                      (captain) =>
+                        String(
+                          captain.governorateId || "",
+                        ) === availableGovernorateId &&
+                        String(
+                          captain.areaId || "",
+                        ) === availableAreaId,
+                    );
+
                   const isAvailableOrder =
                     !order.captainId &&
                     (
                       order.status === "pending" ||
                       order.status === "ready_for_pickup"
                     );
+
+                  const availableCaptainPickerOpen =
+                    rejectedCardCaptainOrderId ===
+                    order._id;
 
                   if (availableFreshOrder) {
                     return (
@@ -4793,6 +4828,23 @@ const [captains, setCaptains] = useState<Captain[]>([]);
                             </button>
                           )}
                           
+                          {order.status === "rejected" && (
+                            <button
+                              type="button"
+                              className="orders-btn orders-btn-danger"
+                              disabled={saving}
+                              onClick={() =>
+                                void deleteRejectedOrder(order)
+                              }
+                              style={{
+                                width: "100%",
+                                marginTop: 8,
+                              }}
+                            >
+                              حذف الطلب
+                            </button>
+                          )}
+
                           {order.status === "pending" && (
                             <>
                               <button
@@ -4864,6 +4916,7 @@ const [captains, setCaptains] = useState<Captain[]>([]);
 
                         {order.status !== "delivered" &&
                           order.status !== "completed" &&
+                          order.status !== "cancelled" &&
                           (
                             <button
                               type="button"

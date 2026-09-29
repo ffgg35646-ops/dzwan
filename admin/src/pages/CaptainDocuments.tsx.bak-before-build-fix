@@ -8,7 +8,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { api, getApiErrorMessage } from "../lib/api";
-import { dzwanPrompt } from "../lib/message";
+import { dzwanConfirm, dzwanPrompt } from "../lib/message";
 
 type Captain = {
   _id: string;
