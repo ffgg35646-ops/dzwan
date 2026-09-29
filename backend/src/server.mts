@@ -20,7 +20,10 @@ import express from "express";
 import path from "node:path";
 import orderPickupPhotoRoutes from "./routes/order-pickup-photo.routes.js";
 import cors from "cors";
-import helmet from "helmet";
+import * as helmetPackage from "helmet";
+const helmet =
+  (helmetPackage as any).default ??
+  helmetPackage;
 import cookieParser from "cookie-parser";
 import { connectDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
