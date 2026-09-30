@@ -1,5 +1,5 @@
 
-import { Request, Response } from "express";
+import { Request, Response } from "../http/express-compat.js";
 import { randomBytes } from "node:crypto";
 import Offer from "../models/Offer.js";
 
