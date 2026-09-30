@@ -11,7 +11,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.mts"
+    "src/**/*.mts",
+    "src/**/*.cts"
   ],
   "exclude": [
     "src/scripts/**/*.ts"
