@@ -1,4 +1,4 @@
-import { Router, type NextFunction, type Response } from "express";
+import { Router, type NextFunction, type Response } from "../http/express-compat.js";
 import type { ScopedRequest } from "../middleware/scope.middleware.js";
 import {
   suspendEstablishmentCore,
