@@ -14,7 +14,7 @@ export interface Response extends ServerResponse {
   cookie(name:string,value:string,options?:CookieOptions):Response;
   clearCookie(name:string,options?:CookieOptions):Response;
 }
-export type Handler=(req:Request,res:Response,next:NextFunction)=>unknown;
+export type Handler=(...args:any[])=>unknown;
 type CookieOptions={httpOnly?:boolean;secure?:boolean;sameSite?:"strict"|"lax"|"none";path?:string;maxAge?:number;expires?:Date};
 type Layer={method?:string;path:string;handlers:Handler[];exact:boolean};
 
@@ -97,7 +97,7 @@ function enhanceRequest(raw:IncomingMessage):Request{
   const f=raw.headers["x-forwarded-for"];req.ip=typeof f==="string"?f.split(",")[0].trim():raw.socket.remoteAddress||"unknown";
   req.get=name=>raw.headers[name.toLowerCase()] as string|undefined;return req;
 }
-async function run(handlers:Handler[],req:Request,res:Response):Promise<void>{
+async function run(handlers:Handler[],req:Request,res:Response,initialError?:unknown):Promise<void>{
   let i=0;
   const dispatch=async(error?:unknown):Promise<void>=>{
     const h=handlers[i++];if(!h){if(error!==undefined)throw error;return;}
@@ -107,7 +107,7 @@ async function run(handlers:Handler[],req:Request,res:Response):Promise<void>{
       try{const result=error!==undefined?(h as any)(error,req,res,next):h(req,res,next);Promise.resolve(result).then(()=>{if(!settled)resolve();},e=>{if(!settled){settled=true;reject(e);}});}catch(e){reject(e);}
     });
   };
-  await dispatch();
+  await dispatch(initialError);
 }
 function stripMount(req:Request,mount:string){
   if(mount==="/")return ()=>{};
@@ -152,7 +152,9 @@ function createRouter():RouterInstance{
       }
     }
     if(!handlers.length){if(next){next();return;}if(!res.headersSent)res.status(404).json({success:false,message:"البيانات المطلوبة غير موجودة."});return;}
-    await parseBody(req);await run(handlers,req,res);
+    let bodyError: unknown;
+    try { await parseBody(req); } catch (error) { bodyError = error; }
+    await run(handlers,req,res,bodyError);
   }
   return router;
 }
