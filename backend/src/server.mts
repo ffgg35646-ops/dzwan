@@ -268,10 +268,6 @@ async function ensureDatabaseConnection(): Promise<void> {
       throw error;
     }
 
-    if (mongoose.connection.readyState === mongoose.ConnectionStates.connected) {
-      return;
-    }
-
     databaseConnectionPromise = null;
   }
 
