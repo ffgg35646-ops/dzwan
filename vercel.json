@@ -9,7 +9,8 @@
       "root": "backend/",
       "framework": "express",
       "installCommand": "npm ci --include=dev",
-      "buildCommand": "npm ci --include=prod"
+      "buildCommand": "npm ci --include=prod",
+      "entrypoint": "src/server.mts"
     }
   },
   "rewrites": [
