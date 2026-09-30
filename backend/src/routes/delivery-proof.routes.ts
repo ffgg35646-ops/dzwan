@@ -22,6 +22,7 @@ router.post(
     destination: "/tmp/uploads/delivery-proof",
     prefix: "delivery-proof",
     maxSize: 4 * 1024 * 1024,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
   }),
   uploadPhoto,
 );
