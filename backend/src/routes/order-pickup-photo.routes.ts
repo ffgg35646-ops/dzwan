@@ -18,6 +18,7 @@ router.post(
     destination: "/tmp/uploads/pickup",
     prefix: "pickup",
     maxSize: 4 * 1024 * 1024,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
   }),
   uploadPickupPhoto,
 );
