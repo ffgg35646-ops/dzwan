@@ -1,4 +1,4 @@
-import { Router, type NextFunction, type Response } from "express";
+import { Router, type NextFunction, type Response } from "../http/express-compat.js";
 
 import { requireAuth } from "../middleware/auth.middleware.js";
 import {

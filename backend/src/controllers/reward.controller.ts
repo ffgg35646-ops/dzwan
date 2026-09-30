@@ -1,7 +1,7 @@
 import {
   Request,
   Response,
-} from "express";
+} from "../http/express-compat.js";
 import RewardRule from "../models/RewardRule.js";
 
 export async function listRewards(

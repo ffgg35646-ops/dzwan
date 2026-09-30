@@ -4,7 +4,7 @@ import {
   core11CaptainGuard,
 } from "../middleware/core11-order.middleware.js";
 
-import { Router } from "express";
+import { Router } from "../http/express-compat.js";
 import {
   requireAuth,
   requireAdmin,
