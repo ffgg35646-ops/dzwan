@@ -1,5 +1,5 @@
 
-import { Request, Response } from "express";
+import { Request, Response } from "../http/express-compat.js";
 import AppVersion from "../models/AppVersion.js";
 
 export async function getAppUpdateInfo(
