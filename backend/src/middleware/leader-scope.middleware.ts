@@ -1,4 +1,4 @@
-import type { NextFunction, Response } from "express";
+import type { NextFunction, Response } from "../http/express-compat.js";
 import type { ScopedRequest } from "./scope.middleware.js";
 
 export function requireLeaderManagement(

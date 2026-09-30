@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+import type { Request, Response } from "../http/express-compat.js";
 import { UserModel } from "../models/User.js";
 import { OrderModel } from "../models/Order.js";
 import { EstablishmentModel } from "../models/Establishment.js";

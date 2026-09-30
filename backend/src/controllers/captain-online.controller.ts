@@ -1,5 +1,5 @@
 
-import { Response } from "express";
+import { Response } from "../http/express-compat.js";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import {
   assertCaptainInsideShift,

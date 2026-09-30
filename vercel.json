@@ -7,9 +7,9 @@
     },
     "backend": {
       "root": "backend/",
-      "framework": "express",
-      "installCommand": "npm ci --include=dev",
-      "buildCommand": "npm ci --include=prod",
+      "framework": "node",
+      "installCommand": "npm install",
+      "buildCommand": "npm run build",
       "entrypoint": "src/server.mts"
     }
   },

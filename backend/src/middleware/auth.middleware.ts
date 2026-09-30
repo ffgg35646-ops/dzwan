@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from "express";
+import type { NextFunction, Request, Response } from "../http/express-compat.js";
 import { getAdminPagePermissions } from "../config/admin-page-permissions.js";
 import { Types } from "mongoose";
 import { verifyToken, type AccessTokenPayload } from "../utils/jwt.js";

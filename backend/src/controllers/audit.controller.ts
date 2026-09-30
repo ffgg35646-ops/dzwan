@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+import type { Request, Response } from "../http/express-compat.js";
 import { AuditLogModel } from "../models/AuditLog.js";
 
 export async function listAuditLogs(
