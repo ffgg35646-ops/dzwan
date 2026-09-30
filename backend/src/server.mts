@@ -162,7 +162,7 @@ app.get("/api/health", async (_req, res) => {
       (await import("mongoose")).default;
 
     const databaseConnected =
-      mongoose.connection.readyState === 1;
+      mongoose.connection.readyState === mongoose.ConnectionStates.connected;
 
     res
       .status(databaseConnected ? 200 : 503)
@@ -203,7 +203,7 @@ app.get(
         (await import("mongoose")).default;
 
       const databaseConnected =
-        mongoose.connection.readyState === 1;
+        mongoose.connection.readyState === mongoose.ConnectionStates.connected;
 
       res.status(200).json({
         success: true,
@@ -256,7 +256,7 @@ async function ensureDatabaseConnection(): Promise<void> {
   const mongoose =
     (await import("mongoose")).default;
 
-  if (mongoose.connection.readyState === 1) {
+  if (mongoose.connection.readyState === mongoose.ConnectionStates.connected) {
     return;
   }
 
@@ -268,7 +268,7 @@ async function ensureDatabaseConnection(): Promise<void> {
       throw error;
     }
 
-    if (mongoose.connection.readyState === 1) {
+    if (mongoose.connection.readyState === mongoose.ConnectionStates.connected) {
       return;
     }
 
