@@ -22,6 +22,7 @@ type UploadOptions = {
   maxSize?: number;
   maxFiles?: number;
   multiple?: boolean;
+  allowedMimeTypes?: string[];
 };
 
 function safeExtension(filename:string):string {
@@ -83,6 +84,7 @@ export function multipartUpload(options:UploadOptions):Handler {
       stream.pipe(output);
     });
 
+    bb.on("filesLimit",()=>{rejected=true;next(new Error("تم تجاوز عدد الملفات المسموح به."));});
     bb.on("error",(error:any)=>{rejected=true;next(error);});
     bb.on("finish",async()=>{
       try{
