@@ -16,17 +16,9 @@ import core11SettingsRoutes from "./routes/core11-settings.routes.js";
 import pricingRoutes from "./routes/pricing.routes.js";
 import ops3147Routes from "./routes/ops-31-47.routes.js";
 import geofenceRoutes from "./routes/geofence.routes.js";
-import express from "./http/express-compat.js";
+import express, { type Request, type Response, type NextFunction } from "./http/express-compat.js";
 import path from "node:path";
 import orderPickupPhotoRoutes from "./routes/order-pickup-photo.routes.js";
-import cors from "cors";
-import * as helmetPackage from "helmet";
-
-const helmet =
-  (helmetPackage as any).default ??
-  helmetPackage;
-
-import cookieParser from "cookie-parser";
 import { connectDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { detectStuckOrders } from "./services/ops-31-47.service.js";
@@ -78,56 +70,46 @@ const app = express();
 
 app.disable("x-powered-by");
 
-app.use(helmet());
+app.use((req, res, next) => {
+  const origin = req.get("origin");
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
+  if (
+    !origin ||
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin) ||
+    /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(origin)
+  ) {
+    if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS",
+    );
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Origin,X-Requested-With,Content-Type,Accept,Authorization,Cookie",
+    );
+    res.setHeader("Access-Control-Expose-Headers", "Set-Cookie");
+  }
 
-      const isLocalhost =
-        /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(
-          origin,
-        );
+  if (req.method === "OPTIONS") {
+    res.statusCode = 204;
+    res.end();
+    return;
+  }
 
-      const isVercel =
-        /^https:\/\/[a-z0-9-]+\.vercel\.app$/i.test(
-          origin,
-        );
+  next();
+});
 
-      callback(
-        null,
-        isLocalhost || isVercel,
-      );
-    },
-
-    credentials: true,
-
-    methods: [
-      "GET",
-      "HEAD",
-      "POST",
-      "PUT",
-      "PATCH",
-      "DELETE",
-      "OPTIONS",
-    ],
-
-    allowedHeaders: [
-      "Origin",
-      "X-Requested-With",
-      "Content-Type",
-      "Accept",
-      "Authorization",
-      "Cookie",
-    ],
-
-    exposedHeaders: ["Set-Cookie"],
-  }),
-);
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=()",
+  );
+  next();
+});
 
 app.use(express.json({ limit: "1mb" }));
 
@@ -138,7 +120,6 @@ app.use(
   ),
 );
 
-app.use(cookieParser());
 
 app.use("/app-theme", AppThemeRoutes);
 
@@ -657,9 +638,9 @@ app.use(
 app.use(
   (
     error: unknown,
-    _req: express.Request,
-    res: express.Response,
-    _next: express.NextFunction,
+    _req: Request,
+    res: Response,
+    _next: NextFunction,
   ) => {
     if (process.env.NODE_ENV !== "production") {
       console.error(
