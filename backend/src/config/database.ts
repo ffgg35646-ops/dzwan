@@ -8,8 +8,9 @@ export async function connectDatabase(): Promise<void> {
 
   await mongoose.connect(env.mongodbUri, {
     dbName: "dzwan",
-    maxPoolSize: 20,
-    serverSelectionTimeoutMS: 5000,
+    maxPoolSize: 5,
+    maxConnecting: 1,
+    serverSelectionTimeoutMS: 15000,
   });
 
   console.log("DZWAN MongoDB connected");
