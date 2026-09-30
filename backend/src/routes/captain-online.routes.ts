@@ -1,5 +1,5 @@
 
-import { Router } from "express";
+import { Router } from "../http/express-compat.js";
 import {
   getCaptainOnline,
   setCaptainOnline,
