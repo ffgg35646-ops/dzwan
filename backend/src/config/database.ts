@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { attachDatabasePool } from "@vercel/functions";
 import { env } from "./env.js";
 
 export async function connectDatabase(): Promise<void> {
@@ -10,8 +11,11 @@ export async function connectDatabase(): Promise<void> {
     dbName: "dzwan",
     maxPoolSize: 5,
     maxConnecting: 1,
+    maxIdleTimeMS: 5000,
     serverSelectionTimeoutMS: 15000,
   });
+
+  attachDatabasePool(mongoose.connection.getClient());
 
   console.log("DZWAN MongoDB connected");
 }
