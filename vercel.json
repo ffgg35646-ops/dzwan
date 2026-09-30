@@ -3,7 +3,14 @@
   "services": {
     "admin": {
       "root": "admin/",
-      "framework": "vite"
+      "framework": "vite",
+      "cleanUrls": false,
+      "rewrites": [
+        {
+          "source": "/(.*)",
+          "destination": "/index.html"
+        }
+      ]
     },
     "backend": {
       "root": "backend/",
@@ -22,8 +29,7 @@
     {
       "source": "/(.*)",
       "destination": {
-        "service": "admin",
-        "path": "/index.html"
+        "service": "admin"
       }
     }
   ]
