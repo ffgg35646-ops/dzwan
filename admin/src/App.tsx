@@ -1,7 +1,7 @@
 import AppThemeSettings from "./pages/AppThemeSettings";
 import CaptainShifts from "./pages/CaptainShifts";
 import CaptainAttendance from "./pages/CaptainAttendance";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import Login from "./pages/Login";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -44,7 +44,7 @@ import AdminLayout from "./components/admin/AdminLayout";
 export default function App() {
   return (
     <ErrorBoundary>
-      <BrowserRouter>
+      <HashRouter>
         <Routes>
           <Route path="/" element={<Login />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -217,7 +217,7 @@ export default function App() {
             element={<Navigate to="/" replace />}
           />
         </Routes>
-      </BrowserRouter>
+      </HashRouter>
     </ErrorBoundary>
   );
 }
