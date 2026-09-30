@@ -65,6 +65,7 @@ import captainShiftManagementRoutes from "./routes/captain-shift-management.rout
 import requirements1129Router from "./routes/requirements-11-29.routes.js";
 
 import AppThemeRoutes from "./routes/app-theme.routes.js";
+import vercelCronRoutes from "./routes/vercel-cron.routes.js";
 
 const app = express();
 
@@ -260,6 +261,8 @@ app.use(
     }
   },
 );
+
+app.use("/api/internal/cron", vercelCronRoutes);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/profile", profileRoutes);
