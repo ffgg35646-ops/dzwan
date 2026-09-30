@@ -8,6 +8,7 @@
     "backend": {
       "root": "backend/",
       "framework": "express",
+      "entrypoint": "src/server.mts",
       "installCommand": "npm install"
     }
   },
