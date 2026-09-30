@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from "../http/express-compat.js";
 import { getSettings } from "../controllers/settings.controller.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
 
