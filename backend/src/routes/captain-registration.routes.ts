@@ -21,6 +21,7 @@ router.post(
     destination: "/tmp/uploads/registration",
     prefix: "registration",
     maxSize: 4 * 1024 * 1024,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
     maxFiles: 4,
     multiple: true,
   }),
