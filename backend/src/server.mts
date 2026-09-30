@@ -16,7 +16,7 @@ import core11SettingsRoutes from "./routes/core11-settings.routes.js";
 import pricingRoutes from "./routes/pricing.routes.js";
 import ops3147Routes from "./routes/ops-31-47.routes.js";
 import geofenceRoutes from "./routes/geofence.routes.js";
-import express from "express";
+import express from "./http/express-compat.js";
 import path from "node:path";
 import orderPickupPhotoRoutes from "./routes/order-pickup-photo.routes.js";
 import cors from "cors";
