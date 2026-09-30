@@ -168,7 +168,7 @@ function createRouter():RouterInstance{
   }
   return router;
 }
-function jsonParser():Handler{return async(req,_res,next)=>{await parseBody(req);next();};}
+function jsonParser(_options?:{limit?:string}):Handler{return async(req,_res,next)=>{await parseBody(req);next();};}
 function staticMiddleware(root:string):Handler{return async(req,res,next)=>{
   if(req.method!=="GET"&&req.method!=="HEAD"){next();return;}
   const rel=decodeURIComponent((req.url||"/").split("?")[0]);const rootPath=path.resolve(root);const filePath=path.resolve(root,"."+rel);
