@@ -8,8 +8,8 @@
     "backend": {
       "root": "backend/",
       "framework": "express",
-      "installCommand": "npm ci --include=dev",
-      "buildCommand": "npm ci --include=prod"
+      "installCommand": "npm install --include=dev",
+      "buildCommand": "npm run build"
     }
   },
   "rewrites": [
