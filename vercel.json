@@ -7,10 +7,10 @@
     },
     "backend": {
       "root": "backend/",
-      "framework": "express",
-      "installCommand": "npm ci --include=dev",
-      "buildCommand": "npm ci --include=prod",
-      "entrypoint": "src/server.mts"
+      "framework": "node",
+      "installCommand": "npm install",
+      "buildCommand": "npm run build",
+      "entrypoint": "src/server.ts"
     }
   },
   "rewrites": [

@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+import type { Request, Response } from "../http/express-compat.js";
 import crypto from "node:crypto";
 import { Types } from "mongoose";
 import PasswordResetVerificationModel from "../models/PasswordResetVerification.js";

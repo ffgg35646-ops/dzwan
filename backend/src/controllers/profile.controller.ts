@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+import type { Request, Response } from "../http/express-compat.js";
 import { Types } from "mongoose";
 
 import { UserModel } from "../models/User.js";

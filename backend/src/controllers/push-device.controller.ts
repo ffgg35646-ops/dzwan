@@ -1,4 +1,4 @@
-import type { Response } from "express";
+import type { Response } from "../http/express-compat.js";
 import { PushDeviceModel } from "../models/PushDevice.js";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 
