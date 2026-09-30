@@ -26,5 +26,11 @@
         "service": "admin"
       }
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/internal/cron/run",
+      "schedule": "*/5 * * * *"
+    }
   ]
 }
