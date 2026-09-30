@@ -142,13 +142,23 @@ function createRouter():RouterInstance{
       const match=compilePath(layer.path,layer.exact).match(url);if(!match)continue;
       if(typeof match==="object")Object.assign(req.params,match.params);
       for(const h of layer.handlers){
-        const wrapped:Handler=(a,b,c)=>{
-          const restore=stripMount(a,layer.exact?"/":layer.path);
-          const result=(h as any)(a,b,(e?:unknown)=>{restore();c(e);});
-          if(result&&typeof result.then==="function")return result.finally(restore);
-          restore();return result;
-        };
-        handlers.push(wrapped);
+        if (h.length === 4) {
+          const wrapped: Handler = (error:any,a:any,b:any,c:any) => {
+            const restore=stripMount(a,layer.exact?"/":layer.path);
+            const result=(h as any)(error,a,b,(e?:unknown)=>{restore();c(e);});
+            if(result&&typeof result.then==="function")return result.finally(restore);
+            restore();return result;
+          };
+          handlers.push(wrapped);
+        } else {
+          const wrapped: Handler = (a:any,b:any,c:any) => {
+            const restore=stripMount(a,layer.exact?"/":layer.path);
+            const result=(h as any)(a,b,(e?:unknown)=>{restore();c(e);});
+            if(result&&typeof result.then==="function")return result.finally(restore);
+            restore();return result;
+          };
+          handlers.push(wrapped);
+        }
       }
     }
     if(!handlers.length){if(next){next();return;}if(!res.headersSent)res.status(404).json({success:false,message:"البيانات المطلوبة غير موجودة."});return;}
