@@ -9,6 +9,7 @@ export async function connectDatabase(): Promise<void> {
 
   await mongoose.connect(env.mongodbUri, {
     dbName: "dzwan",
+    family: 4,
     maxPoolSize: 5,
     maxConnecting: 1,
     maxIdleTimeMS: 5000,
