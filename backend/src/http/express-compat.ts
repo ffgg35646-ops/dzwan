@@ -179,5 +179,6 @@ function staticMiddleware(root:string):Handler{return async(req,res,next)=>{
     if(req.method==="HEAD"){res.end();return;}res.end(await fs.promises.readFile(filePath));
   }catch{next();}
 };}
+export const Router = createRouter;
 const express=Object.assign(createRouter,{json:jsonParser,static:staticMiddleware});
 export {express};export default express;
