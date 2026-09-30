@@ -226,9 +226,6 @@ app.get(
   },
 );
 
-const isVercel =
-  process.env.VERCEL === "1";
-
 let databaseConnectionPromise:
   | Promise<unknown>
   | null = null;
@@ -861,12 +858,10 @@ async function startServer(): Promise<void> {
   });
 }
 
-if (!isVercel) {
-  startServer().catch((error) => {
-    console.error(
-      "Failed to start DZWAN API:",
-      error,
-    );
-    process.exit(1);
-  });
-}
+startServer().catch((error) => {
+  console.error(
+    "Failed to start DZWAN API:",
+    error,
+  );
+  process.exit(1);
+});
