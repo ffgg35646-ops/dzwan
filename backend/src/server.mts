@@ -253,13 +253,33 @@ let databaseConnectionPromise:
   | null = null;
 
 async function ensureDatabaseConnection(): Promise<void> {
-  if (!databaseConnectionPromise) {
-    databaseConnectionPromise =
-      connectDatabase().catch((error) => {
-        databaseConnectionPromise = null;
-        throw error;
-      });
+  const mongoose =
+    (await import("mongoose")).default;
+
+  if (mongoose.connection.readyState === 1) {
+    return;
   }
+
+  if (databaseConnectionPromise) {
+    try {
+      await databaseConnectionPromise;
+    } catch (error) {
+      databaseConnectionPromise = null;
+      throw error;
+    }
+
+    if (mongoose.connection.readyState === 1) {
+      return;
+    }
+
+    databaseConnectionPromise = null;
+  }
+
+  databaseConnectionPromise =
+    connectDatabase().catch((error) => {
+      databaseConnectionPromise = null;
+      throw error;
+    });
 
   await databaseConnectionPromise;
 }
