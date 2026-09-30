@@ -8,7 +8,6 @@
     "backend": {
       "root": "backend/",
       "framework": "express",
-      "entrypoint": "src/server.ts",
       "installCommand": "npm install"
     }
   },
