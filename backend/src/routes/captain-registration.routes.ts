@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { Router } from "../http/express-compat.js";
 import multer from "multer";
 import path from "node:path";
 import fs from "node:fs";
@@ -89,7 +89,7 @@ router.post(
   ]),
   (req, res, next) => {
     const files = req.files as {
-      [field: string]: Express.Multer.File[] | undefined;
+      [field: string]: any[] | undefined;
     };
 
     const fields = [
