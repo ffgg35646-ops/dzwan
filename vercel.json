@@ -10,7 +10,7 @@
       "framework": "node",
       "installCommand": "npm ci",
       "buildCommand": "npm run build",
-      "entrypoint": "src/server.mts"
+      "entrypoint": "src/server.ts"
     }
   },
   "rewrites": [
