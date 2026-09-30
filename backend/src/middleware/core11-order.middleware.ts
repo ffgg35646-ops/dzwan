@@ -2,7 +2,7 @@ import type {
   NextFunction,
   Request,
   Response,
-} from "express";
+} from "../http/express-compat.js";
 
 import mongoose from "mongoose";
 

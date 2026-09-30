@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+import type { Request, Response } from "../http/express-compat.js";
 import CoreOperationsSettingsModel from "../models/CoreOperationsSettings.js";
 
 async function getSettings() {

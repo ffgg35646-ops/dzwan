@@ -1,5 +1,5 @@
 
-import { Request, Response } from "express";
+import { Request, Response } from "../http/express-compat.js";
 import AppTheme from "../models/AppTheme.js";
 import { APP_THEMES } from "../config/appThemes.js";
 

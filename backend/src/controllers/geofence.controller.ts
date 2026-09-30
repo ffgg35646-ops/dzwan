@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response } from "../http/express-compat.js";
 import { z } from "zod";
 import GeofenceModel from "../models/Geofence.js";
 

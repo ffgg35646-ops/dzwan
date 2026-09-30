@@ -1,4 +1,4 @@
-import type { NextFunction, Response } from "express";
+import type { NextFunction, Response } from "../http/express-compat.js";
 import { getPagesForManagementPermission } from "../config/admin-page-permissions.js";
 import { Types } from "mongoose";
 import type { AuthenticatedRequest } from "./auth.middleware.js";

@@ -2,7 +2,7 @@ import { logSecurity } from "../services/ops-31-47.service.js";
 import { CaptainLocationModel } from "../models/CaptainLocation.js";
 import { CaptainDocumentModel } from "../models/CaptainDocument.js";
 import mongoose from "mongoose";
-import type { Response } from "express";
+import type { Response } from "../http/express-compat.js";
 import { Types } from "mongoose";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";

@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+import { Request, Response } from "../http/express-compat.js";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { Types } from "mongoose";

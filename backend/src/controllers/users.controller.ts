@@ -1,5 +1,5 @@
 import { logSecurity } from "../services/ops-31-47.service.js";
-import type { Response } from "express";
+import type { Response } from "../http/express-compat.js";
 import { z } from "zod";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import { UserModel, USER_ROLES, ACCOUNT_STATUSES } from "../models/User.js";

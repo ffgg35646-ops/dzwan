@@ -1,4 +1,4 @@
-import type { Request, Response } from "express";
+import type { Request, Response } from "../http/express-compat.js";
 import mongoose from "mongoose";
 import { getSystemSettings } from "../services/system-settings.service.js";
 

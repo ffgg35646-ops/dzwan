@@ -1,5 +1,5 @@
 
-import { Router } from "express";
+import { Router } from "../http/express-compat.js";
 import { getAppUpdateInfo } from "../controllers/app-update.controller.js";
 
 const router = Router();

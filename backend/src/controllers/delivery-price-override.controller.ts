@@ -1,5 +1,5 @@
 
-import { Request, Response } from "express";
+import { Request, Response } from "../http/express-compat.js";
 import DeliveryPriceOverride from "../models/DeliveryPriceOverride.js";
 
 export async function listPriceOverrides(
