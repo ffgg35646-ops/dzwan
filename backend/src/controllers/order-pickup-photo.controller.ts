@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { Types } from "mongoose";
 import type { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { uploadImageToBlob } from "../services/blob-upload.service.js";
 import {
   saveOrderPickupPhoto,
   getOrderPickupPhoto,
@@ -25,8 +26,10 @@ export async function uploadPickupPhoto(
       });
     }
 
-    const photoUrl =
-      `/uploads/pickup/${req.file.filename}`;
+    const photoUrl = await uploadImageToBlob(
+      "pickup",
+      req.file,
+    );
 
     const photo = await saveOrderPickupPhoto(
       orderId,
