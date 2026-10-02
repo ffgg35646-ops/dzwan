@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { Types } from "mongoose";
 import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
+import { uploadImageToBlob } from "../services/blob-upload.service.js";
 import {
   createDeliveryOtp,
   verifyDeliveryOtp,
@@ -100,10 +101,15 @@ export async function uploadPhoto(
       captainId,
     );
 
+    const photoUrl = await uploadImageToBlob(
+      "delivery-proof",
+      req.file,
+    );
+
     const result = await setDeliveryPhoto(
       orderId,
       captainId,
-      `/uploads/delivery-proof/${req.file.filename}`,
+      photoUrl,
     );
 
     return res.status(201).json({
