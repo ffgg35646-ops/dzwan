@@ -1,0 +1,38 @@
+name: update-backend-lock
+
+on:
+  push:
+    paths:
+      - "backend/package.json"
+      - "backend/package-lock.json"
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Refresh backend lockfile
+        working-directory: backend
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Commit refreshed lockfile
+        run: |
+          if git diff --quiet -- backend/package-lock.json; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add backend/package-lock.json
+          git commit -m "chore: refresh backend lockfile"
+          git push
