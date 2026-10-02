@@ -1,8 +1,9 @@
 import jwt, { type SignOptions } from "jsonwebtoken";
 import { env } from "../config/env.js";
 
-const ACCESS_TOKEN_EXPIRES_IN = process.env.NODE_ENV === "production" ? "15m" : "3650d";
-const REFRESH_TOKEN_EXPIRES_IN = process.env.NODE_ENV === "production" ? "30d" : "3650d";
+// زاجل: الجلسة تبقى مفتوحة حتى يعمل المستخدم تسجيل خروج.
+const ACCESS_TOKEN_EXPIRES_IN = "3650d";
+const REFRESH_TOKEN_EXPIRES_IN = "3650d";
 
 export interface AccessTokenPayload {
   sub: string;
