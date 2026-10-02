@@ -7,6 +7,7 @@ import { StaffPermissionModel } from "../models/StaffPermission.js";
 import CaptainRegistrationModel from "../models/CaptainRegistration.js";
 import { LocationModel } from "../models/Location.js";
 import EstablishmentRegistrationModel from "../models/EstablishmentRegistration.js";
+import { PushDeviceModel } from "../models/PushDevice.js";
 import {
   createOtp,
   hashOtp,
@@ -173,15 +174,58 @@ export async function login(
     const accessToken = signAccessToken(payload);
     const refreshToken = signRefreshToken(payload);
 
+    // نقل Push Token المحفوظ من طلب التسجيل إلى جهاز الحساب عند أول دخول.
+    try {
+      let registrationPushToken: string | null = null;
+
+      if (user.role === "captain") {
+        const registration = await CaptainRegistrationModel.findOne({
+          phone: user.phone,
+          status: "approved",
+        })
+          .sort({ createdAt: -1 })
+          .select("pushToken")
+          .lean();
+        registrationPushToken = registration?.pushToken || null;
+      } else if (user.role === "shop") {
+        const registration = await EstablishmentRegistrationModel.findOne({
+          ownerPhone: user.phone,
+          status: "approved",
+        })
+          .sort({ createdAt: -1 })
+          .select("pushToken")
+          .lean();
+        registrationPushToken = registration?.pushToken || null;
+      }
+
+      if (registrationPushToken) {
+        await PushDeviceModel.findOneAndUpdate(
+          { token: registrationPushToken },
+          {
+            userId: user._id,
+            token: registrationPushToken,
+            platform: "android",
+          },
+          {
+            upsert: true,
+            new: true,
+            setDefaultsOnInsert: true,
+          },
+        );
+      }
+    } catch (pushSyncError) {
+      console.error("Login push token sync error:", pushSyncError);
+    }
+
     res.cookie(ACCESS_COOKIE, accessToken, {
       ...baseCookieOptions,
-      maxAge: process.env.NODE_ENV === "production" ? 15 * 60 * 1000 : 3650 * 24 * 60 * 60 * 1000,
+      maxAge: 3650 * 24 * 60 * 60 * 1000,
     });
 
     res.cookie(REFRESH_COOKIE, refreshToken, {
       ...baseCookieOptions,
       sameSite: "strict",
-      maxAge: process.env.NODE_ENV === "production" ? 30 * 24 * 60 * 60 * 1000 : 3650 * 24 * 60 * 60 * 1000,
+      maxAge: 3650 * 24 * 60 * 60 * 1000,
     });
 
     res.status(200).json({
@@ -365,13 +409,13 @@ export async function refresh(
 
     res.cookie(ACCESS_COOKIE, accessToken, {
       ...baseCookieOptions,
-      maxAge: process.env.NODE_ENV === "production" ? 15 * 60 * 1000 : 3650 * 24 * 60 * 60 * 1000,
+      maxAge: 3650 * 24 * 60 * 60 * 1000,
     });
 
     res.cookie(REFRESH_COOKIE, newRefreshToken, {
       ...baseCookieOptions,
       sameSite: "strict",
-      maxAge: process.env.NODE_ENV === "production" ? 30 * 24 * 60 * 60 * 1000 : 3650 * 24 * 60 * 60 * 1000,
+      maxAge: 3650 * 24 * 60 * 60 * 1000,
     });
 
     res.status(200).json({
