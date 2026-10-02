@@ -1,6 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
 
+import { uploadImageToBlob } from "../services/blob-upload.service.js";
+
 import {
   requireAuth,
   requireAdmin,
@@ -48,28 +50,35 @@ router.post(
     { name: "residenceFront", maxCount: 1 },
     { name: "residenceBack", maxCount: 1 },
   ]),
-  (req, res, next) => {
-    const files = req.files as {
-      [field: string]: Express.Multer.File[] | undefined;
-    };
+  async (req, res, next) => {
+    try {
+      const files = req.files as {
+        [field: string]: Express.Multer.File[] | undefined;
+      };
 
-    const fields = [
-      ["idFront", "idFrontUrl"],
-      ["idBack", "idBackUrl"],
-      ["residenceFront", "residenceFrontUrl"],
-      ["residenceBack", "residenceBackUrl"],
-    ];
+      const fields = [
+        ["idFront", "idFrontUrl"],
+        ["idBack", "idBackUrl"],
+        ["residenceFront", "residenceFrontUrl"],
+        ["residenceBack", "residenceBackUrl"],
+      ] as const;
 
-    for (const [fileField, urlField] of fields) {
-      const file = files?.[fileField]?.[0];
+      for (const [fileField, urlField] of fields) {
+        const file = files?.[fileField]?.[0];
 
-      if (file) {
-        req.body[urlField] =
-          `/uploads/registration/${file.filename}`;
+        if (file) {
+          req.body[urlField] =
+            await uploadImageToBlob("registration", file);
+        }
       }
-    }
 
-    next();
+      next();
+    } catch (error) {
+      console.error("Captain registration Blob upload error:", error);
+      res.status(500).json({
+        message: "تعذر حفظ صور التسجيل.",
+      });
+    }
   },
   registerCaptain,
 );
