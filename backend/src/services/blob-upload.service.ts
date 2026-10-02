@@ -1,4 +1,6 @@
 import { put } from "@vercel/blob";
+import fs from "node:fs";
+import path from "node:path";
 
 function sanitizeFilename(value: string): string {
   const cleaned = String(value || "image")
@@ -39,6 +41,28 @@ export async function uploadImageToBlob(
     "-" +
     baseName +
     extension;
+
+  // أثناء التطوير المحلي نستخدم uploads داخل المشروع.
+  // على Vercel يتم التخزين الدائم في Blob تلقائيًا.
+  if (!process.env.VERCEL && !process.env.BLOB_READ_WRITE_TOKEN) {
+    const localDirectory = path.join(
+      process.cwd(),
+      "uploads",
+      cleanFolder,
+    );
+
+    fs.mkdirSync(localDirectory, { recursive: true });
+
+    const localFilename =
+      pathname.split("/").pop() || "image.jpg";
+
+    fs.writeFileSync(
+      path.join(localDirectory, localFilename),
+      file.buffer,
+    );
+
+    return "/uploads/" + cleanFolder + "/" + localFilename;
+  }
 
   const blob = await put(pathname, file.buffer, {
     access: "public",
