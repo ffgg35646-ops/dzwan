@@ -175,6 +175,7 @@ app.get("/api/health", async (_req, res) => {
         database: databaseConnected
           ? "connected"
           : "disconnected",
+        marker: "DZWAN-MARKER-DZWAN",
       });
   } catch (error) {
     if (process.env.NODE_ENV !== "production") {
