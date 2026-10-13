@@ -61,16 +61,8 @@ async function isCaptainInsideSelectedWeeklyShift(
 ) {
   const now = new Date();
 
-  // نفس منطق تسجيل الحضور:
-  // تعيين الشفت قد يكون محفوظًا بتاريخ اختيار الكابتن،
-  // لذلك نبحث في آخر 7 أيام.
-  const assignmentWindowStart =
-    new Date(
-      now.getTime() -
-        7 * 24 * 60 * 60 * 1000,
-    );
-
-  // نجيب اختيار الكابتن لهذا الأسبوع
+  // الطلبات تعتمد على الشفت النشط المختار فقط، وليس على تسجيل الحضور.
+  // استخدم أحدث تعيين نشط متوافق مع واجهة فحص الشفت.
   const assignment =
     await CaptainShiftModel.findOne({
       captainId:
@@ -79,10 +71,7 @@ async function isCaptainInsideSelectedWeeklyShift(
         $exists: true,
         $ne: null,
       },
-      weekStart: {
-        $gt: assignmentWindowStart,
-        $lte: now,
-      },
+      isActive: true,
     })
       .sort({
         updatedAt: -1,
