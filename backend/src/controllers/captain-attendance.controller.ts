@@ -4,8 +4,6 @@ import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import CaptainAttendanceModel from "../models/CaptainAttendance.js";
 import { CaptainShiftModel } from "../models/CaptainShift.js";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
-
 function startOfToday() {
   const date = new Date();
   date.setHours(0, 0, 0, 0);
@@ -19,22 +17,18 @@ function endOfToday() {
 }
 
 async function getCurrentCaptainShift(captainId: string) {
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - 7 * DAY_MS);
-
+  // Match the active assignment returned by /captain-shifts/current/check.
+  // Do not reject a valid selected shift because its assignment timestamp
+  // is older than seven days; shift changes are handled by the shift service.
   return CaptainShiftModel.findOne({
     captainId: new Types.ObjectId(captainId),
     shiftId: {
       $exists: true,
       $ne: null,
     },
-    weekStart: {
-      $gt: windowStart,
-      $lte: now,
-    },
     isActive: true,
   })
-    .sort({ weekStart: -1 })
+    .sort({ updatedAt: -1 })
     .lean();
 }
 
