@@ -6,6 +6,7 @@ import { CaptainShiftModel } from "../models/CaptainShift.js";
 import { isShiftRunning } from "./captain-shift-management.service.js";
 import { DispatchSettingsModel } from "../models/DispatchSettings.js";
 import { CaptainWorkAreaModel } from "../models/CaptainWorkArea.js";
+import { applyDefaultCoverage } from "./captain-coverage.service.js";
 import { LocationModel } from "../models/Location.js";
 import { CaptainLocationModel } from "../models/CaptainLocation.js";
 import { rankDispatchCandidates } from "./smart-dispatch-score.service.js";
@@ -347,7 +348,7 @@ export async function findBestCaptain(
   const candidates: DispatchCandidate[] = [];
 
   for (const captain of captains) {
-    const workArea = await CaptainWorkAreaModel.findOne({
+    let workArea = await CaptainWorkAreaModel.findOne({
       captainId: captain._id,
       governorateId: establishment.governorateId,
       areaId: establishment.areaId,
@@ -355,6 +356,20 @@ export async function findBestCaptain(
     })
       .select("_id")
       .lean();
+
+    // Repair missing default coverage for old accounts where region data was
+    // saved only on the approved registration record, not on User.
+    if (!workArea) {
+      await applyDefaultCoverage(String(captain._id)).catch(() => undefined);
+      workArea = await CaptainWorkAreaModel.findOne({
+        captainId: captain._id,
+        governorateId: establishment.governorateId,
+        areaId: establishment.areaId,
+        isActive: true,
+      })
+        .select("_id")
+        .lean();
+    }
 
     // Older captain accounts can have their assigned area directly on User.
     // Only use that fallback when BOTH IDs exactly match the establishment.
