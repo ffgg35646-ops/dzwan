@@ -4,7 +4,6 @@ import { Linking, StyleSheet, Text, View } from "react-native";
 import Constants from "expo-constants";
 import { getAppVersion, getMaintenanceState } from "../../api/appGate";
 import AppButton from "../../components/AppButton";
-import LoadingState from "../../components/LoadingState";
 import Screen from "../../components/Screen";
 import { useAuthStore } from "../../store/authStore";
 type Props = {
@@ -14,7 +13,6 @@ type Props = {
 export function AppGateScreen({ children }: Props) {
   const { authenticated, accountType } = useAuthStore() as any;
 
-  const [loading, setLoading] = useState(true);
   const [maintenance, setMaintenance] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
   const [forceUpdate, setForceUpdate] = useState(false);
@@ -34,7 +32,6 @@ export function AppGateScreen({ children }: Props) {
             maintenanceState.message ||
               "النظام تحت الصيانة حاليًا. حاول مرة أخرى لاحقًا."
           );
-          setLoading(false);
           return;
         }
 
@@ -59,7 +56,6 @@ export function AppGateScreen({ children }: Props) {
       } catch {
         // لا نمنع التطبيق بالكامل عند فشل فحص البوابة.
       } finally {
-        if (mounted) setLoading(false);
       }
     }
 
@@ -69,17 +65,6 @@ export function AppGateScreen({ children }: Props) {
       mounted = false;
     };
   }, [authenticated, accountType]);
-
-  if (loading) {
-    return (
-      <Screen>
-        <View style={styles.center}>
-          <LoadingState />
-          <Text style={styles.loadingText}>جاري تجهيز التطبيق...</Text>
-        </View>
-      </Screen>
-    );
-  }
 
   if (maintenance) {
     return (
@@ -157,9 +142,5 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#1F2937",
     marginBottom: 20,
-  },
-  loadingText: {
-    marginTop: 12,
-    color: "#6B7280",
   },
 });
