@@ -72,7 +72,49 @@ function clearStoredUser() {
   }
 }
 
-const initialUser = readStoredUser();
+function readUserFromStoredToken(): AuthUser | null {
+  if (!isBrowser()) return null;
+
+  try {
+    const token = window.localStorage.getItem("zajel_access_token");
+    const payloadPart = token?.split(".")[1];
+    if (!payloadPart) return null;
+
+    const normalized = payloadPart.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const payload = JSON.parse(window.atob(padded));
+    const id = String(payload.sub || payload.id || "").trim();
+    const role = payload.role as AccountType;
+    const validRole = [
+      "captain",
+      "shop",
+      "governorate_leader",
+      "area_leader",
+    ].includes(role);
+
+    if (!id || !validRole) return null;
+
+    // Optimistic routing only: the server session is verified after the UI opens.
+    return {
+      id,
+      role,
+      name: "",
+      phone: "",
+      email: null,
+      status: "active",
+      governorateId: null,
+      governorateName: null,
+      areaId: null,
+      areaName: null,
+      areaIds: [],
+      avatarUrl: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+const initialUser = readStoredUser() ?? readUserFromStoredToken();
 
 type AuthState = {
   accountType: AccountType | null;
