@@ -1368,7 +1368,19 @@ export default function CaptainHomeScreen() {
       },
     );
 
-    return unsubscribe;
+    // Attendance is recorded automatically by checkShift while the selected
+    // shift is active. Poll in the background so opening the app before the
+    // shift starts does not require a manual attendance button at start time.
+    const attendanceTimer = user?.id
+      ? setInterval(() => {
+          void checkShift().catch(() => undefined);
+        }, 30_000)
+      : null;
+
+    return () => {
+      if (attendanceTimer) clearInterval(attendanceTimer);
+      unsubscribe();
+    };
   }, [navigation, user?.id]);
 
   useEffect(() => {
