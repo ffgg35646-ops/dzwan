@@ -42,6 +42,18 @@ export default function AppNavigator() {
   const logout = useAuthStore((state) => state.logout);
 
   useEffect(() => {
+    if (authenticated || !navigationRef.isReady()) return;
+
+    if (navigationRef.getCurrentRoute()?.name !== "SelectRole") {
+      navigationRef.resetRoot({
+        index: 0,
+        routes: [{ name: "SelectRole" }],
+      });
+    }
+  }, [authenticated]);
+
+
+  useEffect(() => {
     let active = true;
     async function validateSession() {
       try {
