@@ -11,6 +11,7 @@ await mkdir(iconsOut, { recursive: true });
 await copyFile(path.join(pwa, "manifest.webmanifest"), path.join(dist, "manifest.webmanifest"));
 await copyFile(path.join(pwa, "icons", "zajel-icon.svg"), path.join(iconsOut, "zajel-icon.svg"));
 await copyFile(path.join(pwa, "icons", "zajel-192.png"), path.join(iconsOut, "zajel-192.png"));
+await copyFile(path.join(pwa, "icons", "zajel-512.png"), path.join(iconsOut, "zajel-512.png"));
 
 const indexPath = path.join(dist, "index.html");
 let html = await readFile(indexPath, "utf8");
