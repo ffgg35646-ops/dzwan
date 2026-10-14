@@ -6,7 +6,6 @@ import {
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useAuthStore } from "../../store/authStore";
 import {
   ActivityIndicator,
   Alert,
@@ -43,8 +42,8 @@ const HISTORY_STATUSES = [
 ] as const;
 
 const HISTORY_PAGE_SIZE = 5;
-const ORDERS_CACHE_PREFIX = "@zajel/orders-cache-v1";
-const AVAILABLE_ORDERS_CACHE_PREFIX = "@zajel/available-orders-cache-v1";
+const ORDERS_CACHE_KEY = "@zajel/orders-cache-v1";
+const AVAILABLE_ORDERS_CACHE_KEY = "@zajel/available-orders-cache-v1";
 
 const EMERGENCY_REASONS: Array<{
   value: CaptainEmergencyType;
@@ -293,11 +292,6 @@ export default function CaptainOrdersScreen() {
   const appTheme = useAppTheme();
   const styles = createStyles(appTheme);
   const navigation = useNavigation<any>();
-  const user = useAuthStore((state) => state.user);
-  const ordersCacheKey =
-    `${ORDERS_CACHE_PREFIX}:${String(user?.id ?? "anonymous")}`;
-  const availableOrdersCacheKey =
-    `${AVAILABLE_ORDERS_CACHE_PREFIX}:${String(user?.id ?? "anonymous")}`;
 
   const [orders, setOrders] = useState<any[]>([]);
 
@@ -370,7 +364,7 @@ export default function CaptainOrdersScreen() {
 
         // نحفظ آخر نسخة حتى تظهر الطلبات فورًا في الزيارة التالية.
         void AsyncStorage.setItem(
-          ordersCacheKey,
+          ORDERS_CACHE_KEY,
           JSON.stringify(list),
         ).catch(() => {});
       } catch {
@@ -380,7 +374,7 @@ export default function CaptainOrdersScreen() {
         setRefreshing(false);
       }
     },
-    [ordersCacheKey],
+    [],
   );
 
   const loadAvailableOrders = useCallback(
@@ -413,7 +407,7 @@ export default function CaptainOrdersScreen() {
 
         setAvailableOrders(normalizedList);
         void AsyncStorage.setItem(
-          AVAILABLE_ordersCacheKey,
+          AVAILABLE_ORDERS_CACHE_KEY,
           JSON.stringify(normalizedList),
         ).catch(() => {});
       } catch (error: any) {
@@ -426,14 +420,14 @@ export default function CaptainOrdersScreen() {
         setAvailableLoading(false);
       }
     },
-    [availableOrdersCacheKey],
+    [],
   );
 
   useEffect(() => {
     // نعرض آخر نسخة محفوظة فورًا، ثم نجلب البيانات الجديدة في الخلفية.
     void (async () => {
       try {
-        const cached = await AsyncStorage.getItem(ordersCacheKey);
+        const cached = await AsyncStorage.getItem(ORDERS_CACHE_KEY);
         if (cached) {
           const parsed = JSON.parse(cached);
           if (Array.isArray(parsed)) {
@@ -462,7 +456,7 @@ export default function CaptainOrdersScreen() {
     void (async () => {
       try {
         const cachedAvailable = await AsyncStorage.getItem(
-          AVAILABLE_ordersCacheKey,
+          AVAILABLE_ORDERS_CACHE_KEY,
         );
         if (mounted && cachedAvailable) {
           const parsedAvailable = JSON.parse(cachedAvailable);
