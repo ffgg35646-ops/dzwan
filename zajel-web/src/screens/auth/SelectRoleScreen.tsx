@@ -86,7 +86,7 @@ export default function SelectRoleScreen() {
 
             <View style={styles.icon3d}>
               <MaterialCommunityIcons
-                name="truck-fast-outline"
+                name="motorbike"
                 size={62}
                 color={ORANGE}
               />
@@ -213,7 +213,7 @@ export default function SelectRoleScreen() {
                 ]}
               >
                 <MaterialCommunityIcons
-                  name="truck-fast-outline"
+                  name="motorbike"
                   size={25}
                   color="#FFD9A0"
                 />
