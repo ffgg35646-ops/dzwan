@@ -6,7 +6,7 @@
   "scripts": {
     "start": "expo start",
     "web": "expo start --web",
-    "build": "npx expo install --fix && npx expo export --platform web"
+    "build": "npx expo install --fix && npx expo export --platform web && node scripts/prepare-pwa.mjs"
   },
   "engines": {
     "node": ">=20.19.0"

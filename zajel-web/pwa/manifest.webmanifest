@@ -1,0 +1,28 @@
+{
+  "id": "/",
+  "name": "زاجل",
+  "short_name": "زاجل",
+  "description": "زاجل للكباتن والمطاعم والشفتات والطلبات",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#FFF8F1",
+  "theme_color": "#E5501C",
+  "icons": [
+    {
+      "src": "/icons/zajel-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/zajel-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
