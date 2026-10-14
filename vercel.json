@@ -52,8 +52,32 @@
     },
     {
       "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "dzwan-ffkdkfkfdkdk-9447s-projects.vercel.app"
+        }
+      ],
       "destination": {
         "service": "admin"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "dzwan-git-main-ffkdkfkfdkdk-9447s-projects.vercel.app"
+        }
+      ],
+      "destination": {
+        "service": "admin"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "service": "web"
       }
     }
   ]
