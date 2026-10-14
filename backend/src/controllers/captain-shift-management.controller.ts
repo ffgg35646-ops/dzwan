@@ -6,8 +6,9 @@ import {
   assignCaptainWeeklyShift,
   changeCaptainWeeklyShiftOnce,
   assertCaptainInsideShift,
-  getWeekStart,
-  getBaghdadMinutes,
+  isWeeklyShiftAssignmentCurrent,
+  getNextShiftChangeAt,
+  isShiftRunning,
 } from "../services/captain-shift-management.service.js";
 
 export async function createShift(
@@ -175,9 +176,9 @@ export async function listAvailableShifts(
   try {
     const shifts = await CaptainShiftModel.find({
       isActive: true,
-      captainId: { $exists: false },
-      shiftId: { $exists: false },
-      weekStart: { $exists: false },
+      captainId: { $in: [null] },
+      shiftId: { $in: [null] },
+      weekStart: { $in: [null] },
     })
       .sort({ startTime: 1, name: 1 })
       .lean();
@@ -214,15 +215,16 @@ export async function selectWeeklyShift(
     return res.status(201).json({
       success: true,
       message:
-        "تم اختيار شفت هذا الأسبوع",
+        "تم حفظ الشفت. سيظل فعالًا حتى تغييره، ويُفتح التغيير بعد 7 أيام.",
       data: result,
     });
   } catch (error: any) {
     return res.status(400).json({
       success: false,
       message:
-        error?.message ||
-        "تعذر اختيار الشفت",
+        error?.message === "SHIFT_ALREADY_SELECTED_THIS_WEEK"
+          ? "لا يمكن تغيير الشفت قبل مرور 7 أيام كاملة من وقت آخر اختيار بتوقيت العراق."
+          : error?.message || "تعذر اختيار الشفت",
     });
   }
 }
@@ -247,15 +249,16 @@ export async function changeWeeklyShift(
     return res.json({
       success: true,
       message:
-        "تم تغيير شفت هذا الأسبوع",
+        "تم تغيير الشفت بنجاح، وتبدأ مدة قفل جديدة لمدة 7 أيام.",
       data: result,
     });
   } catch (error: any) {
     return res.status(400).json({
       success: false,
       message:
-        error?.message ||
-        "تعذر تغيير الشفت",
+        error?.message === "SHIFT_ALREADY_SELECTED_THIS_WEEK"
+          ? "لا يمكن تغيير الشفت قبل مرور 7 أيام كاملة من وقت آخر اختيار بتوقيت العراق."
+          : error?.message || "تعذر تغيير الشفت",
     });
   }
 }
@@ -265,119 +268,50 @@ export async function checkCurrentShift(
   res: Response
 ) {
   try {
-    const captainId = String(
-      (req as any).user?.sub ||
-      req.params?.captainId ||
-      ""
-    );
-
+    const captainId = String((req as any).user?.sub || req.params?.captainId || "");
     if (!captainId) {
-      return res.status(401).json({
-        success: false,
-        allowed: false,
-        message: "حساب الكابتن غير صالح.",
-      });
+      return res.status(401).json({ success: false, allowed: false, canSelectNewShift: false, message: "حساب الكابتن غير صالح." });
     }
-
     const now = new Date();
-
-    const assignment =
-      await CaptainShiftModel.findOne({
-        captainId,
-        shiftId: {
-          $exists: true,
-          $ne: null,
-        },
-        isActive: true,
-      })
-        .sort({ updatedAt: -1 })
-        .lean();
+    const assignment = await CaptainShiftModel.findOne({
+      captainId,
+      shiftId: { $exists: true, $ne: null },
+      isActive: true,
+    }).sort({ changedAt: -1, updatedAt: -1, weekStart: -1 }).lean();
 
     if (!assignment?.shiftId) {
       return res.json({
-        success: true,
-        allowed: false,
-        insideShift: false,
-        assignment: null,
-        shift: null,
-        message: "لم يتم اختيار شفت لهذا الأسبوع.",
+        success: true, allowed: false, insideShift: false,
+        canSelectNewShift: true, assignment: null, shift: null,
+        message: "لم تختَر شفتًا بعد. يمكنك اختيار شفت.",
       });
     }
-
-    const shift =
-      await CaptainShiftModel.findOne({
-        _id: assignment.shiftId,
-        isActive: true,
-      }).lean();
-
+    const shift = await CaptainShiftModel.findOne({ _id: assignment.shiftId, isActive: true }).lean();
     if (!shift) {
       return res.json({
-        success: true,
-        allowed: false,
-        insideShift: false,
-        assignment,
-        shift: null,
-        message: "الشفت المختار غير فعال حاليًا.",
+        success: true, allowed: false, insideShift: false,
+        canSelectNewShift: true, assignment: null, shift: null,
+        message: "الشفت السابق غير فعال. يمكنك اختيار شفت آخر.",
       });
     }
-
-    const toMinutes = (value: string) => {
-      const [h, m] = String(value)
-        .split(":")
-        .map(Number);
-
-      return h * 60 + m;
-    };
-
-    const start = toMinutes(
-      String(shift.startTime)
+    const insideShift = isShiftRunning(
+      String(shift.startTime),
+      String(shift.endTime),
+      now,
+      (shift as any).dayOfWeek,
     );
-
-    const end = toMinutes(
-      String(shift.endTime)
-    );
-
-    const current =
-      getBaghdadMinutes(now);
-
-    let insideShift = false;
-
-    if (start === end) {
-      insideShift = true;
-    } else if (start < end) {
-      insideShift =
-        current >= start &&
-        current < end;
-    } else {
-      insideShift =
-        current >= start ||
-        current < end;
-    }
 
     return res.json({
-      success: true,
-      allowed: insideShift,
-      insideShift,
-      assignment,
-      shift,
-      message: insideShift
-        ? "أنت داخل وقت الشفت."
-        : "تم اختيار الشفت، لكنك خارج وقت الشفت حاليًا.",
+      success: true, allowed: insideShift, insideShift,
+      canSelectNewShift: !isWeeklyShiftAssignmentCurrent(assignment, now), assignment, shift,
+      nextChangeAt: getNextShiftChangeAt(assignment)?.toISOString() ?? null,
+      message: insideShift ? "أنت داخل وقت الشفت." : "تم اختيار الشفت، لكنك خارج وقت الشفت حاليًا.",
     });
   } catch (error: any) {
-    console.error(
-      "Check current shift error:",
-      error
-    );
-
+    console.error("Check current shift error:", error);
     return res.status(500).json({
-      success: false,
-      allowed: false,
-      insideShift: false,
-      message:
-        error?.message ||
-        "تعذر فحص الشفت الحالي.",
+      success: false, allowed: false, insideShift: false,
+      message: error?.message || "تعذر فحص الشفت الحالي.",
     });
   }
 }
-
