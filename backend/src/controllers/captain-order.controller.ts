@@ -36,6 +36,8 @@ const CaptainOrderModel = OrderModel as any;
 const AVAILABLE_STATUSES = [
   "pending",
   "ready_for_pickup",
+  // Legacy orders in MongoDB use this camelCase spelling.
+  "readyForPickup",
 ];
 
 function getCaptainId(req: AuthenticatedRequest): string | null {
