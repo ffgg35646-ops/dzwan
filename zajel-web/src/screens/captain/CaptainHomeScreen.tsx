@@ -1660,7 +1660,7 @@ export default function CaptainHomeScreen() {
             style={styles.heroVectorWrap}
           >
             <MaterialCommunityIcons
-              name="truck-fast-outline"
+              name="motorbike"
               size={132}
               color="#FFD9A0"
             />
