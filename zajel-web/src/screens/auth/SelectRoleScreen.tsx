@@ -13,6 +13,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 
 import Screen from "../../components/Screen";
+import ZajelCourierIcon from "../../components/ZajelCourierIcon";
 import WebVersionLink from "../../components/shared/WebVersionLink";
 import { useAuthStore } from "../../store/authStore";
 
@@ -85,11 +86,7 @@ export default function SelectRoleScreen() {
             <View style={styles.blobTwo} />
 
             <View style={styles.icon3d}>
-              <MaterialCommunityIcons
-                name="motorbike"
-                size={62}
-                color={ORANGE}
-              />
+              <ZajelCourierIcon size={78} color={ORANGE} />
             </View>
 
             <Text style={styles.welcome}>أهلا بيك</Text>
