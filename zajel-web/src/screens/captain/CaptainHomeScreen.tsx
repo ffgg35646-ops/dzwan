@@ -1423,16 +1423,6 @@ export default function CaptainHomeScreen() {
       ? "checkmark-circle"
       : "play-circle";
 
-  const HOME_SHIFT_DAYS = [
-    "الأحد",
-    "الاثنين",
-    "الثلاثاء",
-    "الأربعاء",
-    "الخميس",
-    "الجمعة",
-    "السبت",
-  ];
-
   async function openHomeShiftPicker() {
     if (shiftSaving) {
       return;
@@ -2147,7 +2137,7 @@ export default function CaptainHomeScreen() {
                       marginTop: 4,
                     }}
                   >
-                    شفتات الإدارة المتاحة لهذا الأسبوع
+                    الشفتات المتاحة من الإدارة
                   </Text>
                 </View>
               </View>
@@ -2289,18 +2279,6 @@ export default function CaptainHomeScreen() {
                       selectedWeeklyShiftId,
                     ) === id;
 
-                  const dayIndex =
-                    Number(item?.dayOfWeek);
-
-                  const dayName =
-                    Number.isInteger(dayIndex) &&
-                    dayIndex >= 0 &&
-                    dayIndex <= 6
-                      ? HOME_SHIFT_DAYS[
-                          dayIndex
-                        ]
-                      : "";
-
                   const disabled =
                     shiftSaving ||
                     shiftChangeLocked ||
@@ -2388,17 +2366,6 @@ export default function CaptainHomeScreen() {
                             </Text>
                           </View>
 
-                          {!!dayName && (
-                            <Text
-                              style={{
-                                color: MUTED,
-                                fontSize: 11,
-                                marginTop: 5,
-                              }}
-                            >
-                              {dayName}
-                            </Text>
-                          )}
                         </View>
 
                         <Pressable
