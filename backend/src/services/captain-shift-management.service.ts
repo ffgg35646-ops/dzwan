@@ -59,13 +59,27 @@ function getBaghdadParts(date = new Date()) {
   return value;
 }
 
+export function getBaghdadDayBounds(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BAGHDAD_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const value: Record<string, number> = {};
+  for (const part of parts) {
+    if (part.type === "year" || part.type === "month" || part.type === "day") {
+      value[part.type] = Number(part.value);
+    }
+  }
+  // Baghdad's civil day currently begins at 21:00 UTC on the preceding date.
+  const start = new Date(Date.UTC(value.year, value.month - 1, value.day, -3, 0, 0, 0));
+  return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
+}
+
 export function getBaghdadMinutes(date = new Date()) {
   const parts = getBaghdadParts(date);
-
-  return (
-    Number(parts.hour || 0) * 60 +
-    Number(parts.minute || 0)
-  );
+  return Number(parts.hour || 0) * 60 + Number(parts.minute || 0);
 }
 
 export function getWeekStart(date = new Date()) {
@@ -105,6 +119,40 @@ export function getWeekStart(date = new Date()) {
       0,
     ),
   );
+}
+
+function getShiftSelectionTimestamp(assignment: any): number {
+  const explicitChange = new Date(assignment?.changedAt ?? NaN).getTime();
+  if (Number.isFinite(explicitChange)) return explicitChange;
+
+  // Legacy assignments may have only weekStart/createdAt/updatedAt.
+  // Use the most recent valid timestamp so a legacy calendar-week value
+  // does not keep the lock closed longer than intended.
+  const fallbacks = [
+    assignment?.weekStart,
+    assignment?.createdAt,
+    assignment?.updatedAt,
+  ]
+    .map((value) => new Date(value ?? NaN).getTime())
+    .filter((value) => Number.isFinite(value));
+  return fallbacks.length ? Math.max(...fallbacks) : NaN;
+}
+
+export function getNextShiftChangeAt(assignment: any): Date | null {
+  if (!assignment) return null;
+  const selectedAt = getShiftSelectionTimestamp(assignment);
+  return Number.isFinite(selectedAt)
+    ? new Date(selectedAt + 7 * 24 * 60 * 60 * 1000)
+    : null;
+}
+
+// This helper represents the change-lock only. It does not expire the selected shift.
+export function isWeeklyShiftAssignmentCurrent(
+  assignment: any,
+  now = new Date(),
+) {
+  const unlockAt = getNextShiftChangeAt(assignment);
+  return Boolean(unlockAt && now.getTime() < unlockAt.getTime());
 }
 
 export async function createCaptainShift(input: {
@@ -159,9 +207,9 @@ export async function updateCaptainShift(
   const shift =
     await CaptainShiftModel.findOne({
       _id: objectId(shiftId),
-      captainId: { $exists: false },
-      shiftId: { $exists: false },
-      weekStart: { $exists: false },
+      captainId: { $in: [null] },
+      shiftId: { $in: [null] },
+      weekStart: { $in: [null] },
     });
 
   if (!shift) {
@@ -220,9 +268,9 @@ export async function assignCaptainWeeklyShift(
   const shift = await CaptainShiftModel.findOne({
     _id: shiftObjectId,
     isActive: true,
-    captainId: { $exists: false },
-    shiftId: { $exists: false },
-    weekStart: { $exists: false },
+    captainId: { $in: [null] },
+    shiftId: { $in: [null] },
+    weekStart: { $in: [null] },
   });
 
   if (!shift) {
@@ -230,32 +278,23 @@ export async function assignCaptainWeeklyShift(
   }
 
   const start = new Date(weekStart || new Date());
-  start.setMilliseconds(0);
 
   const previousAssignment =
     await CaptainShiftModel.findOne({
       captainId: captainObjectId,
-      shiftId: { $exists: true },
-    }).sort({ weekStart: -1 });
+      shiftId: { $exists: true, $ne: null },
+    }).sort({ changedAt: -1, updatedAt: -1, weekStart: -1 });
 
-  if (previousAssignment?.weekStart) {
-    const expiresAt =
-      new Date(previousAssignment.weekStart).getTime() +
-      7 * 24 * 60 * 60 * 1000;
-
-    if (start.getTime() < expiresAt) {
-      throw new Error(
-        "SHIFT_ALREADY_SELECTED_THIS_WEEK"
-      );
+  if (previousAssignment) {
+    if (isWeeklyShiftAssignmentCurrent(previousAssignment, start)) {
+      throw new Error("SHIFT_ALREADY_SELECTED_THIS_WEEK");
     }
-
     previousAssignment.shiftId = shiftObjectId;
     previousAssignment.weekStart = start;
     previousAssignment.changedAt = new Date();
     previousAssignment.changeCount = 0;
     previousAssignment.isActive = true;
     previousAssignment.isOpen = true;
-
     return previousAssignment.save();
   }
 
@@ -270,192 +309,75 @@ export async function assignCaptainWeeklyShift(
   });
 }
 
-export async function changeCaptainWeeklyShiftOnce(
-  captainId: string,
-  newShiftId: string,
-  weekStart?: Date
-) {
-  const captainObjectId = objectId(captainId);
-  const shiftObjectId = objectId(newShiftId);
-
-  const now = new Date(weekStart || new Date());
-  now.setMilliseconds(0);
-
-  const windowStart = new Date(
-    now.getTime() -
-      7 * 24 * 60 * 60 * 1000,
-  );
-
-  const assignment =
-    await CaptainShiftModel.findOne({
-      captainId: captainObjectId,
-      shiftId: { $exists: true },
-      weekStart: {
-        $gt: windowStart,
-        $lte: now,
-      },
-    }).sort({ weekStart: -1 });
-
-  if (!assignment) {
-    throw new Error(
-      "NO_WEEKLY_SHIFT_SELECTED"
-    );
-  }
-
-  if (
-    Number(
-      (assignment as any).changeCount || 0
-    ) >= 1
-  ) {
-    throw new Error(
-      "WEEKLY_SHIFT_CHANGE_LIMIT_REACHED"
-    );
-  }
-
-  const shift =
-    await CaptainShiftModel.findOne({
-      _id: shiftObjectId,
-      isActive: true,
-      captainId: { $exists: false },
-      shiftId: { $exists: false },
-      weekStart: { $exists: false },
-    });
-
-  if (!shift) {
-    throw new Error(
-      "SHIFT_NOT_FOUND_OR_INACTIVE"
-    );
-  }
-
-  const updatedAssignment =
-    await CaptainShiftModel.findOneAndUpdate(
-      {
-        _id: assignment._id,
-        captainId: captainObjectId,
-        weekStart: {
-          $gt: windowStart,
-          $lte: now,
-        },
-        changeCount: { $lt: 1 },
-      },
-      {
-        $set: {
-          shiftId: shiftObjectId,
-          changedAt: new Date(),
-          isOpen: true,
-        },
-        $inc: {
-          changeCount: 1,
-        },
-      },
-      { new: true },
-    );
-
-  if (!updatedAssignment) {
-    throw new Error(
-      "WEEKLY_SHIFT_CHANGE_LIMIT_REACHED"
-    );
-  }
-
-  return updatedAssignment;
+// Both shift endpoints enforce the same seven-day lock. The chosen shift never expires.
+export async function changeCaptainWeeklyShiftOnce(captainId: string, newShiftId: string) {
+  return assignCaptainWeeklyShift(captainId, newShiftId);
 }
 
 export function isShiftRunning(
   startTime: string,
   endTime: string,
-  now = new Date()
+  now = new Date(),
+  dayOfWeek?: number | string | null,
 ) {
   const toMinutes = (value: string) => {
-    const [h, m] =
-      value.split(":").map(Number);
-
-    return h * 60 + m;
+    if (!/^\d{1,2}:\d{2}$/.test(String(value))) return NaN;
+    const [h, m] = String(value).split(":").map(Number);
+    return h >= 0 && h <= 23 && m >= 0 && m <= 59 ? h * 60 + m : NaN;
   };
+  const start = toMinutes(startTime);
+  const end = toMinutes(endTime);
+  if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
 
-  const start =
-    toMinutes(startTime);
+  const current = getBaghdadMinutes(now);
+  const dayName = new Intl.DateTimeFormat("en-US", {
+    timeZone: BAGHDAD_TIME_ZONE,
+    weekday: "long",
+  }).format(now).toLowerCase();
+  const weekdayIndex: Record<string, number> = {
+    sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+    thursday: 4, friday: 5, saturday: 6,
+  };
+  const currentDay = weekdayIndex[dayName];
 
-  const end =
-    toMinutes(endTime);
+  if (dayOfWeek !== null && dayOfWeek !== undefined && String(dayOfWeek).trim() !== "") {
+    const expectedDay = Number.isInteger(Number(dayOfWeek))
+      ? Number(dayOfWeek)
+      : weekdayIndex[String(dayOfWeek).toLowerCase()];
+    if (!Number.isInteger(expectedDay) || expectedDay < 0 || expectedDay > 6) return false;
 
-  const current =
-    getBaghdadMinutes(now);
-
-  if (start === end) {
-    return true;
+    // After midnight, an overnight shift belongs to the day it started.
+    const correctDay = start > end && current < end
+      ? (expectedDay + 1) % 7 === currentDay
+      : expectedDay === currentDay;
+    if (!correctDay) return false;
   }
 
-  if (start < end) {
-    return (
-      current >= start &&
-      current < end
-    );
-  }
-
-  return (
-    current >= start ||
-    current < end
-  );
+  if (start === end) return true;
+  if (start < end) return current >= start && current < end;
+  return current >= start || current < end;
 }
 
 export async function assertCaptainInsideShift(
   captainId: string,
   now = new Date()
 ) {
-  const captainObjectId =
-    objectId(captainId);
-
-  const start =
-    getWeekStart(now);
-
-  const end =
-    new Date(start);
-
-  end.setDate(
-    end.getDate() + 7
-  );
-
-  const assignment =
-    await CaptainShiftModel.findOne({
-      captainId: captainObjectId,
-      shiftId: { $exists: true },
-      weekStart: {
-        $gte: start,
-        $lt: end,
-      },
-    });
+  const captainObjectId = objectId(captainId);
+  const assignment = await CaptainShiftModel.findOne({
+    captainId: captainObjectId,
+    shiftId: { $exists: true, $ne: null },
+    isActive: true,
+  }).sort({ changedAt: -1, updatedAt: -1, weekStart: -1 });
 
   if (!assignment) {
-    throw new Error(
-      "CAPTAIN_HAS_NO_WEEKLY_SHIFT"
-    );
+    throw new Error("CAPTAIN_HAS_NO_WEEKLY_SHIFT");
   }
-
-  const shift =
-    await CaptainShiftModel.findById(
-      (assignment as any).shiftId
-    );
-
+  const shift = await CaptainShiftModel.findById((assignment as any).shiftId);
   if (!shift || !(shift as any).isActive) {
-    throw new Error(
-      "CAPTAIN_SHIFT_INACTIVE"
-    );
+    throw new Error("CAPTAIN_SHIFT_INACTIVE");
   }
-
-  if (
-    !isShiftRunning(
-      String((shift as any).startTime),
-      String((shift as any).endTime),
-      now
-    )
-  ) {
-    throw new Error(
-      "CAPTAIN_OUTSIDE_SHIFT"
-    );
+  if (!isShiftRunning(String((shift as any).startTime), String((shift as any).endTime), now, (shift as any).dayOfWeek)) {
+    throw new Error("CAPTAIN_OUTSIDE_SHIFT");
   }
-
-  return {
-    assignment,
-    shift,
-  };
+  return { assignment, shift };
 }
