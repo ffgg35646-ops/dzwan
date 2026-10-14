@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { api } from "../api/client";
 import type { AccountType, AuthUser } from "../types/auth";
 
 const USER_KEY = "zajel_auth_user_v1";
@@ -46,6 +47,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     return user;
   },
   logout: () => {
+    // Clear server-issued HttpOnly cookies as well as the local browser session.
+    void api.post("/auth/logout").catch(() => undefined);
     try {
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(USER_KEY);
