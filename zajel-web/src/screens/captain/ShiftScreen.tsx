@@ -17,6 +17,7 @@ import {
   checkShift,
   getAvailableShifts,
   selectWeeklyShift,
+  changeWeeklyShift,
 } from "../../api/captain";
 
 function formatShiftTime(value: any) {
@@ -215,7 +216,11 @@ export default function ShiftScreen() {
     setSavingId(id);
 
     try {
-      await selectWeeklyShift(id);
+      if (selectedShiftId) {
+        await changeWeeklyShift(id);
+      } else {
+        await selectWeeklyShift(id);
+      }
 
       const selectedShift =
         shifts.find(
