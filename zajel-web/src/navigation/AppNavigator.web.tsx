@@ -1,6 +1,6 @@
 import RuntimeGate from "../components/RuntimeGate";
 import ThemeProvider from "../components/ThemeProvider";
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   NavigationContainer,
 } from "@react-navigation/native";
@@ -21,17 +21,53 @@ import NotificationsScreen from "../screens/shared/NotificationsScreen";
 import MaintenanceScreen from "../screens/shared/MaintenanceScreen";
 
 import OrderDetailsScreen from "../screens/captain/OrderDetailsScreen";
+import { useAuthStore } from "../store/authStore";
 
 const Stack = createStackNavigator();
 
+function routeForRole(role: string | undefined | null) {
+  if (role === "captain") return "CaptainApp";
+  if (role === "shop") return "ShopApp";
+  if (role === "governorate_leader" || role === "area_leader") return "LeaderApp";
+  return null;
+}
+
 export default function AppNavigator() {
+  const storedUser = useAuthStore((state) => state.user);
+  const restoreSession = useAuthStore((state) => state.restoreSession);
+  const navigationVersion = useAuthStore((state) => state.navigationVersion);
+  const navigationRef = useRef<any>(null);
+  const [navigationReady, setNavigationReady] = useState(false);
+
+  useEffect(() => {
+    void restoreSession();
+  }, [restoreSession]);
+
+  useEffect(() => {
+    if (!navigationReady || !navigationRef.current?.isReady()) return;
+
+    const state = useAuthStore.getState();
+    const route = state.authenticated && state.user
+      ? routeForRole(state.user.role)
+      : null;
+    const target = route || "SelectRole";
+
+    navigationRef.current.resetRoot({
+      index: 0,
+      routes: [{ name: target }],
+    });
+  }, [navigationReady, navigationVersion]);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => setNavigationReady(true)}
+    >
 <ThemeProvider>
 <RuntimeGate>
 
       <Stack.Navigator
-        initialRouteName="SelectRole"
+        initialRouteName={routeForRole(storedUser?.role) || "SelectRole"}
         screenOptions={{
           headerShown: false,
         }}
