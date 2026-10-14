@@ -513,17 +513,25 @@ export async function getCaptainOrderBoard(
         )
       : orderScopePairs;
 
+    // Area IDs are ObjectIds of embedded Location.areas and are globally unique.
+    // Use the assigned delivery area as the scope key: legacy orders may have a
+    // missing or stale deliveryGovernorateId even when deliveryAreaId is correct.
+    const scopedAreaIds = Array.from(
+      new Set(
+        scopedPairs
+          .map((pair: any) => String(pair?.areaId || ""))
+          .filter((id: string) => validObjectId(id)),
+      ),
+    );
+
     const locationFilter =
-      scopedPairs.length > 0
+      scopedAreaIds.length > 0
         ? {
-            $or: scopedPairs.map((pair: any) => ({
-              deliveryGovernorateId: new Types.ObjectId(
-                String(pair.governorateId)
+            deliveryAreaId: {
+              $in: scopedAreaIds.map(
+                (id: string) => new Types.ObjectId(id),
               ),
-              deliveryAreaId: new Types.ObjectId(
-                String(pair.areaId)
-              ),
-            })),
+            },
           }
         : null;
 
@@ -841,23 +849,18 @@ export async function claimCaptainOrder(
             throw error;
           }
 
-          const orderGovernorateId =
-            String(
-              candidateOrder.deliveryGovernorateId || ""
-            );
-
           const orderAreaId =
             String(
               candidateOrder.deliveryAreaId || ""
             );
 
+          // Match the board filter. The embedded area ObjectId is the stable,
+          // unique scope key; stale governorate IDs on legacy orders should not
+          // make a listed order impossible to claim.
           const orderAllowed =
             orderScopePairs.some(
               (pair: any) =>
-                String(pair.governorateId) ===
-                  orderGovernorateId &&
-                String(pair.areaId) ===
-                  orderAreaId
+                String(pair.areaId) === orderAreaId
             );
 
           if (!orderAllowed) {
