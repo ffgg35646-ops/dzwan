@@ -119,16 +119,16 @@ async function captainHasActiveShift(
     _id: assignment.shiftId,
     isActive: true,
   })
-    .select("startTime endTime dayOfWeek")
+    .select("startTime endTime")
     .lean();
 
   if (!shift) return false;
 
+  // The selected shift repeats daily; dayOfWeek is only metadata on the template.
   return isShiftRunning(
     String(shift.startTime),
     String(shift.endTime),
     now,
-    (shift as any).dayOfWeek,
   );
 }
 
