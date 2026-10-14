@@ -983,6 +983,7 @@ export default function CaptainOrdersScreen() {
     navigation.navigate("OrderDetails", {
       orderId,
       id: orderId,
+      order,
     });
   }
 
@@ -1121,6 +1122,7 @@ export default function CaptainOrdersScreen() {
           navigation.navigate("OrderDetails", {
             orderId,
             id: orderId,
+            order,
             openMap: true,
           });
         },
