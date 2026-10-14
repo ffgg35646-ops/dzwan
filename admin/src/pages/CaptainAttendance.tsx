@@ -726,6 +726,13 @@ export default function CaptainAttendance() {
 
   useEffect(() => {
     void load();
+
+    // Keep the admin attendance view current without requiring manual refresh.
+    const refreshTimer = window.setInterval(() => {
+      void load(true);
+    }, 15000);
+
+    return () => window.clearInterval(refreshTimer);
   }, []);
 
   const filtered =
