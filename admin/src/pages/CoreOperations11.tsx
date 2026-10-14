@@ -5,9 +5,9 @@ import {
   Save,
   Settings2,
   ShieldCheck,
-  Truck,
   Zap,
 } from "lucide-react";
+import MotorbikeIcon from "../components/MotorbikeIcon";
 import { api } from "../lib/api";
 
 const cardStyle: React.CSSProperties = {
@@ -327,7 +327,7 @@ export default function CoreOperations11() {
                 placeItems: "center",
               }}
             >
-              <Truck size={21} />
+              <MotorbikeIcon size={21} />
             </div>
 
             <div>
