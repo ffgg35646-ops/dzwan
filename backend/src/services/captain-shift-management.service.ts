@@ -376,7 +376,9 @@ export async function assertCaptainInsideShift(
   if (!shift || !(shift as any).isActive) {
     throw new Error("CAPTAIN_SHIFT_INACTIVE");
   }
-  if (!isShiftRunning(String((shift as any).startTime), String((shift as any).endTime), now, (shift as any).dayOfWeek)) {
+  // A captain's selected shift is a recurring daily time window.
+  // The seven-day rule locks changes to the selection, not operation to one weekday.
+  if (!isShiftRunning(String((shift as any).startTime), String((shift as any).endTime), now)) {
     throw new Error("CAPTAIN_OUTSIDE_SHIFT");
   }
   return { assignment, shift };
