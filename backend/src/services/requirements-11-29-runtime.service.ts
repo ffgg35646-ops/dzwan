@@ -681,11 +681,51 @@ export async function getCaptainWorkAreas(
 ) {
   await applyDefaultCoverage(captainId);
 
-  return CaptainWorkAreaModel.find({
+  // Areas are embedded inside Location. areaId is an ObjectId to an
+  // embedded subdocument, not a ref to a standalone Mongoose model.
+  // Populating areaId directly can fail and be swallowed by order-board
+  // callers, making every available order disappear.
+  const rows = await CaptainWorkAreaModel.find({
     captainId,
     isActive: true,
   })
-    .populate("governorateId", "name")
-    .populate("areaId", "name")
+    .populate("governorateId", "name areas")
     .lean();
+
+  return rows.map((row: any) => {
+    const governorate =
+      row?.governorateId &&
+      Array.isArray(row.governorateId.areas)
+        ? row.governorateId
+        : null;
+
+    const areaId = String(
+      row?.areaId?._id ??
+        row?.areaId ??
+        "",
+    );
+
+    const embeddedArea = Array.isArray(governorate?.areas)
+      ? governorate.areas.find(
+          (area: any) => String(area?._id ?? "") === areaId,
+        )
+      : null;
+
+    const area = embeddedArea
+      ? {
+          _id: embeddedArea._id,
+          name: embeddedArea.name,
+        }
+      : null;
+
+    return {
+      ...row,
+      governorateId: row?.governorateId,
+      areaId: row?.areaId,
+      governorate,
+      area,
+      governorateName: governorate?.name ?? "",
+      areaName: area?.name ?? "",
+    };
+  });
 }
