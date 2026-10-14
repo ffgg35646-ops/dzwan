@@ -1,6 +1,7 @@
 import SupportQuickAccess from "../../components/shared/SupportQuickAccess";
 import { useShiftSelectionStore } from "../../store/shiftSelectionStore";
-import React, { useEffect, useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import {
   ActivityIndicator,
@@ -98,6 +99,8 @@ type Order = {
   cancelledAt?: string;
   createdAt?: string;
 };
+
+const CAPTAIN_HOME_CACHE_PREFIX = "@zajel/captain-home-cache-v1";
 
 const ORANGE = "#F97316";
 const ORANGE_DARK = "#E85D04";
@@ -743,6 +746,11 @@ export default function CaptainHomeScreen() {
 
   const navigation = useNavigation<any>();
   const user = useAuthStore((state) => state.user);
+  const captainHomeCacheKey =
+    `${CAPTAIN_HOME_CACHE_PREFIX}:${String(user?.id ?? "anonymous")}`;
+  const homeCacheRef = useRef<Record<string, any>>({});
+  const homeCacheWriteRef = useRef<Promise<void>>(Promise.resolve());
+  const liveHomeSectionsRef = useRef(new Set<string>());
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -935,6 +943,77 @@ export default function CaptainHomeScreen() {
           },
         ];
 
+  function persistHomeCache(patch: Record<string, any>) {
+    const snapshot = {
+      ...homeCacheRef.current,
+      ...patch,
+    };
+    homeCacheRef.current = snapshot;
+
+    // Serialize writes so parallel API responses cannot overwrite newer fields.
+    homeCacheWriteRef.current = homeCacheWriteRef.current
+      .catch(() => undefined)
+      .then(() =>
+        AsyncStorage.setItem(
+          captainHomeCacheKey,
+          JSON.stringify(snapshot),
+        ),
+      )
+      .catch(() => undefined);
+  }
+
+  function applyHomeCache(snapshot: any) {
+    if (!snapshot || typeof snapshot !== "object") return;
+    homeCacheRef.current = { ...snapshot };
+
+    if (
+      !liveHomeSectionsRef.current.has("capacity") &&
+      Object.prototype.hasOwnProperty.call(snapshot, "capacity")
+    ) {
+      setCapacity(snapshot.capacity ?? null);
+    }
+
+    if (
+      !liveHomeSectionsRef.current.has("shift") &&
+      Object.prototype.hasOwnProperty.call(snapshot, "shift")
+    ) {
+      setShift(snapshot.shift ?? null);
+      setShiftCardOpen(Boolean(snapshot.shift?.assignment?.shiftId));
+    }
+
+    if (
+      !liveHomeSectionsRef.current.has("workAreas") &&
+      Array.isArray(snapshot.workAreas)
+    ) {
+      setWorkAreas(snapshot.workAreas);
+      setWorkArea(snapshot.workAreas[0] || null);
+    }
+
+    if (!liveHomeSectionsRef.current.has("counts")) {
+      if (Number.isFinite(snapshot.activeOrdersCount)) {
+        setActiveOrdersCount(snapshot.activeOrdersCount);
+      }
+      if (Number.isFinite(snapshot.availableOrdersCount)) {
+        setAvailableOrdersCount(snapshot.availableOrdersCount);
+      }
+    }
+
+    if (
+      !liveHomeSectionsRef.current.has("customerLocation") &&
+      Object.prototype.hasOwnProperty.call(snapshot, "customerLocation")
+    ) {
+      setCustomerLocation(snapshot.customerLocation ?? null);
+    }
+  }
+
+  function compactCapacitySnapshot(value: any) {
+    return {
+      maxActiveOrders: value?.maxActiveOrders,
+      maxOrders: value?.maxOrders,
+      maxActiveOrdersPerCaptain: value?.maxActiveOrdersPerCaptain,
+      orders: getOrders(value).slice(0, 8),
+    };
+  }
 
   async function loadGps() {
     try {
@@ -1006,7 +1085,10 @@ export default function CaptainHomeScreen() {
     if (captainId) {
       void getCaptainCapacity(captainId)
         .then((capacityResult) => {
+          liveHomeSectionsRef.current.add("capacity");
           setCapacity(capacityResult);
+          const cachedCapacity = compactCapacitySnapshot(capacityResult);
+          persistHomeCache({ capacity: cachedCapacity });
 
           const availableOrders = getOrders(capacityResult);
           const firstOrder =
@@ -1020,7 +1102,10 @@ export default function CaptainHomeScreen() {
               ].includes(order?.status || ""),
             ) || availableOrders[0];
 
-          setCustomerLocation(getCustomerCoordinate(firstOrder));
+          const nextCustomerLocation = getCustomerCoordinate(firstOrder);
+          liveHomeSectionsRef.current.add("customerLocation");
+          setCustomerLocation(nextCustomerLocation);
+          persistHomeCache({ customerLocation: nextCustomerLocation });
 
           // GPS and route are optional enhancements, not prerequisites for orders.
           void (async () => {
@@ -1052,8 +1137,10 @@ export default function CaptainHomeScreen() {
             ? areas.filter((item: any) => item?.isActive !== false)
             : [];
 
+          liveHomeSectionsRef.current.add("workAreas");
           setWorkAreas(activeWorkAreas);
           setWorkArea(activeWorkAreas[0] || null);
+          persistHomeCache({ workAreas: activeWorkAreas });
         })
         .catch((error: any) => {
           console.log(
@@ -1070,8 +1157,10 @@ export default function CaptainHomeScreen() {
           "🟠 CHECK SHIFT RESULT:",
           JSON.stringify(shiftResult, null, 2),
         );
+        liveHomeSectionsRef.current.add("shift");
         setShift(shiftResult || null);
         setShiftCardOpen(Boolean(shiftResult?.assignment?.shiftId));
+        persistHomeCache({ shift: shiftResult || null });
       })
       .catch((error: any) => {
         console.log(
@@ -1099,8 +1188,13 @@ export default function CaptainHomeScreen() {
         const availableList =
           availableCandidates.find((value) => Array.isArray(value)) || [];
 
+        liveHomeSectionsRef.current.add("counts");
         setActiveOrdersCount(activeList.length);
         setAvailableOrdersCount(availableList.length);
+        persistHomeCache({
+          activeOrdersCount: activeList.length,
+          availableOrdersCount: availableList.length,
+        });
       })
       .catch((boardError: any) => {
         // Keep the last known counts if a background refresh fails.
@@ -1116,13 +1210,17 @@ export default function CaptainHomeScreen() {
     void getShiftInfo()
       .then((shiftInfoResult) => {
         if (!shiftInfoResult) return;
-        setShift((previous: any) => ({
+        const previous = homeCacheRef.current.shift || null;
+        const nextShift = {
           ...(previous || {}),
           ...(shiftInfoResult || {}),
           assignment:
             previous?.assignment ?? shiftInfoResult?.assignment ?? null,
           shift: previous?.shift ?? shiftInfoResult?.shift ?? null,
-        }));
+        };
+        liveHomeSectionsRef.current.add("shift");
+        setShift(nextShift);
+        persistHomeCache({ shift: nextShift });
       })
       .catch(() => {});
   }
@@ -1306,29 +1404,74 @@ export default function CaptainHomeScreen() {
   }
 
   useEffect(() => {
-    void loadData();
+    let mounted = true;
+    liveHomeSectionsRef.current.clear();
+    homeCacheRef.current = {};
 
-    const unsubscribe = navigation.addListener(
-      "focus",
-      () => {
-        void loadData();
-      },
-    );
+    // Hydrate the last known dashboard snapshot first. Server refreshes run
+    // independently afterwards, so a slow API never holds the home UI open.
+    void AsyncStorage.getItem(captainHomeCacheKey)
+      .then((raw) => {
+        if (!mounted || !raw) return;
+        try {
+          applyHomeCache(JSON.parse(raw));
+        } catch {
+          // Ignore malformed/old cache entries and fetch fresh data below.
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) void loadData();
+      });
 
-    // Attendance is recorded automatically by checkShift while the selected
-    // shift is active. Poll in the background so opening the app before the
-    // shift starts does not require a manual attendance button at start time.
+    const unsubscribe = navigation.addListener("focus", () => {
+      void loadData();
+    });
+
+    const refreshShiftAndCounts = () => {
+      void checkShift()
+        .then((shiftResult) => {
+          if (!mounted) return;
+          liveHomeSectionsRef.current.add("shift");
+          setShift(shiftResult || null);
+          setShiftCardOpen(Boolean(shiftResult?.assignment?.shiftId));
+          persistHomeCache({ shift: shiftResult || null });
+        })
+        .catch(() => undefined);
+
+      void getCaptainOrderBoard()
+        .then((board) => {
+          if (!mounted) return;
+          const activeCandidates = [board?.activeOrders, board?.data?.activeOrders];
+          const activeList =
+            activeCandidates.find((value) => Array.isArray(value)) || [];
+          const availableCandidates = [board?.availableOrders, board?.data?.availableOrders];
+          const availableList =
+            availableCandidates.find((value) => Array.isArray(value)) || [];
+
+          liveHomeSectionsRef.current.add("counts");
+          setActiveOrdersCount(activeList.length);
+          setAvailableOrdersCount(availableList.length);
+          persistHomeCache({
+            activeOrdersCount: activeList.length,
+            availableOrdersCount: availableList.length,
+          });
+        })
+        .catch(() => undefined);
+    };
+
+    // Attendance is still computed server-side; poll status and order counts
+    // in the background without repeatedly invoking GPS/map route lookup.
     const attendanceTimer = user?.id
-      ? setInterval(() => {
-          void checkShift().catch(() => undefined);
-        }, 30_000)
+      ? setInterval(refreshShiftAndCounts, 15_000)
       : null;
 
     return () => {
+      mounted = false;
       if (attendanceTimer) clearInterval(attendanceTimer);
       unsubscribe();
     };
-  }, [navigation, user?.id]);
+  }, [navigation, user?.id, captainHomeCacheKey]);
 
   useEffect(() => {
     if (!location || !customerLocation) {
