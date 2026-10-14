@@ -68,6 +68,7 @@ export default function CaptainProfileScreen() {
 
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
+  const logout = useAuthStore((s) => s.logout);
 
   const [emailModalVisible, setEmailModalVisible] = useState(false);
   const [emailStep, setEmailStep] = useState<"email" | "otp">("email");
@@ -619,6 +620,33 @@ export default function CaptainProfileScreen() {
             الاسم والهاتف والمحافظة والمنطقة بيانات الحساب المسجلة، ويمكن تغيير البريد الإلكتروني أو كلمة المرور فقط.
           </Text>
         </View>
+
+        <Pressable
+          accessibilityRole="button"
+          onPress={logout}
+          style={({ pressed }) => [
+            {
+              flexDirection: "row-reverse",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 9,
+              backgroundColor: "#FEF2F2",
+              borderColor: "#FECACA",
+              borderWidth: 1,
+              borderRadius: 16,
+              paddingVertical: 14,
+              paddingHorizontal: 18,
+              marginTop: 16,
+              marginBottom: 24,
+            },
+            pressed && { opacity: 0.75 },
+          ]}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#B91C1C" />
+          <Text style={{ color: "#B91C1C", fontSize: 15, fontWeight: "900" }}>
+            تسجيل الخروج
+          </Text>
+        </Pressable>
       </ScrollView>
 
       <Modal
