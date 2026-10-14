@@ -1,5 +1,6 @@
 
 import { useEffect, useMemo, useState } from "react";
+import type { ComponentType } from "react";
 import {
   Bell,
   Check,
@@ -401,7 +402,7 @@ export default function Notifications() {
     key: Target;
     title: string;
     description: string;
-    icon: React.ComponentType<{ size?: number }>;
+    icon: ComponentType<{ size?: number }>;
   }> = [
     {
       key: "all-shops",
