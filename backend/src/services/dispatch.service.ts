@@ -272,7 +272,7 @@ export async function findBestCaptain(
 
   const captains = await UserModel.find(candidateFilter)
     .select(
-      "_id fullName phone isOnline lastSeenAt",
+      "_id fullName phone isOnline lastSeenAt governorateId areaId",
     )
     .lean();
 
@@ -356,7 +356,15 @@ export async function findBestCaptain(
       .select("_id")
       .lean();
 
-    if (!workArea) {
+    // Older captain accounts can have their assigned area directly on User.
+    // Only use that fallback when BOTH IDs exactly match the establishment.
+    const legacyAreaMatch =
+      String(captain.governorateId || "") === String(establishment.governorateId || "") &&
+      String(captain.areaId || "") === String(establishment.areaId || "") &&
+      Types.ObjectId.isValid(String(captain.governorateId || "")) &&
+      Types.ObjectId.isValid(String(captain.areaId || ""));
+
+    if (!workArea && !legacyAreaMatch) {
       continue;
     }
     const activeCount =
