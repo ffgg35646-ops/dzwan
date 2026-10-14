@@ -356,7 +356,9 @@ export async function checkCurrentShift(
     // Opening the captain app during an active shift records attendance automatically.
     // No check-in button is required, and logging failure never blocks the app.
     if (insideShift) {
-      await recordAutomaticAttendance(
+      // Attendance is observational. Record it asynchronously so a slow write
+      // never delays shift state, order loading, or captain navigation.
+      void recordAutomaticAttendance(
         captainId,
         shift._id,
         now,
