@@ -1,4 +1,6 @@
 import type { Request, Response } from "express";
+import { Types } from "mongoose";
+import CaptainAttendanceModel from "../models/CaptainAttendance.js";
 import { CaptainShiftModel } from "../models/CaptainShift.js";
 import {
   createCaptainShift,
@@ -9,6 +11,7 @@ import {
   isWeeklyShiftAssignmentCurrent,
   getNextShiftChangeAt,
   isShiftRunning,
+  getBaghdadDayBounds,
 } from "../services/captain-shift-management.service.js";
 
 export async function createShift(
@@ -263,6 +266,54 @@ export async function changeWeeklyShift(
   }
 }
 
+async function recordAutomaticAttendance(
+  captainId: string,
+  shiftId: unknown,
+  now: Date,
+) {
+  try {
+    const normalizedShiftId = String(shiftId || "");
+    if (
+      !Types.ObjectId.isValid(captainId) ||
+      !Types.ObjectId.isValid(normalizedShiftId)
+    ) {
+      return;
+    }
+
+    const day = getBaghdadDayBounds(now);
+    const captainObjectId = new Types.ObjectId(captainId);
+
+    // One attendance record per captain per Baghdad day.
+    // It is observational only: database failures must never block the shift screen.
+    await CaptainAttendanceModel.updateOne(
+      {
+        captainId: captainObjectId,
+        date: {
+          $gte: day.start,
+          $lt: day.end,
+        },
+      },
+      {
+        $setOnInsert: {
+          captainId: captainObjectId,
+          date: day.start,
+          shiftId: new Types.ObjectId(normalizedShiftId),
+          clockInAt: now,
+          clockOutAt: null,
+          durationMinutes: 0,
+          status: "present",
+        },
+      },
+      { upsert: true },
+    );
+  } catch (error) {
+    console.error(
+      "Automatic attendance from active shift failed:",
+      error,
+    );
+  }
+}
+
 export async function checkCurrentShift(
   req: Request,
   res: Response
@@ -301,6 +352,16 @@ export async function checkCurrentShift(
       String(shift.endTime),
       now,
     );
+
+    // Opening the captain app during an active shift records attendance automatically.
+    // No check-in button is required, and logging failure never blocks the app.
+    if (insideShift) {
+      await recordAutomaticAttendance(
+        captainId,
+        shift._id,
+        now,
+      );
+    }
 
     return res.json({
       success: true, allowed: insideShift, insideShift,
