@@ -1039,11 +1039,11 @@ export default function CaptainHomeScreen() {
           "",
       );
 
-      if (selectedAreaId) {
+      {
         try {
           const board =
             await getCaptainOrderBoard(
-              selectedAreaId,
+              selectedAreaId || undefined,
             );
 
           const availableCandidates = [
@@ -1069,8 +1069,6 @@ export default function CaptainHomeScreen() {
 
           setAvailableOrdersCount(0);
         }
-      } else {
-        setAvailableOrdersCount(0);
       }
 
       const availableOrders =
