@@ -752,7 +752,7 @@ export default function CaptainHomeScreen() {
   const homeCacheWriteRef = useRef<Promise<void>>(Promise.resolve());
   const liveHomeSectionsRef = useRef(new Set<string>());
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const [capacity, setCapacity] = useState<any>(null);
