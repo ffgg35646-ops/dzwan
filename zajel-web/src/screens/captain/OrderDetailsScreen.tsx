@@ -27,7 +27,6 @@ import { useNavigation, useRoute } from "@react-navigation/native";
 
 import Screen from "../../components/Screen";
 import AppButton from "../../components/AppButton";
-import LoadingState from "../../components/LoadingState";
 import OrderStatusBadge from "../../components/OrderStatusBadge";
 import { useAppTheme } from "../../theme/useAppTheme";
 import {
@@ -169,7 +168,7 @@ export default function OrderDetailsScreen() {
   const orderId = String(route.params?.orderId || "");
   const isWebPlatform = Platform.OS === "web";
 
-  const [order, setOrder] = useState<any>(null);
+  const [order, setOrder] = useState<any>(route.params?.order ?? null);
   const [deliveryProofPhoto, setDeliveryProofPhoto] =
     useState<any>(null);
   const [pickupOrderPhoto, setPickupOrderPhoto] =
@@ -925,13 +924,6 @@ export default function OrderDetailsScreen() {
     }
   }
 
-  if (loading) {
-    return (
-      <Screen>
-        <LoadingState message="جاري تحميل تفاصيل الطلب..." />
-      </Screen>
-    );
-  }
 
   return (
     <Screen>
