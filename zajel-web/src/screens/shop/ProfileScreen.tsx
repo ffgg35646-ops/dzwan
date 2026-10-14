@@ -1,7 +1,5 @@
 import React from "react";
-import { useNavigation } from "@react-navigation/native";
 import {
-  Alert,
   StyleSheet,
   Text,
   View,
@@ -19,7 +17,6 @@ export default function ShopProfileScreen() {
   const styles = createStyles(appTheme);
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
-  const navigation = useNavigation<any>();
 
   const name = user?.name || "حساب المتجر";
   const phone = user?.phone || "غير متوفر";
@@ -162,13 +159,7 @@ export default function ShopProfileScreen() {
         </View>
         <TouchableOpacity
           activeOpacity={0.82}
-          onPress={() => Alert.alert("تسجيل الخروج", "هل تريد تسجيل الخروج من حساب المطعم؟", [
-            { text: "إلغاء", style: "cancel" },
-            { text: "تسجيل الخروج", style: "destructive", onPress: () => {
-              logout();
-              navigation.getParent()?.getParent()?.reset({ index: 0, routes: [{ name: "SelectRole" }] });
-            }},
-          ])}
+          onPress={() => logout()}
           style={{
             marginTop: 16, minHeight: 52, borderRadius: 15,
             borderWidth: 1, borderColor: "#FCA5A5", backgroundColor: "#FFF1F2",
