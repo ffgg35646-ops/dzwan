@@ -15,9 +15,9 @@ import {
   RefreshCw,
   Server,
   ShoppingBag,
-  Truck,
   Users,
 } from "lucide-react";
+import MotorbikeIcon from "../components/MotorbikeIcon";
 import { api } from "../lib/api";
 import type { AdminUser } from "../types/auth";
 
@@ -1593,7 +1593,7 @@ export default function Dashboard() {
               </div>
 
               <div className="dashboard-kpi-icon">
-                <Truck size={21} />
+                <MotorbikeIcon size={21} />
               </div>
             </div>
 
@@ -1797,7 +1797,7 @@ export default function Dashboard() {
               <div className="dashboard-system-row">
                 <div className="dashboard-system-main">
                   <div className="dashboard-system-icon">
-                    <Truck size={17} />
+                    <MotorbikeIcon size={17} />
                   </div>
 
                   <div>
