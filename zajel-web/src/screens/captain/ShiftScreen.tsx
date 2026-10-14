@@ -16,6 +16,7 @@ import {
   checkShift,
   getAvailableShifts,
   selectWeeklyShift,
+  changeWeeklyShift,
 } from "../../api/captain";
 
 function formatUnlockTime(value: any) {
@@ -214,7 +215,11 @@ export default function ShiftScreen() {
     setSavingId(id);
 
     try {
-      await selectWeeklyShift(id);
+      if (selectedShiftId) {
+        await changeWeeklyShift(id);
+      } else {
+        await selectWeeklyShift(id);
+      }
 
       setActionMessage(
         "✅ تم حفظ اختيار الشفت. سيظل مستمرًا ولن ينتهي تلقائيًا؛ وبعد 7 أيام يمكنك تغييره اختياريًا.",

@@ -40,6 +40,7 @@ import {
 
   getAvailableShifts,
   selectWeeklyShift,
+  changeWeeklyShift,
 } from "../../api/captain";
 import {
   getShiftInfo,
@@ -1405,7 +1406,11 @@ export default function CaptainHomeScreen() {
     setShiftSaving(true);
 
     try {
-      await selectWeeklyShift(newShiftId);
+      if (selectedWeeklyShiftId) {
+        await changeWeeklyShift(newShiftId);
+      } else {
+        await selectWeeklyShift(newShiftId);
+      }
 
       await loadData();
 
