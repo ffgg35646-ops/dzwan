@@ -10,10 +10,10 @@ import {
   Package,
   RefreshCw,
   Search,
-  Truck,
   User,
   X,
 } from "lucide-react";
+import MotorbikeIcon from "../components/MotorbikeIcon";
 import { api } from "../lib/api";
 import { dzwanConfirm } from "../lib/message";
 
@@ -3749,7 +3749,7 @@ const [captains, setCaptains] = useState<Captain[]>([]);
                                 : "pointer",
                             }}
                           >
-                            <Truck
+                            <MotorbikeIcon
                               size={14}
                               style={{
                                 verticalAlign:
@@ -4682,7 +4682,7 @@ const [captains, setCaptains] = useState<Captain[]>([]);
                           !isAvailableOrder && (
                         <div className="orders-captain-box">
                           <div className="orders-captain-current">
-                            <Truck size={13} />
+                            <MotorbikeIcon size={13} />
 
                             <span>
                               {captainName === "—"
@@ -4757,7 +4757,7 @@ const [captains, setCaptains] = useState<Captain[]>([]);
                                     )
                                   }
                                 >
-                                  <Truck size={13} />
+                                  <MotorbikeIcon size={13} />
                                   إسناد
                                 </button>
                               </div>
