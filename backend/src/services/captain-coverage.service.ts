@@ -1,5 +1,6 @@
 import { Types } from "mongoose";
 import { UserModel } from "../models/User.js";
+import CaptainRegistrationModel from "../models/CaptainRegistration.js";
 import { LocationModel } from "../models/Location.js";
 import { CaptainWorkAreaModel } from "../models/CaptainWorkArea.js";
 import CoverageModel from "../models/CaptainDefaultCoverage.js";
@@ -61,21 +62,36 @@ export async function applyDefaultCoverage(
     role: "captain",
   }).lean();
 
-  if (!captain?.governorateId || !captain?.areaId) {
-    return;
+  if (!captain) return;
+
+  // Older approved captain records can hold their assigned area only on
+  // the registration record, while the User document has empty region fields.
+  let governorateId: any = captain.governorateId;
+  let areaId: any = captain.areaId;
+
+  if ((!governorateId || !areaId) && captain.phone) {
+    const registration = await CaptainRegistrationModel.findOne({
+      phone: captain.phone,
+      status: "approved",
+    })
+      .sort({ createdAt: -1 })
+      .select("governorateId areaId")
+      .lean();
+
+    governorateId = governorateId || registration?.governorateId;
+    areaId = areaId || registration?.areaId;
   }
 
+  if (!governorateId || !areaId) return;
+
   const rows = await CoverageModel.find({
-    sourceGovernorateId: captain.governorateId,
-    sourceAreaId: captain.areaId,
+    sourceGovernorateId: governorateId,
+    sourceAreaId: areaId,
     isActive: true,
   }).lean();
 
   const areas = [
-    {
-      governorateId: captain.governorateId,
-      areaId: captain.areaId,
-    },
+    { governorateId, areaId },
     ...rows.map((row) => ({
       governorateId: row.targetGovernorateId,
       areaId: row.targetAreaId,
