@@ -11,12 +11,6 @@
       "installCommand": "npm install --include=dev",
       "buildCommand": "npm install --include=prod",
       "entrypoint": "src/server.mts"
-    },
-    "web": {
-      "root": "zajel-web/",
-      "installCommand": "npm install",
-      "buildCommand": "npm run build",
-      "outputDirectory": "dist"
     }
   },
   "rewrites": [
@@ -24,18 +18,6 @@
       "source": "/api/(.*)",
       "destination": {
         "service": "backend"
-      }
-    },
-    {
-      "source": "/(.*)",
-      "has": [
-        {
-          "type": "host",
-          "value": "zajel-web-debug.vercel.app"
-        }
-      ],
-      "destination": {
-        "service": "web"
       }
     },
     {
