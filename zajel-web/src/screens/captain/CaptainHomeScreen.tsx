@@ -1,4 +1,5 @@
 import SupportQuickAccess from "../../components/shared/SupportQuickAccess";
+import { useShiftSelectionStore } from "../../store/shiftSelectionStore";
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import {
@@ -29,7 +30,6 @@ import Svg, {
   LinearGradient as SvgGradient,
 } from "react-native-svg";
 import * as Location from "expo-location";
-import MapView, { Marker, Polyline } from "../../components/maps/MapView";
 
 import Screen from "../../components/Screen";
 import { useAuthStore } from "../../store/authStore";
@@ -40,7 +40,6 @@ import {
 
   getAvailableShifts,
   selectWeeklyShift,
-  changeWeeklyShift,
 } from "../../api/captain";
 import {
   getShiftInfo,
@@ -680,6 +679,11 @@ function formatShiftClock(value: any) {
 
 
 export default function CaptainHomeScreen() {
+  const selectedShiftFromStore =
+    useShiftSelectionStore(
+      (state) => state.selectedShift,
+    );
+
 
   const [supportNotificationCount, setSupportNotificationCount] =
     useState(0);
@@ -743,6 +747,8 @@ export default function CaptainHomeScreen() {
 
   const [capacity, setCapacity] = useState<any>(null);
   const [shift, setShift] = useState<any>(null);
+  const [shiftCardOpen, setShiftCardOpen] =
+    useState(false);
   /* HOME_SHIFT_PICKER_V1 */
   const [shiftPickerOpen, setShiftPickerOpen] =
     useState(false);
@@ -791,16 +797,17 @@ export default function CaptainHomeScreen() {
     useState(() => Date.now());
 
 
+
   const orders = useMemo(
     () => getOrders(capacity),
     [capacity],
   );
 
-  const activeOrders = numberValue(
-    capacity?.activeOrders ??
-      capacity?.activeOrdersCount ??
-      capacity?.currentOrders,
-  );
+  const [activeOrdersCount, setActiveOrdersCount] =
+    useState(0);
+
+  const displayActiveOrders =
+    activeOrdersCount;
 
   const maxOrders = numberValue(
     capacity?.maxActiveOrders ??
@@ -809,67 +816,66 @@ export default function CaptainHomeScreen() {
   );
 
   const remainingOrders = Math.max(
-    maxOrders - activeOrders,
+    maxOrders - activeOrdersCount,
     0,
   );
 
   const capacityPercentage =
     maxOrders > 0
-      ? Math.min(activeOrders / maxOrders, 1)
+      ? Math.min(activeOrdersCount / maxOrders, 1)
       : 0;
-
-  const insideShift = Boolean(
-    shift?.insideShift ??
-      shift?.withinShift ??
-      shift?.allowed,
-  );
-
-  useEffect(() => {
-    if (!insideShift) {
-      return;
-    }
-
-    setShiftClockNow(Date.now());
-
-    const timer =
-      setInterval(() => {
-        setShiftClockNow(
-          Date.now(),
-        );
-      }, 1000);
-
-    return () =>
-      clearInterval(timer);
-  }, [insideShift]);
-
-  const currentShift = shift?.shift || shift;
-
-  const shiftStart =
-    currentShift?.startTime ||
-    currentShift?.start ||
-    "--:--";
-
-  const shiftEnd =
-    currentShift?.endTime ||
-    currentShift?.end ||
-    "--:--";
 
   const weeklyAssignment =
     shift?.assignment || null;
 
   const selectedWeeklyShiftId = String(
-    weeklyAssignment?.shiftId?._id ??
+    selectedShiftFromStore?._id ??
+      selectedShiftFromStore?.id ??
+      weeklyAssignment?.shiftId?._id ??
       weeklyAssignment?.shiftId?.id ??
       weeklyAssignment?.shiftId ??
       "",
   );
-  const canChangeWeeklyShift =
-    !selectedWeeklyShiftId ||
-    shift?.canSelectNewShift === true;
-  const nextShiftChangeAt = shift?.nextChangeAt ?? null;
+  const shiftSelectedAt = (() => {
+    const explicit = new Date(weeklyAssignment?.changedAt ?? NaN).getTime();
+    if (Number.isFinite(explicit)) return explicit;
+    const legacy = [
+      weeklyAssignment?.weekStart,
+      weeklyAssignment?.createdAt,
+      weeklyAssignment?.updatedAt,
+    ].map((value) => new Date(value ?? NaN).getTime())
+      .filter((value) => Number.isFinite(value));
+    return legacy.length ? Math.max(...legacy) : NaN;
+  })();
+  const shiftChangeLocked =
+    Boolean(selectedWeeklyShiftId) &&
+    Number.isFinite(shiftSelectedAt) &&
+    shiftClockNow < shiftSelectedAt + 168 * 60 * 60 * 1000;
+
+  const currentShift =
+    shift?.shift || shift;
+
+  const shiftSelected =
+    Boolean(
+      shiftCardOpen ||
+      selectedWeeklyShiftId,
+    );
+
+  useEffect(() => {
+    setShiftClockNow(Date.now());
+
+    const timer = setInterval(() => {
+      setShiftClockNow(Date.now());
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+
 
   const selectedWeeklyShift =
-    weeklyAssignment?.shiftId &&
+    selectedShiftFromStore ||
+    (weeklyAssignment?.shiftId &&
     typeof weeklyAssignment.shiftId === "object"
       ? weeklyAssignment.shiftId
       : shift?.shift &&
@@ -878,7 +884,7 @@ export default function CaptainHomeScreen() {
         : currentShift &&
             typeof currentShift === "object"
           ? currentShift
-          : null;
+          : null);
 
   const selectedShiftTimeLabel =
     selectedWeeklyShift?.startTime &&
@@ -889,9 +895,6 @@ export default function CaptainHomeScreen() {
           selectedWeeklyShift.endTime,
         )}`
       : "";
-
-  const shiftSelected =
-    Boolean(selectedWeeklyShiftId);
 
   function goToCaptainScreen(
     screen: "الشفت" | "الطلبات",
@@ -908,7 +911,28 @@ export default function CaptainHomeScreen() {
     workArea?.areaName ||
     workArea?.area?.name ||
     workArea?.name ||
-    "منطقتك الحالية";
+    user?.areaName ||
+    (user as any)?.area?.name ||
+    "منطقتك الأساسية";
+
+  const governorateName =
+    workArea?.governorateName ||
+    workArea?.governorate?.name ||
+    user?.governorateName ||
+    (user as any)?.governorate?.name ||
+    "";
+
+  const displayWorkAreas =
+    workAreas.length > 0
+      ? workAreas
+      : [
+          {
+            _id: "captain-primary-area",
+            areaName,
+            governorateName,
+          },
+        ];
+
 
   async function loadGps() {
     try {
@@ -971,10 +995,10 @@ export default function CaptainHomeScreen() {
 
   async function loadData() {
     try {
+      // البيانات الأساسية فقط: لا نحجز ظهور الشاشة بسبب بيانات ثانوية.
       const [
         capacityResult,
         shiftResult,
-        shiftInfoResult,
         workAreasResult,
       ] = await Promise.all([
         user?.id
@@ -983,47 +1007,40 @@ export default function CaptainHomeScreen() {
 
         checkShift(),
 
-        getShiftInfo().catch(() => null),
-
         user?.id
           ? getMyWorkAreas(user.id)
           : Promise.resolve(null),
       ]);
 
-      console.log("🟠 CHECK SHIFT RESULT:", JSON.stringify(shiftResult, null, 2));
-      console.log("🟠 SHIFT INFO RESULT:", JSON.stringify(shiftInfoResult, null, 2));
-
-      const mergedShift = {
-        ...(shiftResult || {}),
-        ...(shiftInfoResult || {}),
-        assignment:
-          shiftInfoResult?.assignment ??
-          shiftResult?.assignment ??
-          null,
-        shift:
-          shiftInfoResult?.shift ??
-          shiftResult?.shift ??
-          null,
-        canSelectNewShift:
-          shiftResult?.canSelectNewShift ??
-          shiftInfoResult?.canSelectNewShift ??
-          false,
-        nextChangeAt:
-          shiftResult?.nextChangeAt ??
-          shiftInfoResult?.nextChangeAt ??
-          null,
-      };
+      console.log(
+        "🟠 CHECK SHIFT RESULT:",
+        JSON.stringify(shiftResult, null, 2),
+      );
 
       setCapacity(capacityResult);
-      setShift(mergedShift);
+
+      setShift(
+        shiftResult || null,
+      );
+
+      setShiftCardOpen(
+        Boolean(
+          shiftResult?.assignment?.shiftId
+        )
+      );
 
       const areas =
         workAreasResult?.workAreas ||
         workAreasResult?.areas ||
+        workAreasResult?.data ||
+        workAreasResult?.items ||
         [];
 
       const activeWorkAreas = Array.isArray(areas)
-        ? areas.filter((item: any) => item?.isActive !== false)
+        ? areas.filter(
+            (item: any) =>
+              item?.isActive !== false,
+          )
         : [];
 
       setWorkAreas(activeWorkAreas);
@@ -1033,45 +1050,88 @@ export default function CaptainHomeScreen() {
 
       setWorkArea(selectedWorkArea);
 
-      // العدد الحقيقي للطلبات المتاحة في منطقة الكابتن.
+      // الشاشة الأساسية تظهر الآن ولا تنتظر:
+      // الحضور + تفاصيل الشفت الإضافية + عداد الطلبات + GPS + route.
+      setLoading(false);
+      setRefreshing(false);
+
+      // معلومات الشفت الإضافية في الخلفية.
+      void getShiftInfo()
+        .then((shiftInfoResult) => {
+          if (!shiftInfoResult) {
+            return;
+          }
+
+          setShift((previous: any) => ({
+            ...(previous || {}),
+            ...(shiftInfoResult || {}),
+            assignment:
+              previous?.assignment ??
+              shiftInfoResult?.assignment ??
+              null,
+            shift:
+              previous?.shift ??
+              shiftInfoResult?.shift ??
+              null,
+          }));
+        })
+        .catch(() => {});
+
+
+      // عداد الطلبات المتاحة في الخلفية.
       const selectedAreaId = String(
         selectedWorkArea?._id ??
           selectedWorkArea?.id ??
           "",
       );
 
-      {
-        try {
-          const board =
-            await getCaptainOrderBoard(
-              selectedAreaId || undefined,
+      if (selectedAreaId) {
+        void getCaptainOrderBoard(
+          selectedAreaId,
+        )
+          .then((board) => {
+            const activeCandidates = [
+              board?.activeOrders,
+              board?.data?.activeOrders,
+            ];
+
+            const activeList =
+              activeCandidates.find(
+                (value) => Array.isArray(value),
+              ) || [];
+
+            const availableCandidates = [
+              board?.availableOrders,
+              board?.data?.availableOrders,
+            ];
+
+            const availableList =
+              availableCandidates.find(
+                (value) => Array.isArray(value),
+              ) || [];
+
+            setActiveOrdersCount(
+              activeList.length,
             );
 
-          const availableCandidates = [
-            board?.availableOrders,
-            board?.data?.availableOrders,
-            board?.items,
-          ];
+            setAvailableOrdersCount(
+              availableList.length,
+            );
+          })
+          .catch((boardError: any) => {
+            console.log(
+              "CAPTAIN HOME BOARD COUNT ERROR:",
+              boardError?.message ||
+                boardError,
+            );
 
-          const availableList =
-            availableCandidates.find(
-              (value) => Array.isArray(value),
-            ) || [];
-
-          setAvailableOrdersCount(
-            availableList.length,
-          );
-        } catch (boardError: any) {
-          console.log(
-            "CAPTAIN HOME BOARD COUNT ERROR:",
-            boardError?.message ||
-              boardError,
-          );
-
-          setAvailableOrdersCount(0);
-        }
+            setAvailableOrdersCount(0);
+          });
+      } else {
+        setAvailableOrdersCount(0);
       }
 
+      // الموقع والخريطة في الخلفية.
       const availableOrders =
         getOrders(capacityResult);
 
@@ -1083,30 +1143,36 @@ export default function CaptainHomeScreen() {
             "arrived_at_shop",
             "picked_up",
             "on_the_way",
-          ].includes(order?.status || ""),
+          ].includes(
+            order?.status || "",
+          ),
         ) || availableOrders[0];
 
       setCustomerLocation(
         getCustomerCoordinate(firstOrder),
       );
 
-      const gps = await loadGps();
+      void (async () => {
+        try {
+          const gps = await loadGps();
 
-      if (
-        gps &&
-        getCustomerCoordinate(firstOrder)
-      ) {
-        await buildRoute(
-          gps,
-          getCustomerCoordinate(firstOrder)!,
-        );
-      }
+          const target =
+            getCustomerCoordinate(firstOrder);
+
+          if (gps && target) {
+            await buildRoute(
+              gps,
+              target,
+            );
+          }
+        } catch {}
+      })();
     } catch (error: any) {
       console.log(
         "CAPTAIN HOME LOAD ERROR:",
         error?.message || error,
       );
-    } finally {
+
       setLoading(false);
       setRefreshing(false);
     }
@@ -1342,13 +1408,16 @@ export default function CaptainHomeScreen() {
       weeklyAssignment?.changeCount || 0,
     ) >= 1;
 
+  const cardShiftSelected =
+    shiftCardOpen || Boolean(selectedWeeklyShiftId);
+
   const homeShiftActionTitle =
-    selectedWeeklyShiftId
+    cardShiftSelected
       ? "تم اختيار الشفت"
       : "اختيار الشفت";
 
   const homeShiftActionIcon =
-    selectedWeeklyShiftId
+    cardShiftSelected
       ? "checkmark-circle"
       : "play-circle";
 
@@ -1397,8 +1466,7 @@ export default function CaptainHomeScreen() {
     if (
       !newShiftId ||
       shiftSaving ||
-      newShiftId === selectedWeeklyShiftId ||
-      (selectedWeeklyShiftId && !canChangeWeeklyShift)
+      shiftChangeLocked
     ) {
       return;
     }
@@ -1406,26 +1474,45 @@ export default function CaptainHomeScreen() {
     setShiftSaving(true);
 
     try {
-      if (selectedWeeklyShiftId) {
-        await changeWeeklyShift(newShiftId);
+      await selectWeeklyShift(newShiftId);
+
+      // فتح الكارت فورًا بمجرد نجاح اختيار الشفت.
+      setShiftCardOpen(true);
+
+      const selectedShift =
+        availableShifts.find(
+          (item: any) =>
+            String(item?._id ?? item?.id ?? "") === newShiftId
+        ) || null;
+
+      if (selectedShift) {
+        setShift((previous: any) => ({
+          ...(previous || {}),
+          assignment: {
+            ...(previous?.assignment || {}),
+            shiftId: selectedShift,
+            changedAt: new Date().toISOString(),
+          },
+          shift: selectedShift,
+        }));
       } else {
-        await selectWeeklyShift(newShiftId);
+        setShift((previous: any) => ({
+          ...(previous || {}),
+          assignment: {
+            ...(previous?.assignment || {}),
+            shiftId: newShiftId,
+            changedAt: new Date().toISOString(),
+          },
+        }));
       }
 
-      await loadData();
-
       setShiftPickerOpen(false);
-
-      Alert.alert(
-        "تم اختيار الشفت",
-        "الشفت محفوظ ومستمر ولا ينتهي تلقائيًا. وبعد 7 أيام يمكنك تغييره اختياريًا.",
-      );
     } catch (error: any) {
       Alert.alert(
         "تعذر اختيار الشفت",
         error?.response?.data?.message ||
           error?.response?.data?.error ||
-          "تعذر تنفيذ العملية الآن.",
+          "تعذر اختيار الشفت.",
       );
     } finally {
       setShiftSaving(false);
@@ -1437,22 +1524,7 @@ export default function CaptainHomeScreen() {
     await loadData();
   }
 
-  const mapCenter =
-    customerLocation || location;
-
-  const mapRegion = mapCenter
-    ? {
-        latitude: mapCenter.latitude,
-        longitude: mapCenter.longitude,
-        latitudeDelta: 0.045,
-        longitudeDelta: 0.045,
-      }
-    : {
-        latitude: 33.3152,
-        longitude: 44.3661,
-        latitudeDelta: 4.8,
-        longitudeDelta: 5.2,
-      };
+  const mapCenter = customerLocation;
 
   const recentOrders = orders.slice(0, 8);
 
@@ -1578,6 +1650,17 @@ export default function CaptainHomeScreen() {
             style={styles.heroGlow}
           />
 
+          <View
+            pointerEvents="none"
+            style={styles.heroVectorWrap}
+          >
+            <MaterialCommunityIcons
+              name="truck-fast-outline"
+              size={132}
+              color="#FFD9A0"
+            />
+          </View>
+
           <View style={styles.heroContent}>
             <View style={styles.heroShiftInfo}>
 
@@ -1604,7 +1687,7 @@ export default function CaptainHomeScreen() {
                 </View>
               </View>
 
-              {selectedShiftTimeLabel ? (
+              {(shiftCardOpen || selectedWeeklyShiftId) ? (
                 <View style={styles.heroTimeSection}>
                   <View style={styles.heroSectionIcon}>
                     <Ionicons
@@ -1626,7 +1709,7 @@ export default function CaptainHomeScreen() {
                 </View>
               ) : null}
 
-              {selectedWeeklyShiftId && workAreas.length > 0 ? (
+              {(shiftCardOpen || selectedWeeklyShiftId) ? (
                 <View style={styles.heroAreaSection}>
                   <View style={styles.heroSectionIcon}>
                     <Ionicons
@@ -1642,7 +1725,7 @@ export default function CaptainHomeScreen() {
                     </Text>
 
                     <View style={styles.heroAreaList}>
-                      {workAreas.map((item: any, index: number) => {
+                      {displayWorkAreas.map((item: any, index: number) => {
                         const governorateName =
                           item?.governorateId?.name ||
                           item?.governorate?.name ||
@@ -1693,7 +1776,7 @@ export default function CaptainHomeScreen() {
               disabled={false}
               style={({ pressed }) => [
                 styles.heroButton,
-                selectedWeeklyShiftId &&
+                (shiftCardOpen || selectedWeeklyShiftId) &&
                   styles.heroButtonActive,
                 pressed && {
                   opacity: 0.92,
@@ -1704,7 +1787,7 @@ export default function CaptainHomeScreen() {
               <View
                 style={[
                   styles.heroButtonIcon,
-                  selectedWeeklyShiftId &&
+                  (shiftCardOpen || selectedWeeklyShiftId) &&
                     styles.heroButtonIconDisabled,
                 ]}
               >
@@ -1718,7 +1801,7 @@ export default function CaptainHomeScreen() {
               <Text
                 style={[
                   styles.heroButtonText,
-                  selectedWeeklyShiftId &&
+                  (shiftCardOpen || selectedWeeklyShiftId) &&
                     styles.heroButtonTextDisabled,
                 ]}
               >
@@ -1939,7 +2022,7 @@ export default function CaptainHomeScreen() {
                     color: "#16A34A",
                   }}
                 >
-                  {activeOrders}
+                  {displayActiveOrders}
                 </Text>
               </View>
 
@@ -1950,246 +2033,6 @@ export default function CaptainHomeScreen() {
               />
             </View>
           </TouchableOpacity>
-        </View>
-
-        {/* MAP */}
-        <View style={styles.mapCard}>
-          <View style={styles.mapTitleRow}>
-            <View style={styles.mapTitleSpacer} />
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="موقعك"
-              style={styles.mapLocationButton}
-              onPress={() => {
-                if (location) {
-                  void buildRoute(
-                    location,
-                    customerLocation || location,
-                  );
-                }
-              }}
-            >
-              <Ionicons
-                name="location"
-                size={22}
-                color={ORANGE}
-              />
-            </Pressable>
-          </View>
-
-          <View style={styles.mapTools}>
-            <View style={styles.mapSearchRow}>
-              <TextInput
-                value={mapSearch}
-                onChangeText={setMapSearch}
-                onSubmitEditing={() => {
-                  void searchMapLocation();
-                }}
-                placeholder="ابحث عن منطقة أو عنوان العميل..."
-                placeholderTextColor="#A79B8F"
-                style={styles.mapSearchInput}
-                textAlign="right"
-              />
-
-              <Pressable
-                onPress={() => {
-                  void searchMapLocation();
-                }}
-                style={styles.mapSearchButton}
-              >
-                {mapSearchLoading ? (
-                  <ActivityIndicator
-                    size="small"
-                    color="#FFFFFF"
-                  />
-                ) : (
-                  <Ionicons
-                    name="search-outline"
-                    size={19}
-                    color="#FFFFFF"
-                  />
-                )}
-              </Pressable>
-            </View>
-
-            <View style={styles.mapLinkRow}>
-              <TextInput
-                value={customerLocationLink}
-                onChangeText={
-                  setCustomerLocationLink
-                }
-                placeholder="أو الصق رابط موقع العميل..."
-                placeholderTextColor="#A79B8F"
-                style={styles.customerLinkInput}
-                textAlign="right"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-
-              <Pressable
-                onPress={() => {
-                  void applyCustomerLocationLink();
-                }}
-                style={styles.mapLinkButton}
-              >
-                <Ionicons
-                  name="location-outline"
-                  size={17}
-                  color="#FFFFFF"
-                />
-
-                <Text style={styles.mapLinkButtonText}>
-                  تحديد
-                </Text>
-              </Pressable>
-            </View>
-
-            {searchResults.length > 0 ? (
-              <View style={styles.searchResults}>
-                {searchResults.map(
-                  (result, index) => (
-                    <Pressable
-                      key={`${result?.place_id || index}`}
-                      onPress={() => {
-                        void selectSearchResult(result);
-                      }}
-                      style={styles.searchResult}
-                    >
-                      <Ionicons
-                        name="location-outline"
-                        size={17}
-                        color={ORANGE}
-                      />
-
-                      <Text
-                        style={styles.searchResultText}
-                        numberOfLines={2}
-                      >
-                        {result?.display_name ||
-                          "موقع"}
-                      </Text>
-                    </Pressable>
-                  ),
-                )}
-              </View>
-            ) : null}
-          </View>
-
-          {Platform.OS === "web" ? (
-            <View style={styles.webMap}>
-              {React.createElement("iframe", {
-                title: "Zajel Captain Map",
-                src: mapCenter
-                  ? `https://www.google.com/maps?q=${mapCenter.latitude},${mapCenter.longitude}&z=14&output=embed`
-                  : "https://www.google.com/maps?q=Iraq&z=6&output=embed",
-                style: {
-                  width: "100%",
-                  height: "100%",
-                  border: 0,
-                },
-              })}
-            </View>
-          ) : (
-            <MapView
-              style={styles.nativeMap}
-              region={mapRegion}
-              showsUserLocation
-              showsMyLocationButton
-              loadingEnabled
-            >
-              {location ? (
-                <Marker
-                  coordinate={location}
-                  title="موقع الكابتن"
-                >
-                  <View
-                    style={styles.captainMarker}
-                  >
-                    <MaterialCommunityIcons
-                      name="motorbike"
-                      size={22}
-                      color="#FFFFFF"
-                    />
-                  </View>
-                </Marker>
-              ) : null}
-
-              {customerLocation ? (
-                <Marker
-                  coordinate={customerLocation}
-                  title="موقع العميل"
-                  pinColor={RED}
-                />
-              ) : null}
-
-              {route.length > 1 ? (
-                <Polyline
-                  coordinates={route}
-                  strokeColor={ORANGE}
-                  strokeWidth={5}
-                />
-              ) : null}
-            </MapView>
-          )}
-
-          <View style={styles.mapFooter}>
-            <View style={styles.mapLocationInfo}>
-              <View style={styles.liveDot} />
-
-              <Text style={styles.mapLocationText}>
-                {location
-                  ? `منطقتك الحالية · ${
-                      currentPlaceName ||
-                      areaName
-                    }`
-                  : "في انتظار تحديد GPS"}
-              </Text>
-            </View>
-
-            {customerLocation ? (
-              <View style={styles.mapMetricGroup}>
-                <View style={styles.etaBadge}>
-                  <Ionicons
-                    name="navigate-outline"
-                    size={15}
-                    color={ORANGE}
-                  />
-
-                  <Text style={styles.etaText}>
-                    {etaMinutes
-                      ? `${etaMinutes} دقيقة`
-                      : "جاري الحساب"}
-                  </Text>
-                </View>
-
-                {routeDistanceKm != null ? (
-                  <View style={styles.distanceBadge}>
-                    <Text style={styles.distanceText}>
-                      {routeDistanceKm.toFixed(1)} كم
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            ) : null}
-          </View>
-
-          {customerLocation ? (
-            <Pressable
-              onPress={openNavigation}
-              style={styles.navigationButton}
-            >
-              <Ionicons
-                name="navigate"
-                size={17}
-                color="#FFFFFF"
-              />
-
-              <Text style={styles.navigationButtonText}>
-                بدء الملاحة إلى العميل
-              </Text>
-            </Pressable>
-          ) : null}
         </View>
 
 
@@ -2400,7 +2243,7 @@ export default function CaptainHomeScreen() {
                   paddingBottom: 12,
                 }}
               >
-                {selectedWeeklyShiftId ? (
+                {shiftChangeLocked ? (
                   <View
                     style={{
                       marginBottom: 12,
@@ -2420,15 +2263,11 @@ export default function CaptainHomeScreen() {
                         textAlign: "center",
                       }}
                     >
-                      الشفت الحالي مستمر ولا ينتهي تلقائيًا.
+                      تم تثبيت الشفت الحالي.
                       {"\n"}
-                      {selectedShiftTimeLabel
-                        ? `الموعد الحالي: ${selectedShiftTimeLabel}`
-                        : "اختيارك الحالي محفوظ."}
+                      لا يمكن تغييره خلال مدة الـ7 أيام الحالية.
                       {"\n"}
-                      {canChangeWeeklyShift
-                        ? "تقدر تختار شفتًا آخر الآن إذا رغبت؛ التغيير اختياري."
-                        : `التغيير اختياري ومتاح بعد 7 أيام من الاختيار.${nextShiftChangeAt && Number.isFinite(new Date(nextShiftChangeAt).getTime()) ? ` الموعد: ${new Date(nextShiftChangeAt).toLocaleString("ar-IQ")}` : ""}`}
+                      سيظهر اختيار شفت جديد بعد انتهاء المدة.
                     </Text>
                   </View>
                 ) : null}
@@ -2462,7 +2301,7 @@ export default function CaptainHomeScreen() {
 
                   const disabled =
                     shiftSaving ||
-                    Boolean(selectedWeeklyShiftId && !canChangeWeeklyShift) ||
+                    shiftChangeLocked ||
                     isSelected;
 
                   return (
@@ -2472,7 +2311,7 @@ export default function CaptainHomeScreen() {
                         borderRadius: 18,
                         borderWidth: 1,
                         borderColor:
-                          (selectedWeeklyShiftId && !canChangeWeeklyShift)
+                          shiftChangeLocked
                             ? "#D1D5DB"
                             : isSelected
                               ? "#FDBA74"
@@ -2502,7 +2341,7 @@ export default function CaptainHomeScreen() {
                           <Text
                             style={{
                               color:
-                                (selectedWeeklyShiftId && !canChangeWeeklyShift)
+                                shiftChangeLocked
                                   ? "#9CA3AF"
                                   : TEXT,
                               fontSize: 16,
@@ -2532,7 +2371,7 @@ export default function CaptainHomeScreen() {
                             <Text
                               style={{
                                 color:
-                                (selectedWeeklyShiftId && !canChangeWeeklyShift)
+                                shiftChangeLocked
                                   ? "#9CA3AF"
                                   : "#5F5147",
                               fontSize: 13,
@@ -2594,10 +2433,12 @@ export default function CaptainHomeScreen() {
                               fontWeight: "900",
                             }}
                           >
-                            {isSelected
-                              ? "الحالي"
-                              : selectedWeeklyShiftId && !canChangeWeeklyShift
-                                ? "مغلق"
+                            {shiftChangeLocked
+                              ? isSelected
+                                ? "الحالي"
+                                : "مغلق"
+                              : isSelected
+                                ? "الحالي"
                                 : "اختيار"}
                           </Text>
                         </Pressable>
@@ -3108,14 +2949,15 @@ const styles = StyleSheet.create({
   },
 
   heroVectorWrap: {
-    width: 205,
-    height: 175,
+    width: 190,
+    height: 145,
     position: "absolute",
-    right: -7,
-    top: 34,
+    right: -4,
+    top: 12,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
+    opacity: 0.98,
   },
 
 
@@ -3169,6 +3011,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+
 
   mapCard: {
     marginTop: 0,
@@ -3353,6 +3196,22 @@ const styles = StyleSheet.create({
   nativeMap: {
     width: "100%",
     height: 150,
+  },
+
+  nativeMapFallback: {
+    backgroundColor: "#F8F1E8",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+
+  nativeMapFallbackText: {
+    color: MUTED,
+    fontSize: 12,
+    fontWeight: "700",
+    textAlign: "center",
+    lineHeight: 18,
+    marginTop: 7,
   },
 
   webMap: {

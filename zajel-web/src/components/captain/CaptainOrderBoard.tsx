@@ -21,6 +21,7 @@ import {
   rejectCaptainOrder,
 } from "../../api/captainOrderBoard";
 import { getOrder } from "../../api/orders";
+import { checkCurrentSelectedShift } from "../../api/captain";
 
 const ORANGE = "#F97316";
 const WHITE = "#FFFFFF";
@@ -346,17 +347,33 @@ export default function CaptainOrderBoard({
   const loadBoard = useCallback(
     async (showLoader = false) => {
       try {
+        if (!areaId) {
+          setActiveOrders([]);
+          setAvailableOrders([]);
+          setMaxOrders(DEFAULT_MAX_ORDERS);
+          return;
+        }
+
         if (showLoader) {
           setLoading(true);
         }
 
         /*
-         * الخلفية هي المصدر النهائي لصلاحية الشفت ومناطق العمل.
-         * نطلب اللوحة حتى لو areaId غير موجود في الواجهة؛
-         * الخلفية توسّع النطاق إلى مناطق الكابتن المصرح بها، بما فيها الحسابات القديمة.
+         * الشفت الحالي هو البوابة الحقيقية للطلبات.
+         * لو لا يوجد شفت مختار/نشط الآن:
+         * لا نعرض أي طلب متاح ولا أي طلب نشط.
          */
+        try {
+          await checkCurrentSelectedShift();
+        } catch {
+          setActiveOrders([]);
+          setAvailableOrders([]);
+          setMaxOrders(DEFAULT_MAX_ORDERS);
+          return;
+        }
+
         const result =
-          await getCaptainOrderBoard(areaId || undefined);
+          await getCaptainOrderBoard(areaId);
 
         setActiveOrders(
           Array.isArray(

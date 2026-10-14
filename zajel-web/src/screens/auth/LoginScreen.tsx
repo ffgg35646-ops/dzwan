@@ -2,9 +2,7 @@ import { useAppTheme } from "../../theme/useAppTheme";
 import { bootstrapLogin } from "../../utils/loginBootstrap";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Animated,
-  Platform,
   Easing,
   Pressable,
   StyleSheet,
@@ -18,6 +16,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import Screen from "../../components/Screen";
 import AppInput from "../../components/AppInput";
 import AppButton from "../../components/AppButton";
+import AppMessageModal from "../../components/shared/AppMessageModal";
 import { api, saveToken } from "../../api/client";
 import { useAuthStore } from "../../store/authStore";
 
@@ -39,6 +38,12 @@ export default function LoginScreen() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const [messageModal, setMessageModal] = useState({
+    visible: false,
+    title: "",
+    message: "",
+  });
 
   const cardY = useRef(new Animated.Value(70)).current;
   const cardOpacity = useRef(new Animated.Value(0)).current;
@@ -84,12 +89,11 @@ export default function LoginScreen() {
     title: string,
     message: string,
   ) {
-    if (Platform.OS === "web") {
-      window.alert(`${title}\n\n${message}`);
-      return;
-    }
-
-    Alert.alert(title, message);
+    setMessageModal({
+      visible: true,
+      title,
+      message,
+    });
   }
 
   async function submit() {
@@ -109,15 +113,23 @@ export default function LoginScreen() {
     try {
       const normalizedIdentifier = identifier.trim();
 
+      // إزالة المسافات أو المحارف الخفية من بداية/نهاية كلمة المرور
+      const normalizedPassword = String(password).trim();
+
+      console.log(
+        "ZAJEL LOGIN: password length =",
+        normalizedPassword.length,
+      );
+
       const loginPayload =
         normalizedIdentifier.includes("@")
           ? {
               email: normalizedIdentifier.toLowerCase(),
-              password,
+              password: normalizedPassword,
             }
           : {
               phone: normalizedIdentifier,
-              password,
+              password: normalizedPassword,
             };
 
       console.log(
@@ -399,7 +411,7 @@ export default function LoginScreen() {
                 { color: "#D94F00" },
               ]}
             >
-              دخول مسؤول التشغيل
+              
             </Text>
           </Pressable>
 
@@ -425,6 +437,18 @@ export default function LoginScreen() {
           زاجل • توصيل أسرع • تجربة أذكى
         </Text>
       </View>
+      <AppMessageModal
+        visible={messageModal.visible}
+        title={messageModal.title}
+        message={messageModal.message}
+        tone="error"
+        onClose={() =>
+          setMessageModal((current) => ({
+            ...current,
+            visible: false,
+          }))
+        }
+      />
     </Screen>
   );
 }

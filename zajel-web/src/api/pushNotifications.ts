@@ -34,8 +34,19 @@ export async function registerForPushNotifications() {
     return null;
   }
 
-  const token =
-    await Notifications.getExpoPushTokenAsync();
+  let token: { data: string } | null = null;
+
+  try {
+    token = await Notifications.getExpoPushTokenAsync({
+      projectId: "1bb77e28-798b-4b96-b924-79141ad2030a",
+    });
+  } catch (error) {
+    console.warn(
+      "Push token unavailable; continuing without push registration.",
+      error,
+    );
+    return null;
+  }
 
   try {
     await apiPost(

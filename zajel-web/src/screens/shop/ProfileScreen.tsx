@@ -8,6 +8,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import Screen from "../../components/Screen";
+import WebVersionLink from "../../components/shared/WebVersionLink";
 import { useAuthStore } from "../../store/authStore";
 import { useAppTheme } from "../../theme/useAppTheme";
 
@@ -48,6 +49,8 @@ export default function ShopProfileScreen() {
             />
           </View>
         </View>
+
+        <WebVersionLink />
 
         {/* Profile Hero */}
         <View style={styles.profileCard}>

@@ -18,6 +18,7 @@ import {
   View,
   Linking,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
@@ -900,7 +901,6 @@ export default function OrderDetailsScreen() {
       await cancelOrder(
         orderId,
         reason,
-        "captain",
       );
 
       setCancelModalVisible(false);

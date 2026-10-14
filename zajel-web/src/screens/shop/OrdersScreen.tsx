@@ -55,7 +55,7 @@ const ACTIVE_STATUSES = [
   "on_the_way",
 ];
 
-const HISTORY_PAGE_SIZE = 7;
+const HISTORY_PAGE_SIZE = 5;
 
 function getOrderId(order: any): string {
   return String(order?._id || order?.id || "");
@@ -256,6 +256,14 @@ function getPageNumbers(
 }
 
 export default function ShopOrdersScreen() {
+  const [orderFilter, setOrderFilter] =
+    useState<"all" | "active" | "completed" | "rejected">("all");
+
+  const [activePage, setActivePage] = useState(1);
+  const [openedOrderSection, setOpenedOrderSection] =
+    useState<string | null>(null);
+
+
   const appTheme = useAppTheme();
   const styles = createStyles(appTheme);
   const navigation = useNavigation<any>();
@@ -343,10 +351,58 @@ export default function ShopOrdersScreen() {
     );
   }, [orders]);
 
+
+  const filteredHistoryOrders = useMemo(() => {
+    if (orderFilter === "completed") {
+      return historyOrders.filter(
+        (order) =>
+          order?.status === "completed" ||
+          order?.status === "delivered",
+      );
+    }
+
+    if (orderFilter === "rejected") {
+      return historyOrders.filter(
+        (order) =>
+          order?.status === "rejected" ||
+          order?.status === "cancelled",
+      );
+    }
+
+    return historyOrders;
+  }, [
+    orderFilter,
+    historyOrders,
+  ]);
+
+  const activeTotalPages = Math.max(
+    1,
+    Math.ceil(activeOrders.length / 5),
+  );
+
+  const safeActivePage = Math.min(
+    activePage,
+    activeTotalPages,
+  );
+
+  const paginatedActiveOrders = useMemo(() => {
+    const start =
+      (safeActivePage - 1) * 5;
+
+    return activeOrders.slice(
+      start,
+      start + 5,
+    );
+  }, [
+    activeOrders,
+    safeActivePage,
+  ]);
+
   const historyTotalPages = Math.max(
     1,
     Math.ceil(
-      historyOrders.length / HISTORY_PAGE_SIZE,
+      filteredHistoryOrders.length /
+        HISTORY_PAGE_SIZE,
     ),
   );
 
@@ -360,81 +416,14 @@ export default function ShopOrdersScreen() {
       (safeHistoryPage - 1) *
       HISTORY_PAGE_SIZE;
 
-    return historyOrders.slice(
+    return filteredHistoryOrders.slice(
       start,
       start + HISTORY_PAGE_SIZE,
     );
-  }, [historyOrders, safeHistoryPage]);
-
-  useEffect(() => {
-    if (!isFocused) return;
-
-    let cancelled = false;
-
-    async function loadVisibleRatings() {
-      const completedOrders = paginatedHistory.filter((order) => {
-        const status = String(
-          order?.status || "",
-        ).toLowerCase();
-
-        return (
-          status === "delivered" ||
-          status === "completed"
-        );
-      });
-
-      if (!completedOrders.length) {
-        return;
-      }
-
-      const results = await Promise.all(
-        completedOrders.map(async (order) => {
-          const orderId = getOrderId(order);
-
-          if (!orderId) {
-            return null;
-          }
-
-          try {
-            const response =
-              await getOrderCaptainRating(orderId);
-
-            return [
-              orderId,
-              Boolean(
-                response?.rated ||
-                response?.rating,
-              ),
-            ] as const;
-          } catch {
-            return null;
-          }
-        }),
-      );
-
-      if (cancelled) return;
-
-      const next: Record<string, boolean> = {};
-
-      for (const item of results) {
-        if (!item) continue;
-        next[item[0]] = item[1];
-      }
-
-      if (Object.keys(next).length) {
-        setRatingByOrderId((current) => ({
-          ...current,
-          ...next,
-        }));
-      }
-    }
-
-    void loadVisibleRatings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isFocused, safeHistoryPage]);
+  }, [
+    filteredHistoryOrders,
+    safeHistoryPage,
+  ]);
 
   const stats = useMemo(() => {
     const completed = historyOrders.filter(
@@ -647,20 +636,30 @@ export default function ShopOrdersScreen() {
       return;
     }
 
-    try {
-      setCancelBusy(true);
+    setCancelBusy(true);
 
+    try {
+      // إرسال الإلغاء نفسه
       await cancelOrder(id, reason);
 
+      // إغلاق النافذة فور نجاح الإلغاء
       setCancelVisible(false);
       setCancelOrderId(null);
       setCancelReason("");
 
-      await load(true);
+      // تحديث القائمة بدون اعتبار فشل التحديث فشلًا في الإلغاء
+      try {
+        await load(true);
+      } catch (refreshError) {
+        console.warn(
+          "تم الإلغاء بنجاح لكن تعذر تحديث قائمة الطلبات:",
+          refreshError,
+        );
+      }
 
       Alert.alert(
         "تم إلغاء الطلب",
-        "تم إرسال الطلب إلى الإدارة للمراجعة.",
+        "تم إلغاء الطلب وتسجيل سبب الإلغاء.",
       );
     } catch (error: any) {
       Alert.alert(
@@ -1000,6 +999,8 @@ function InlineCaptainRating({
       </View>
     );
   }
+
+
 
   return (
     <View
@@ -1384,6 +1385,428 @@ return (
       <Screen>
         <LoadingState message="جاري تحميل الطلبات..." />
   
+
+
+
+
+    </Screen>
+    );
+  }
+
+  return (
+    <Screen>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={SHOP_PRIMARY}
+            colors={[SHOP_PRIMARY]}
+          />
+        }
+        contentContainerStyle={
+          styles.container
+        }
+      >
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons
+              name="receipt-outline"
+              size={24}
+              color={SHOP_PRIMARY}
+            />
+          </View>
+
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>
+              زاجل ديلفري
+            </Text>
+
+            <Text style={styles.title}>
+              الطلبات
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.stats}>
+                    <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+            onPress={() => {
+              setOrderFilter("all");
+              setActivePage(1);
+              setHistoryPage(1);
+              setOpenedOrderSection(null);
+            }}
+          >
+            <Stat
+                        icon="layers-outline"
+                        label="كل الطلبات"
+                        value={stats.total}
+                      />
+          </TouchableOpacity>
+
+                    <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+            onPress={() => {
+              setOrderFilter("active");
+              setActivePage(1);
+              setHistoryPage(1);
+              setOpenedOrderSection(null);
+            }}
+          >
+            <Stat
+                        icon="bicycle-outline"
+                        label="النشطة"
+                        value={stats.active}
+                      />
+          </TouchableOpacity>
+
+                    <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+            onPress={() => {
+              setOrderFilter("completed");
+              setActivePage(1);
+              setHistoryPage(1);
+              setOpenedOrderSection(null);
+            }}
+          >
+            <Stat
+                        icon="checkmark-circle-outline"
+                        label="المكتملة"
+                        value={stats.completed}
+                      />
+          </TouchableOpacity>
+
+                    <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+            onPress={() => {
+              setOrderFilter("rejected");
+              setActivePage(1);
+              setHistoryPage(1);
+              setOpenedOrderSection(null);
+            }}
+          >
+            <Stat
+                        icon="close-circle-outline"
+                        label="المرفوضة"
+                        value={stats.rejected}
+                      />
+          </TouchableOpacity>
+        </View>
+
+        <View style={[styles.sectionHeader, (orderFilter === "completed" || orderFilter === "rejected") && { display: "none" }]}>
+          <View style={styles.sectionHeaderText}>
+            <Text style={styles.sectionTitle}>
+              الطلبات الحالية
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              الطلبات التي ما زالت قيد التنفيذ
+            </Text>
+          </View>
+
+          <View style={styles.sectionBadge}>
+            <Text style={styles.sectionBadgeText}>
+              {activeOrders.length}
+            </Text>
+          </View>
+        </View>
+
+        {activeOrders.length === 0 ? (
+          <View style={styles.empty}>
+            <View style={styles.emptyIcon}>
+              <Ionicons
+                name="receipt-outline"
+                size={40}
+                color={SHOP_PRIMARY}
+              />
+            </View>
+
+            <Text style={styles.emptyTitle}>
+              لا توجد طلبات نشطة
+            </Text>
+
+            <Text style={styles.emptyText}>
+              ستظهر هنا الطلبات بمجرد إنشائها ومتابعة تنفيذها.
+            </Text>
+          </View>
+        ) : (
+          <View style={[styles.sectionList, (orderFilter === "completed" || orderFilter === "rejected") && { display: "none" }]}>
+            {paginatedActiveOrders.map(
+              renderActiveOrder,
+            )}
+
+            {activeTotalPages > 1 && (
+              <View style={styles.paginationBox}>
+                <TouchableOpacity
+                  disabled={safeActivePage === 1}
+                  onPress={() =>
+                    setActivePage((page) =>
+                      Math.max(1, page - 1),
+                    )
+                  }
+                  style={styles.pageArrow}
+                >
+                  <Ionicons
+                    name="chevron-back"
+                    size={18}
+                    color={
+                      safeActivePage === 1
+                        ? "#B8B0A8"
+                        : SHOP_PRIMARY
+                    }
+                  />
+                </TouchableOpacity>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.pagination}
+                >
+                  {Array.from(
+                    { length: activeTotalPages },
+                    (_, index) => index + 1,
+                  ).map((page) => (
+                    <TouchableOpacity
+                      key={"active-page-" + page}
+                      onPress={() =>
+                        setActivePage(page)
+                      }
+                      style={{
+                        minWidth: 36,
+                        height: 36,
+                        borderRadius: 10,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        marginHorizontal: 3,
+                        backgroundColor:
+                          page === safeActivePage
+                            ? "#0F172A"
+                            : "#F1F5F9",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: 13,
+                          fontWeight: "900",
+                          color:
+                            page === safeActivePage
+                              ? "#FFFFFF"
+                              : "#475569",
+                        }}
+                      >
+                        {page}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+
+                <TouchableOpacity
+                  disabled={
+                    safeActivePage === activeTotalPages
+                  }
+                  onPress={() =>
+                    setActivePage((page) =>
+                      Math.min(
+                        activeTotalPages,
+                        page + 1,
+                      ),
+                    )
+                  }
+                  style={styles.pageArrow}
+                >
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={
+                      safeActivePage === activeTotalPages
+                        ? "#B8B0A8"
+                        : SHOP_PRIMARY
+                    }
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        <View
+          style={[
+            styles.sectionHeader,
+            orderFilter === "active" && { display: "none" },
+            {
+              marginTop:
+                activeOrders.length > 0
+                  ? 24
+                  : 18,
+            },
+          ]}
+        >
+          <View style={styles.sectionHeaderText}>
+            <Text style={styles.sectionTitle}>
+              تاريخ الطلبات
+            </Text>
+
+            <Text style={styles.sectionSubtitle}>
+              الطلبات المكتملة والمرفوضة
+            </Text>
+          </View>
+
+          <View style={styles.historyBadge}>
+            <Text style={styles.historyBadgeText}>
+              {historyOrders.length}
+            </Text>
+          </View>
+        </View>
+
+        {historyOrders.length === 0 ? (
+          <View style={styles.empty}>
+            <View style={styles.emptyIcon}>
+              <Ionicons
+                name="time-outline"
+                size={40}
+                color={SHOP_PRIMARY}
+              />
+            </View>
+
+            <Text style={styles.emptyTitle}>
+              لا يوجد تاريخ طلبات حتى الآن
+            </Text>
+
+            <Text style={styles.emptyText}>
+              ستظهر هنا الطلبات المكتملة والمرفوضة تلقائيًا.
+            </Text>
+          </View>
+        ) : (
+          <>
+            <View style={[styles.sectionList, orderFilter === "active" && { display: "none" }]}>
+              {paginatedHistory.map(
+                renderHistoryOrder,
+              )}
+            </View>
+
+            {orderFilter !== "active" && historyTotalPages > 1 && (
+              <View style={styles.paginationBox}>
+                <TouchableOpacity
+                  disabled={safeHistoryPage === 1}
+                  onPress={() =>
+                    setHistoryPage((page) =>
+                      Math.max(1, page - 1),
+                    )
+                  }
+                  style={[
+                    styles.pageArrow,
+                    safeHistoryPage === 1 &&
+                      styles.pageDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name="chevron-back"
+                    size={18}
+                    color={
+                      safeHistoryPage === 1
+                        ? "#B8B0A8"
+                        : SHOP_PRIMARY
+                    }
+                  />
+                </TouchableOpacity>
+
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={
+                    styles.pagination
+                  }
+                >
+                  {getPageNumbers(
+                    safeHistoryPage,
+                    historyTotalPages,
+                  ).map((page, index) =>
+                    page === "..." ? (
+                      <View
+                        key={`dots-${index}`}
+                        style={styles.dots}
+                      >
+                        <Text style={styles.dotsText}>
+                          …
+                        </Text>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        key={page}
+                        activeOpacity={0.84}
+                        onPress={() =>
+                          setHistoryPage(page)
+                        }
+                        style={[
+                          styles.pageButton,
+                          page ===
+                            safeHistoryPage &&
+                            styles.pageButtonActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.pageButtonText,
+                            page ===
+                              safeHistoryPage &&
+                              styles.pageButtonTextActive,
+                          ]}
+                        >
+                          {page}
+                        </Text>
+                      </TouchableOpacity>
+                    ),
+                  )}
+                </ScrollView>
+
+                <TouchableOpacity
+                  disabled={
+                    safeHistoryPage ===
+                    historyTotalPages
+                  }
+                  onPress={() =>
+                    setHistoryPage((page) =>
+                      Math.min(
+                        historyTotalPages,
+                        page + 1,
+                      ),
+                    )
+                  }
+                  style={[
+                    styles.pageArrow,
+                    safeHistoryPage ===
+                      historyTotalPages &&
+                      styles.pageDisabled,
+                  ]}
+                >
+                  <Ionicons
+                    name="chevron-forward"
+                    size={18}
+                    color={
+                      safeHistoryPage ===
+                      historyTotalPages
+                        ? "#B8B0A8"
+                        : SHOP_PRIMARY
+                    }
+                  />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <Text style={styles.paginationHint}>
+              الصفحة {safeHistoryPage} من{" "}
+              {historyTotalPages}
+            </Text>
+          </>
+        )}
+      </ScrollView>
+
       <Modal
         visible={cancelVisible}
         transparent
@@ -1515,287 +1938,6 @@ return (
           </View>
         </View>
       </Modal>
-
-    </Screen>
-    );
-  }
-
-  return (
-    <Screen>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={SHOP_PRIMARY}
-            colors={[SHOP_PRIMARY]}
-          />
-        }
-        contentContainerStyle={
-          styles.container
-        }
-      >
-        <View style={styles.header}>
-          <View style={styles.headerIcon}>
-            <Ionicons
-              name="receipt-outline"
-              size={24}
-              color={SHOP_PRIMARY}
-            />
-          </View>
-
-          <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>
-              زاجل ديلفري
-            </Text>
-
-            <Text style={styles.title}>
-              الطلبات
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.stats}>
-          <Stat
-            icon="layers-outline"
-            label="كل الطلبات"
-            value={stats.total}
-          />
-
-          <Stat
-            icon="bicycle-outline"
-            label="النشطة"
-            value={stats.active}
-          />
-
-          <Stat
-            icon="checkmark-circle-outline"
-            label="المكتملة"
-            value={stats.completed}
-          />
-
-          <Stat
-            icon="close-circle-outline"
-            label="المرفوضة"
-            value={stats.rejected}
-          />
-        </View>
-
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionHeaderText}>
-            <Text style={styles.sectionTitle}>
-              الطلبات الحالية
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              الطلبات التي ما زالت قيد التنفيذ
-            </Text>
-          </View>
-
-          <View style={styles.sectionBadge}>
-            <Text style={styles.sectionBadgeText}>
-              {activeOrders.length}
-            </Text>
-          </View>
-        </View>
-
-        {activeOrders.length === 0 ? (
-          <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Ionicons
-                name="receipt-outline"
-                size={40}
-                color={SHOP_PRIMARY}
-              />
-            </View>
-
-            <Text style={styles.emptyTitle}>
-              لا توجد طلبات نشطة
-            </Text>
-
-            <Text style={styles.emptyText}>
-              ستظهر هنا الطلبات بمجرد إنشائها ومتابعة تنفيذها.
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.sectionList}>
-            {activeOrders.map(
-              renderActiveOrder,
-            )}
-          </View>
-        )}
-
-        <View
-          style={[
-            styles.sectionHeader,
-            {
-              marginTop:
-                activeOrders.length > 0
-                  ? 24
-                  : 18,
-            },
-          ]}
-        >
-          <View style={styles.sectionHeaderText}>
-            <Text style={styles.sectionTitle}>
-              تاريخ الطلبات
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              الطلبات المكتملة والمرفوضة
-            </Text>
-          </View>
-
-          <View style={styles.historyBadge}>
-            <Text style={styles.historyBadgeText}>
-              {historyOrders.length}
-            </Text>
-          </View>
-        </View>
-
-        {historyOrders.length === 0 ? (
-          <View style={styles.empty}>
-            <View style={styles.emptyIcon}>
-              <Ionicons
-                name="time-outline"
-                size={40}
-                color={SHOP_PRIMARY}
-              />
-            </View>
-
-            <Text style={styles.emptyTitle}>
-              لا يوجد تاريخ طلبات حتى الآن
-            </Text>
-
-            <Text style={styles.emptyText}>
-              ستظهر هنا الطلبات المكتملة والمرفوضة تلقائيًا.
-            </Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.sectionList}>
-              {paginatedHistory.map(
-                renderHistoryOrder,
-              )}
-            </View>
-
-            {historyTotalPages > 1 && (
-              <View style={styles.paginationBox}>
-                <TouchableOpacity
-                  disabled={safeHistoryPage === 1}
-                  onPress={() =>
-                    setHistoryPage((page) =>
-                      Math.max(1, page - 1),
-                    )
-                  }
-                  style={[
-                    styles.pageArrow,
-                    safeHistoryPage === 1 &&
-                      styles.pageDisabled,
-                  ]}
-                >
-                  <Ionicons
-                    name="chevron-back"
-                    size={18}
-                    color={
-                      safeHistoryPage === 1
-                        ? "#B8B0A8"
-                        : SHOP_PRIMARY
-                    }
-                  />
-                </TouchableOpacity>
-
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={
-                    styles.pagination
-                  }
-                >
-                  {getPageNumbers(
-                    safeHistoryPage,
-                    historyTotalPages,
-                  ).map((page, index) =>
-                    page === "..." ? (
-                      <View
-                        key={`dots-${index}`}
-                        style={styles.dots}
-                      >
-                        <Text style={styles.dotsText}>
-                          …
-                        </Text>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        key={page}
-                        activeOpacity={0.84}
-                        onPress={() =>
-                          setHistoryPage(page)
-                        }
-                        style={[
-                          styles.pageButton,
-                          page ===
-                            safeHistoryPage &&
-                            styles.pageButtonActive,
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.pageButtonText,
-                            page ===
-                              safeHistoryPage &&
-                              styles.pageButtonTextActive,
-                          ]}
-                        >
-                          {page}
-                        </Text>
-                      </TouchableOpacity>
-                    ),
-                  )}
-                </ScrollView>
-
-                <TouchableOpacity
-                  disabled={
-                    safeHistoryPage ===
-                    historyTotalPages
-                  }
-                  onPress={() =>
-                    setHistoryPage((page) =>
-                      Math.min(
-                        historyTotalPages,
-                        page + 1,
-                      ),
-                    )
-                  }
-                  style={[
-                    styles.pageArrow,
-                    safeHistoryPage ===
-                      historyTotalPages &&
-                      styles.pageDisabled,
-                  ]}
-                >
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={
-                      safeHistoryPage ===
-                      historyTotalPages
-                        ? "#B8B0A8"
-                        : SHOP_PRIMARY
-                    }
-                  />
-                </TouchableOpacity>
-              </View>
-            )}
-
-            <Text style={styles.paginationHint}>
-              الصفحة {safeHistoryPage} من{" "}
-              {historyTotalPages}
-            </Text>
-          </>
-        )}
-      </ScrollView>
     </Screen>
   );
 }
@@ -1809,21 +1951,96 @@ function Stat({
   label: string;
   value: number;
 }) {
+  const tone =
+    label === "كل الطلبات"
+      ? {
+          bg: "#F6EFE8",
+          border: "#D8B89A",
+          iconBg: "#E8D2BE",
+          color: "#7A4F2E",
+        }
+      : label === "النشطة"
+        ? {
+            bg: "#FFF8DB",
+            border: "#E6D27A",
+            iconBg: "#F3E7A8",
+            color: "#8A6800",
+          }
+        : label === "المكتملة"
+          ? {
+              bg: "#FFF0E0",
+              border: "#F0BD86",
+              iconBg: "#FFD8AE",
+              color: "#C45D00",
+            }
+          : {
+              bg: "#F9E8D8",
+              border: "#D9AD84",
+              iconBg: "#EFD0B1",
+              color: "#8B4F25",
+            };
+
   return (
-    <View style={statStyles.stat}>
-      <View style={statStyles.icon}>
+    <View
+      style={[
+        statStyles.stat,
+        {
+          minHeight: 92,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: tone.border,
+          backgroundColor: tone.bg,
+          paddingVertical: 10,
+          paddingHorizontal: 11,
+          justifyContent: "space-between",
+          shadowColor: tone.color,
+          shadowOffset: {
+            width: 0,
+            height: 2,
+          },
+          shadowOpacity: 0.08,
+          shadowRadius: 5,
+          elevation: 2,
+        },
+      ]}
+    >
+      <View
+        style={[
+          statStyles.icon,
+          {
+            backgroundColor: tone.iconBg,
+          },
+        ]}
+      >
         <Ionicons
           name={icon}
-          size={17}
-          color={SHOP_PRIMARY}
+          size={18}
+          color={tone.color}
         />
       </View>
 
-      <Text style={statStyles.value}>
+      <Text
+        style={[
+          statStyles.value,
+          {
+            color: tone.color,
+            fontSize: 21,
+            fontWeight: "900",
+          },
+        ]}
+      >
         {value}
       </Text>
 
-      <Text style={statStyles.label}>
+      <Text
+        style={[
+          statStyles.label,
+          {
+            color: tone.color,
+            fontWeight: "800",
+          },
+        ]}
+      >
         {label}
       </Text>
     </View>

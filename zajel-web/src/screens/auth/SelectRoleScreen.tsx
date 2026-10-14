@@ -13,6 +13,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Path } from "react-native-svg";
 
 import Screen from "../../components/Screen";
+import WebVersionLink from "../../components/shared/WebVersionLink";
 import { useAuthStore } from "../../store/authStore";
 
 const ORANGE = "#E5501C";
@@ -238,6 +239,8 @@ export default function SelectRoleScreen() {
                 مفيش حساب؟ سجل واحد جديد
               </Text>
             </Pressable>
+
+            <WebVersionLink />
           </Animated.View>
         </View>
       </View>

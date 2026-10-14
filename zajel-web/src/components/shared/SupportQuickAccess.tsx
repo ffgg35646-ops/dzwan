@@ -1,3 +1,4 @@
+import * as Clipboard from "expo-clipboard";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -15,6 +16,21 @@ type SupportData = {
   phoneNumbers: string[];
   whatsapp: string[];
 };
+
+function normalizeContactNumber(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+async function openWhatsAppNumber(value: string) {
+  const raw = normalizeContactNumber(value);
+  if (!raw) return;
+
+  const digits = raw.replace(/[^\d+]/g, "").replace(/^\+/, "");
+  if (!digits) return;
+
+  const url = `https://wa.me/${normalizeContactNumber(digits).replace(/[^\d+]/g, "").replace(/^\+/, "")}`;
+  await Linking.openURL(url);
+}
 
 function phoneValue(value: string) {
   return String(value || "")
@@ -46,12 +62,14 @@ function whatsappUrl(value: string) {
     digits = `964${digits}`;
   }
 
-  return `https://wa.me/${digits}`;
+  return `https://wa.me/${normalizeContactNumber(digits).replace(/[^\d+]/g, "").replace(/^\+/, "")}`;
 }
 
 export default function SupportQuickAccess() {
   const [visible, setVisible] =
     useState(false);
+  const [panel, setPanel] =
+    useState<"phone" | "whatsapp">("phone");
   const [loading, setLoading] =
     useState(false);
   const [loaded, setLoaded] =
@@ -64,6 +82,7 @@ export default function SupportQuickAccess() {
     });
 
   async function openSupport() {
+    setPanel("phone");
     setVisible(true);
 
     if (loaded) {
@@ -122,46 +141,18 @@ export default function SupportQuickAccess() {
 
   async function openQuickWhatsApp() {
     try {
-      let numbers = data.whatsapp;
+      const response = await apiGet("/support");
 
-      if (!loaded) {
-        setLoading(true);
+      const number =
+        Array.isArray(response?.whatsapp)
+          ? response.whatsapp[0]
+          : "";
 
-        const response =
-          await apiGet("/support");
-
-        numbers =
-          Array.isArray(response?.whatsapp)
-            ? response.whatsapp
-            : [];
-
-        setData({
-          phoneNumbers:
-            Array.isArray(
-              response?.phoneNumbers,
-            )
-              ? response.phoneNumbers
-              : [],
-          whatsapp: numbers,
-        });
-
-        setLoaded(true);
-      }
-
-      const number = numbers[0];
-
-      if (!number) {
-        return;
-      }
+      if (!number) return;
 
       await openWhatsApp(number);
     } catch (error) {
-      console.error(
-        "Quick WhatsApp error:",
-        error,
-      );
-    } finally {
-      setLoading(false);
+      console.error("Quick WhatsApp error:", error);
     }
   }
 
@@ -340,6 +331,25 @@ export default function SupportQuickAccess() {
                             {number}
                           </Text>
 
+                          <Pressable
+                            onPress={(event) => {
+                              event.stopPropagation();
+                              void Clipboard.setStringAsync(
+                                number,
+                              );
+                            }}
+                            style={{
+                              paddingHorizontal: 8,
+                              paddingVertical: 6,
+                            }}
+                          >
+                            <Ionicons
+                              name="copy-outline"
+                              size={18}
+                              color="#64748B"
+                            />
+                          </Pressable>
+
                           <Text
                             style={
                               styles.callText
@@ -353,8 +363,8 @@ export default function SupportQuickAccess() {
                   </View>
                 )}
 
-                {data.whatsapp
-                  .length > 0 && (
+                {panel !== "phone" &&
+                  data.whatsapp.length > 0 && (
                   <View
                     style={{
                       marginTop:
@@ -420,9 +430,8 @@ export default function SupportQuickAccess() {
                 )}
 
                 {!data.phoneNumbers
-                  .length &&
-                  !data.whatsapp
-                    .length && (
+                  .length && (
+
                     <View
                       style={
                         styles.empty

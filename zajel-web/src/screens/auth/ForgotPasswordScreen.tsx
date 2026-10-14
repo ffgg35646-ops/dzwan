@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import {
-  Alert,
   StyleSheet,
   Text,
   View,
@@ -10,6 +9,7 @@ import { useNavigation } from "@react-navigation/native";
 import Screen from "../../components/Screen";
 import AppInput from "../../components/AppInput";
 import AppButton from "../../components/AppButton";
+import AppMessageModal from "../../components/shared/AppMessageModal";
 import { api } from "../../api/client";
 import { useAppTheme } from "../../theme/useAppTheme";
 import { useAuthStore } from "../../store/authStore";
@@ -32,14 +32,31 @@ export default function ForgotPasswordScreen() {
   const [resetToken, setResetToken] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [messageModal, setMessageModal] = useState({
+    visible: false,
+    title: "",
+    message: "",
+  });
+
   const title =
     role === "captain"
       ? "استعادة كلمة مرور الكابتن"
       : "استعادة كلمة مرور المطعم / المحل";
 
+  function showMessage(
+    title: string,
+    message: string,
+  ) {
+    setMessageModal({
+      visible: true,
+      title,
+      message,
+    });
+  }
+
   async function requestCode() {
     if (!email.trim()) {
-      Alert.alert("تنبيه", "أدخل البريد الإلكتروني.");
+      showMessage("تنبيه", "أدخل البريد الإلكتروني.");
       return;
     }
 
@@ -59,12 +76,12 @@ export default function ForgotPasswordScreen() {
 
       setStep("otp");
 
-      Alert.alert(
+      showMessage(
         "تم إرسال الكود",
         "تم إرسال كود التحقق إلى بريدك الإلكتروني.\n\nإذا لم تجده في الوارد، تحقق من Spam / الرسائل غير المرغوب فيها.",
       );
     } catch (error: any) {
-      Alert.alert(
+      showMessage(
         "تعذر إرسال الكود",
         error?.response?.data?.message ||
           "تعذر إرسال كود التحقق.",
@@ -76,7 +93,7 @@ export default function ForgotPasswordScreen() {
 
   async function verifyCode() {
     if (!otp.trim()) {
-      Alert.alert("تنبيه", "أدخل كود التحقق.");
+      showMessage("تنبيه", "أدخل كود التحقق.");
       return;
     }
 
@@ -97,7 +114,7 @@ export default function ForgotPasswordScreen() {
 
       setStep("password");
     } catch (error: any) {
-      Alert.alert(
+      showMessage(
         "الكود غير صحيح",
         error?.response?.data?.message ||
           "كود التحقق غير صحيح.",
@@ -109,7 +126,7 @@ export default function ForgotPasswordScreen() {
 
   async function resetPassword() {
     if (newPassword.length < 6) {
-      Alert.alert(
+      showMessage(
         "تنبيه",
         "كلمة المرور يجب أن تكون 6 أحرف أو أكثر.",
       );
@@ -117,7 +134,7 @@ export default function ForgotPasswordScreen() {
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert(
+      showMessage(
         "تنبيه",
         "كلمتا المرور غير متطابقتين.",
       );
@@ -138,7 +155,7 @@ export default function ForgotPasswordScreen() {
 
       setStep("done");
     } catch (error: any) {
-      Alert.alert(
+      showMessage(
         "تعذر تغيير كلمة المرور",
         error?.response?.data?.message ||
           "تعذر تغيير كلمة المرور.",
@@ -266,6 +283,22 @@ export default function ForgotPasswordScreen() {
           </>
         )}
       </View>
+      <AppMessageModal
+        visible={messageModal.visible}
+        title={messageModal.title}
+        message={messageModal.message}
+        tone={
+          messageModal.title === "تم إرسال الكود"
+            ? "success"
+            : "error"
+        }
+        onClose={() =>
+          setMessageModal((current) => ({
+            ...current,
+            visible: false,
+          }))
+        }
+      />
     </Screen>
   );
 }

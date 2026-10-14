@@ -3,6 +3,7 @@ import RateCaptainScreen from "../screens/shop/RateCaptainScreen";
 import ComplaintScreen from "../screens/shared/ComplaintScreen";
 import React from "react";
 import { Platform, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
@@ -31,6 +32,7 @@ const Tabs = createBottomTabNavigator();
 
 function CaptainTabs() {
   const appTheme = useAppTheme();
+  const insets = useSafeAreaInsets();
 
   const navigatorFrame = {
     flex: 1,
@@ -57,10 +59,10 @@ function CaptainTabs() {
         tabBarActiveTintColor: appTheme.primaryDarkColor,
         tabBarInactiveTintColor: appTheme.secondaryTextColor,
         tabBarStyle: {
-          height: 68,
-          minHeight: 68,
+          height: 68 + insets.bottom,
+          minHeight: 68 + insets.bottom,
           paddingTop: 7,
-          paddingBottom: 8,
+          paddingBottom: Math.max(8, insets.bottom),
           backgroundColor: "#FFFFFF",
           borderTopWidth: 1,
           borderTopColor: "#F0D9BE",

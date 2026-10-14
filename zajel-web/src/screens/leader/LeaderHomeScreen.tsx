@@ -16,95 +16,9 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-
+import { Ionicons } from "@expo/vector-icons";
 
 import { apiGet } from "../../api/request";
-import LeaderOrdersTotalCard from "./LeaderOrdersTotalCard";
-import LeaderActivitySection from "./LeaderActivitySection";
-
-
-
-type RNIconProps = {
-  color?: string;
-  size?: number;
-};
-
-function Glyph({
-  symbol,
-  color = "#111827",
-  size = 20,
-}: RNIconProps & { symbol: string }) {
-  return (
-    <Text
-      style={{
-        color,
-        fontSize: size,
-        lineHeight: size + 3,
-        fontWeight: "900",
-        textAlign: "center",
-      }}
-    >
-      {symbol}
-    </Text>
-  );
-}
-
-const AlertTriangle = (props: RNIconProps) => (
-  <Glyph {...props} symbol="!" />
-);
-
-const CheckCircle2 = (props: RNIconProps) => (
-  <Glyph {...props} symbol="✓" />
-);
-
-const ChevronLeft = (props: RNIconProps) => (
-  <Glyph {...props} symbol="‹" />
-);
-
-const Clock3 = (props: RNIconProps) => (
-  <Glyph {...props} symbol="◷" />
-);
-
-const MapPin = (props: RNIconProps) => (
-  <Glyph {...props} symbol="⌖" />
-);
-
-const Package = (props: RNIconProps) => (
-  <Glyph {...props} symbol="□" />
-);
-
-const RefreshCw = (props: RNIconProps) => (
-  <Glyph {...props} symbol="↻" />
-);
-
-const Search = (props: RNIconProps) => (
-  <Glyph {...props} symbol="⌕" />
-);
-
-const Store = (props: RNIconProps) => (
-  <Glyph {...props} symbol="⌂" />
-);
-
-const Truck = (props: RNIconProps) => (
-  <Glyph {...props} symbol="▣" />
-);
-
-const UserRound = (props: RNIconProps) => (
-  <Glyph {...props} symbol="●" />
-);
-
-const X = (props: RNIconProps) => (
-  <Glyph {...props} symbol="×" />
-);
-
-type FilterKey =
-  | "all"
-  | "active"
-  | "available"
-  | "stuck"
-  | "captains"
-  | "establishments"
-  | "completed";
 
 type AnyObject = Record<string, any>;
 
@@ -126,6 +40,15 @@ type LeaderStats = {
   completedToday: number;
 };
 
+type FilterKey =
+  | "all"
+  | "active"
+  | "available"
+  | "stuck"
+  | "captains"
+  | "establishments"
+  | "completed";
+
 function unwrap(value: any): any {
   return (
     value?.data?.data ??
@@ -138,7 +61,6 @@ function toArray(value: any): AnyObject[] {
   const v = unwrap(value);
 
   if (Array.isArray(v)) return v;
-
   if (Array.isArray(v?.items)) return v.items;
   if (Array.isArray(v?.orders)) return v.orders;
   if (Array.isArray(v?.captains)) return v.captains;
@@ -151,8 +73,12 @@ function toArray(value: any): AnyObject[] {
 function numberValue(...values: any[]) {
   for (const value of values) {
     const n = Number(value);
-    if (Number.isFinite(n)) return n;
+
+    if (Number.isFinite(n)) {
+      return n;
+    }
   }
+
   return 0;
 }
 
@@ -166,6 +92,7 @@ function textValue(...values: any[]) {
       return String(value).trim();
     }
   }
+
   return "";
 }
 
@@ -184,20 +111,27 @@ function normalizeArabic(value: any) {
     .trim();
 }
 
-function getId(item: AnyObject) {
-  return textValue(
-    item?._id,
-    item?.id,
-  );
-}
-
 function getOrderNumber(item: AnyObject) {
-  return textValue(
+  const raw = textValue(
     item?.orderNumber,
     item?.orderNo,
     item?.number,
     item?._id,
   );
+
+  if (!raw) return "—";
+
+  if (raw.startsWith("DZ-")) {
+    const match = raw.match(/^DZ-\d+-([0-9]+)/);
+
+    if (match?.[1]) {
+      return match[1];
+    }
+
+    return raw.replace(/^DZ-\d+-/, "").slice(0, 10);
+  }
+
+  return raw.replace(/^#/, "");
 }
 
 function getCaptainName(item: AnyObject) {
@@ -252,7 +186,9 @@ function isCompletedOrder(item: AnyObject) {
     "delivered",
     "delivery_completed",
     "closed",
-  ].some((value) => status.includes(value));
+  ].some((value) =>
+    status.includes(value),
+  );
 }
 
 function isStuckOrder(item: AnyObject) {
@@ -287,7 +223,9 @@ function isAvailableOrder(item: AnyObject) {
     "queue",
     "dispatch_pending",
     "awaiting_captain",
-  ].some((value) => status.includes(value));
+  ].some((value) =>
+    status.includes(value),
+  );
 }
 
 function isActiveOrder(item: AnyObject) {
@@ -315,13 +253,18 @@ function isActiveOrder(item: AnyObject) {
     "out_for_delivery",
     "captain_to_shop",
     "captain_to_customer",
-  ].some((value) => status.includes(value));
+  ].some((value) =>
+    status.includes(value),
+  );
 }
 
 function statusLabel(status: string) {
   const value = normalizeArabic(status);
 
-  if (value.includes("completed") || value.includes("delivered")) {
+  if (
+    value.includes("completed") ||
+    value.includes("delivered")
+  ) {
     return "مكتمل";
   }
 
@@ -342,7 +285,8 @@ function statusLabel(status: string) {
   if (
     value.includes("available") ||
     value.includes("pending") ||
-    value.includes("unassigned")
+    value.includes("unassigned") ||
+    value.includes("waiting")
   ) {
     return "متاح";
   }
@@ -359,45 +303,46 @@ function statusLabel(status: string) {
   return textValue(status) || "غير محدد";
 }
 
-function statusTone(status: string) {
+function statusColors(status: string) {
   const label = statusLabel(status);
 
   if (label === "مكتمل") {
     return {
-      backgroundColor: "#ECFDF3",
-      color: "#15803D",
+      backgroundColor: "#F3F3F3",
+      color: "#111111",
     };
   }
 
   if (label === "عالق") {
     return {
-      backgroundColor: "#FEF2F2",
-      color: "#DC2626",
+      backgroundColor: "#EAEAEA",
+      color: "#111111",
     };
   }
 
   if (label === "متاح") {
     return {
-      backgroundColor: "#FFF7ED",
-      color: "#EA580C",
+      backgroundColor: "#F0F0F0",
+      color: "#111111",
     };
   }
 
   if (label === "نشط") {
     return {
-      backgroundColor: "#EFF6FF",
-      color: "#2563EB",
+      backgroundColor: "#E8E8E8",
+      color: "#111111",
     };
   }
 
   return {
-    backgroundColor: "#F3F4F6",
-    color: "#6B7280",
+    backgroundColor: "#F5F5F5",
+    color: "#666666",
   };
 }
 
 function extractDashboardStats(raw: any): LeaderStats {
   const root = unwrap(raw);
+
   const stats =
     root?.stats ??
     root?.statistics ??
@@ -448,24 +393,38 @@ function mergeStats(
   captains: AnyObject[],
   establishments: AnyObject[],
 ) {
-  const completed = orders.filter(isCompletedOrder).length;
-  const active = orders.filter(isActiveOrder).length;
-  const available = orders.filter(isAvailableOrder).length;
-  const stuck = orders.filter(isStuckOrder).length;
+  const completed =
+    orders.filter(isCompletedOrder).length;
+
+  const active =
+    orders.filter(isActiveOrder).length;
+
+  const available =
+    orders.filter(isAvailableOrder).length;
+
+  const stuck =
+    orders.filter(isStuckOrder).length;
 
   return {
     totalOrders:
       dashboard.totalOrders || orders.length,
+
     activeOrders:
       dashboard.activeOrders || active,
+
     availableOrders:
       dashboard.availableOrders || available,
+
     stuckOrders:
       dashboard.stuckOrders || stuck,
+
     captains:
       dashboard.captains || captains.length,
+
     establishments:
-      dashboard.establishments || establishments.length,
+      dashboard.establishments ||
+      establishments.length,
+
     completedToday:
       dashboard.completedToday || completed,
   };
@@ -517,9 +476,18 @@ function scopeDescription(scope: ScopeData) {
 export default function LeaderHomeScreen() {
   const { width } = useWindowDimensions();
 
-  const [scope, setScope] = useState<ScopeData>({});
-  const [orders, setOrders] = useState<AnyObject[]>([]);
-  const [captains, setCaptains] = useState<AnyObject[]>([]);
+  const isMobile = width < 700;
+  const isSmallMobile = width < 480;
+
+  const [scope, setScope] =
+    useState<ScopeData>({});
+
+  const [orders, setOrders] =
+    useState<AnyObject[]>([]);
+
+  const [captains, setCaptains] =
+    useState<AnyObject[]>([]);
+
   const [establishments, setEstablishments] =
     useState<AnyObject[]>([]);
 
@@ -537,7 +505,11 @@ export default function LeaderHomeScreen() {
   const [filter, setFilter] =
     useState<FilterKey>("all");
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] =
+    useState("");
+
+  const [ordersPage, setOrdersPage] =
+    useState(1);
 
   const [loading, setLoading] =
     useState(true);
@@ -545,7 +517,8 @@ export default function LeaderHomeScreen() {
   const [refreshing, setRefreshing] =
     useState(false);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   const loadData = useCallback(
     async (refresh = false) => {
@@ -572,13 +545,11 @@ export default function LeaderHomeScreen() {
           apiGet("/leaders/me/scope"),
         ]);
 
-        const nextOrders = toArray(
-          ordersResult,
-        );
+        const nextOrders =
+          toArray(ordersResult);
 
-        const nextCaptains = toArray(
-          captainsResult,
-        );
+        const nextCaptains =
+          toArray(captainsResult);
 
         const nextEstablishments =
           toArray(establishmentsResult);
@@ -587,12 +558,9 @@ export default function LeaderHomeScreen() {
           unwrap(scopeResult) || {};
 
         setScope(nextScope);
-
         setOrders(nextOrders);
         setCaptains(nextCaptains);
-        setEstablishments(
-          nextEstablishments,
-        );
+        setEstablishments(nextEstablishments);
 
         setDashboardStats(
           mergeStats(
@@ -624,93 +592,26 @@ export default function LeaderHomeScreen() {
     loadData();
   }, [loadData]);
 
-  const stats = useMemo(
-    () => dashboardStats,
-    [dashboardStats],
-  );
+  const stats = dashboardStats;
 
-  const cards = useMemo(
-    () => [
-      {
-        key: "all" as const,
-        title: "إجمالي الطلبات",
-        value: stats.totalOrders,
-        icon: Package,
-        background: "#FFF7ED",
-        iconBackground: "#FFEDD5",
-        iconColor: "#EA580C",
-      },
-      {
-        key: "active" as const,
-        title: "الطلبات النشطة",
-        value: stats.activeOrders,
-        icon: Truck,
-        background: "#EFF6FF",
-        iconBackground: "#DBEAFE",
-        iconColor: "#2563EB",
-      },
-      {
-        key: "available" as const,
-        title: "الطلبات المتاحة",
-        value: stats.availableOrders,
-        icon: Clock3,
-        background: "#FFF7ED",
-        iconBackground: "#FFEDD5",
-        iconColor: "#D97706",
-      },
-      {
-        key: "stuck" as const,
-        title: "الطلبات العالقة",
-        value: stats.stuckOrders,
-        icon: AlertTriangle,
-        background: "#FEF2F2",
-        iconBackground: "#FEE2E2",
-        iconColor: "#DC2626",
-      },
-      {
-        key: "captains" as const,
-        title: "الكباتن",
-        value: stats.captains,
-        icon: UserRound,
-        background: "#F0FDFA",
-        iconBackground: "#CCFBF1",
-        iconColor: "#0F766E",
-      },
-      {
-        key: "establishments" as const,
-        title: "المطاعم والمحلات",
-        value: stats.establishments,
-        icon: Store,
-        background: "#F5F3FF",
-        iconBackground: "#EDE9FE",
-        iconColor: "#7C3AED",
-      },
-      {
-        key: "completed" as const,
-        title: "المكتملة اليوم",
-        value: stats.completedToday,
-        icon: CheckCircle2,
-        background: "#F0FDF4",
-        iconBackground: "#DCFCE7",
-        iconColor: "#15803D",
-      },
-    ],
-    [stats],
-  );
-
-  const activeSearch = normalizeArabic(search);
+  const activeSearch =
+    normalizeArabic(search);
 
   const resultData = useMemo(() => {
     let list: AnyObject[] = [];
+
     let type:
       | "orders"
       | "captains"
-      | "establishments" = "orders";
+      | "establishments" =
+      "orders";
 
     if (filter === "captains") {
       list = captains;
       type = "captains";
-    } else if (filter === "establishments") {
+    } else if (
+      filter === "establishments"
+    ) {
       list = establishments;
       type = "establishments";
     } else {
@@ -718,50 +619,62 @@ export default function LeaderHomeScreen() {
       type = "orders";
 
       if (filter === "active") {
-        list = list.filter(isActiveOrder);
+        list = list.filter(
+          isActiveOrder,
+        );
       }
 
       if (filter === "available") {
-        list = list.filter(isAvailableOrder);
+        list = list.filter(
+          isAvailableOrder,
+        );
       }
 
       if (filter === "stuck") {
-        list = list.filter(isStuckOrder);
+        list = list.filter(
+          isStuckOrder,
+        );
       }
 
       if (filter === "completed") {
-        list = list.filter(isCompletedOrder);
+        list = list.filter(
+          isCompletedOrder,
+        );
       }
     }
 
     if (!activeSearch) {
       return {
         type,
-        items: list.slice(0, 80),
+        items:
+          type === "orders"
+            ? list
+            : list.slice(0, 8),
       };
     }
 
     const filtered = list.filter(
       (item) => {
-        const searchable = normalizeArabic(
-          [
-            getOrderNumber(item),
-            getCaptainName(item),
-            getEstablishmentName(item),
-            getAreaName(item),
-            getGovernorateName(item),
-            item?.phone,
-            item?.email,
-            item?.customerName,
-            item?.customer?.name,
-            item?.customer?.phone,
-            item?.address,
-            item?.status,
-            item?.type,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        );
+        const searchable =
+          normalizeArabic(
+            [
+              getOrderNumber(item),
+              getCaptainName(item),
+              getEstablishmentName(item),
+              getAreaName(item),
+              getGovernorateName(item),
+              item?.phone,
+              item?.email,
+              item?.customerName,
+              item?.customer?.name,
+              item?.customer?.phone,
+              item?.address,
+              item?.status,
+              item?.type,
+            ]
+              .filter(Boolean)
+              .join(" "),
+          );
 
         return searchable.includes(
           activeSearch,
@@ -771,7 +684,10 @@ export default function LeaderHomeScreen() {
 
     return {
       type,
-      items: filtered.slice(0, 80),
+      items:
+        type === "orders"
+          ? filtered
+          : filtered.slice(0, 8),
     };
   }, [
     activeSearch,
@@ -781,137 +697,628 @@ export default function LeaderHomeScreen() {
     orders,
   ]);
 
-  const selectedCardTitle =
-    cards.find(
-      (item) => item.key === filter,
-    )?.title || "إجمالي الطلبات";
+  const ORDERS_PER_PAGE = 4;
 
-  const cardWidth =
-    width >= 900
-      ? "23.5%"
-      : width >= 620
-        ? "31.7%"
-        : "47.8%";
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [filter, activeSearch]);
+
+  const totalOrderPages =
+    resultData.type === "orders"
+      ? Math.max(
+          1,
+          Math.ceil(
+            resultData.items.length /
+              ORDERS_PER_PAGE,
+          ),
+        )
+      : 1;
+
+  const safeOrdersPage = Math.min(
+    ordersPage,
+    totalOrderPages,
+  );
+
+  const visibleItems =
+    resultData.type === "orders"
+      ? resultData.items.slice(
+          (safeOrdersPage - 1) *
+            ORDERS_PER_PAGE,
+          safeOrdersPage *
+            ORDERS_PER_PAGE,
+        )
+      : resultData.items;
+
+  const primaryCards = [
+    {
+      key: "all" as const,
+      title: "إجمالي الطلبات",
+      value: stats.totalOrders,
+      icon: "cube-outline" as const,
+    },
+    {
+      key: "active" as const,
+      title: "الطلبات النشطة",
+      value: stats.activeOrders,
+      icon: "bicycle-outline" as const,
+    },
+    {
+      key: "available" as const,
+      title: "الطلبات المتاحة",
+      value: stats.availableOrders,
+      icon: "time-outline" as const,
+    },
+    {
+      key: "stuck" as const,
+      title: "الطلبات العالقة",
+      value: stats.stuckOrders,
+      icon: "alert-circle-outline" as const,
+    },
+  ];
+
+  const filters: {
+    key: FilterKey;
+    label: string;
+  }[] = [
+    { key: "all", label: "الكل" },
+    { key: "active", label: "نشطة" },
+    { key: "available", label: "متاحة" },
+    { key: "stuck", label: "عالقة" },
+    { key: "completed", label: "مكتملة" },
+    { key: "captains", label: "الكباتن" },
+    {
+      key: "establishments",
+      label: "المطاعم والمحلات",
+    },
+  ];
+
+  const cardWidth = "48.5%";
+
+  const progress =
+    stats.totalOrders > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (stats.completedToday /
+              stats.totalOrders) *
+              100,
+          ),
+        )
+      : 0;
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.loading}>
+          <ActivityIndicator
+            size="small"
+            color="#111111"
+          />
+          <Text style={styles.loadingText}>
+            جاري تحميل لوحة زاجل...
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const renderResults = () => {
+    if (resultData.items.length === 0) {
+      return (
+        <View style={styles.empty}>
+          <Ionicons
+            name="search-outline"
+            size={24}
+            color="#999999"
+          />
+          <Text style={styles.emptyTitle}>
+            لا توجد نتائج
+          </Text>
+          <Text style={styles.emptyText}>
+            جرّب تغيير الفلتر أو البحث.
+          </Text>
+        </View>
+      );
+    }
+
+    if (
+      resultData.type === "captains"
+    ) {
+      return resultData.items.map(
+        (item, index) => {
+          const name =
+            getCaptainName(item) ||
+            `كابتن ${index + 1}`;
+
+          const area =
+            getAreaName(item) ||
+            "بدون منطقة";
+
+          return (
+            <View
+              key={
+                String(
+                  item?._id ??
+                    item?.id ??
+                    `captain-${index}`,
+                )
+              }
+              style={styles.listRow}
+            >
+              <View
+                style={styles.rowIcon}
+              >
+                <Ionicons
+                  name="person-outline"
+                  size={19}
+                  color="#111111"
+                />
+              </View>
+
+              <View
+                style={styles.rowBody}
+              >
+                <Text
+                  style={styles.rowTitle}
+                  numberOfLines={1}
+                >
+                  {name}
+                </Text>
+
+                <Text
+                  style={styles.rowMeta}
+                  numberOfLines={1}
+                >
+                  {area}
+                </Text>
+              </View>
+
+              <Ionicons
+                name="chevron-back"
+                size={18}
+                color="#AAAAAA"
+              />
+            </View>
+          );
+        },
+      );
+    }
+
+    if (
+      resultData.type ===
+      "establishments"
+    ) {
+      return resultData.items.map(
+        (item, index) => {
+          const name =
+            getEstablishmentName(
+              item,
+            ) ||
+            `منشأة ${index + 1}`;
+
+          const area =
+            getAreaName(item) ||
+            "بدون منطقة";
+
+          return (
+            <View
+              key={
+                String(
+                  item?._id ??
+                    item?.id ??
+                    `establishment-${index}`,
+                )
+              }
+              style={styles.listRow}
+            >
+              <View
+                style={styles.rowIcon}
+              >
+                <Ionicons
+                  name="storefront-outline"
+                  size={19}
+                  color="#111111"
+                />
+              </View>
+
+              <View
+                style={styles.rowBody}
+              >
+                <Text
+                  style={styles.rowTitle}
+                  numberOfLines={1}
+                >
+                  {name}
+                </Text>
+
+                <Text
+                  style={styles.rowMeta}
+                  numberOfLines={1}
+                >
+                  {area}
+                </Text>
+              </View>
+
+              <Ionicons
+                name="chevron-back"
+                size={18}
+                color="#AAAAAA"
+              />
+            </View>
+          );
+        },
+      );
+    }
+
+    return visibleItems.map(
+      (item, index) => {
+        const number =
+          getOrderNumber(item);
+
+        const establishment =
+          getEstablishmentName(
+            item,
+          ) || "منشأة غير محددة";
+
+        const captain =
+          getCaptainName(item) ||
+          "لم يتم تعيين كابتن";
+
+        const area =
+          getAreaName(item);
+
+        const tone =
+          statusColors(
+            getOrderStatus(item),
+          );
+
+        return (
+          <View
+            key={
+              String(
+                item?._id ??
+                  item?.id ??
+                  `order-${index}`,
+              )
+            }
+            style={styles.listRow}
+          >
+            <View
+              style={styles.orderNumber}
+            >
+              <Text
+                style={
+                  styles.orderNumberText
+                }
+              >
+                #{number}
+              </Text>
+            </View>
+
+            <View
+              style={styles.rowBody}
+            >
+              <View
+                style={styles.orderTitleRow}
+              >
+                <Text
+                  style={styles.rowTitle}
+                  numberOfLines={1}
+                >
+                  {establishment}
+                </Text>
+
+                <View
+                  style={[
+                    styles.status,
+                    {
+                      backgroundColor:
+                        tone.backgroundColor,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusText,
+                      {
+                        color:
+                          tone.color,
+                      },
+                    ]}
+                  >
+                    {statusLabel(
+                      getOrderStatus(
+                        item,
+                      ),
+                    )}
+                  </Text>
+                </View>
+              </View>
+
+              <Text
+                style={styles.rowMeta}
+                numberOfLines={1}
+              >
+                {captain}
+                {area
+                  ? ` · ${area}`
+                  : ""}
+              </Text>
+            </View>
+
+            <Ionicons
+              name="chevron-back"
+              size={18}
+              color="#AAAAAA"
+            />
+          </View>
+        );
+      },
+    );
+  };
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={
+          false
+        }
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={() =>
-
-      <LeaderOrdersTotalCard />
-      <LeaderActivitySection /> loadData(true)}
+              loadData(true)
+            }
           />
         }
       >
-        <View style={styles.hero}>
-          <View style={styles.heroText}>
-            <Text style={styles.eyebrow}>
-              لوحة القيادة
+        <View style={styles.header}>
+          <View style={styles.brandArea}>
+            <View style={styles.brandMark}>
+              <Ionicons
+                name="bicycle-outline"
+                size={23}
+                color="#FFFFFF"
+              />
+            </View>
+
+            <View
+              style={styles.brandText}
+            >
+              <Text
+                style={styles.brandName}
+              >
+                زاجل
+              </Text>
+
+              <Text
+                style={styles.brandCaption}
+              >
+                لوحة القائد
+              </Text>
+            </View>
+          </View>
+
+          <View
+            style={styles.headerCenter}
+          >
+            <Text
+              style={styles.headerTitle}
+            >
+              الرئيسية
             </Text>
 
-            <Text style={styles.title}>
-              أهلاً بك في دزوان
-            </Text>
-
-            <Text style={styles.subtitle}>
-              {scopeTitle(scope)}
-            </Text>
-
-            <View style={styles.scopeRow}>
-              <MapPin size={15} color="#EA580C" />
+            <View
+              style={styles.scopeLine}
+            >
+              <Ionicons
+                name="location-outline"
+                size={15}
+                color="#777777"
+              />
 
               <Text
                 style={styles.scopeText}
-                numberOfLines={2}
+                numberOfLines={1}
               >
+                {scopeTitle(scope)} ·{" "}
                 {scopeDescription(scope)}
               </Text>
             </View>
           </View>
 
           <Pressable
-            style={styles.refreshButton}
-            onPress={() => loadData(true)}
+            onPress={() =>
+              loadData(true)
+            }
+            style={styles.refresh}
           >
-            <RefreshCw
-              size={19}
-              color="#EA580C"
+            <Ionicons
+              name="refresh-outline"
+              size={20}
+              color="#111111"
             />
           </Pressable>
         </View>
 
         {error ? (
-          <View style={styles.errorCard}>
-            <View style={styles.errorIcon}>
-              <AlertTriangle
-                size={20}
-                color="#DC2626"
-              />
-            </View>
+          <View style={styles.errorBar}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={20}
+              color="#111111"
+            />
 
-            <View style={{ flex: 1 }}>
-              <Text style={styles.errorTitle}>
-                تعذر تحميل البيانات
-              </Text>
-
-              <Text style={styles.errorText}>
-                {error}
-              </Text>
-            </View>
+            <Text
+              style={styles.errorText}
+              numberOfLines={2}
+            >
+              {error}
+            </Text>
 
             <Pressable
-              onPress={() => loadData()}
-              style={styles.errorRetry}
+              onPress={() =>
+                loadData(true)
+              }
+              style={styles.retry}
             >
-              <Text style={styles.errorRetryText}>
+              <Text
+                style={styles.retryText}
+              >
                 إعادة المحاولة
               </Text>
             </Pressable>
           </View>
         ) : null}
 
-        <View style={styles.searchBox}>
-          <Search
-            size={19}
-            color="#9CA3AF"
-          />
+        {stats.stuckOrders > 0 ? (
+          <Pressable
+            onPress={() =>
+              setFilter("stuck")
+            }
+            style={styles.alertBar}
+          >
+            <Ionicons
+              name="alert-circle-outline"
+              size={20}
+              color="#111111"
+            />
 
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="ابحث بالطلب أو الكابتن أو المطعم أو الهاتف أو المنطقة..."
-            placeholderTextColor="#9CA3AF"
-            style={styles.searchInput}
-            textAlign="right"
-            autoCorrect={false}
-            clearButtonMode="never"
-          />
-
-          {search ? (
-            <Pressable
-              onPress={() => setSearch("")}
-              hitSlop={8}
+            <View
+              style={styles.alertBody}
             >
-              <X
-                size={18}
-                color="#6B7280"
-              />
-            </Pressable>
-          ) : null}
+              <Text
+                style={styles.alertTitle}
+              >
+                يوجد طلبات تحتاج متابعة
+              </Text>
+
+              <Text
+                style={styles.alertSub}
+              >
+                {stats.stuckOrders} طلب عالق حاليًا
+              </Text>
+            </View>
+
+            <Ionicons
+              name="chevron-back"
+              size={18}
+              color="#666666"
+            />
+          </Pressable>
+        ) : null}
+
+        <View style={styles.summary}>
+          <View style={styles.summaryHeader}>
+            <View>
+              <Text
+                style={styles.sectionTitle}
+              >
+                ملخص اليوم
+              </Text>
+
+              <Text
+                style={styles.sectionMeta}
+              >
+                أهم مؤشرات التشغيل في نطاقك
+              </Text>
+            </View>
+
+            <Text
+              style={styles.percent}
+            >
+              {progress}%
+            </Text>
+          </View>
+
+          <View
+            style={styles.progressTrack}
+          >
+            <View
+              style={[
+                styles.progressFill,
+                {
+                  width: `${progress}%`,
+                },
+              ]}
+            />
+          </View>
+
+          <View
+            style={[
+              styles.summaryStats,
+                isMobile && styles.summaryStatsMobile,
+            isSmallMobile && styles.summaryStatsSmallMobile,
+          ]}
+          >
+            <View
+              style={styles.miniStat}
+            >
+              <Text
+                style={styles.miniValue}
+              >
+                {stats.completedToday}
+              </Text>
+
+              <Text
+                style={styles.miniLabel}
+              >
+                مكتملة اليوم
+              </Text>
+            </View>
+
+            <View
+              style={styles.miniDivider}
+            />
+
+            <View
+              style={styles.miniStat}
+            >
+              <Text
+                style={styles.miniValue}
+              >
+                {stats.captains}
+              </Text>
+
+              <Text
+                style={styles.miniLabel}
+              >
+                كابتن
+              </Text>
+            </View>
+
+            <View
+              style={styles.miniDivider}
+            />
+
+            <View
+              style={styles.miniStat}
+            >
+              <Text
+                style={styles.miniValue}
+              >
+                {stats.establishments}
+              </Text>
+
+              <Text
+                style={styles.miniLabel}
+              >
+                منشأة
+              </Text>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.cardsGrid}>
-          {cards.map((card) => {
-            const Icon = card.icon;
-            const selected =
-              filter === card.key;
-
-            return (
+        <View
+          style={[
+            styles.statsGrid,
+            isMobile && styles.statsGridMobile,
+          ]}
+        >
+          {primaryCards.map(
+            (card) => (
               <Pressable
                 key={card.key}
                 onPress={() =>
@@ -920,491 +1327,308 @@ export default function LeaderHomeScreen() {
                 style={[
                   styles.statCard,
                   {
-                    width: cardWidth,
-                    backgroundColor:
-                      selected
-                        ? "#FFF7ED"
-                        : card.background,
-                    borderColor:
-                      selected
-                        ? card.iconColor
-                        : "#E5E7EB",
-                    borderWidth:
-                      selected ? 2 : 1,
-                    shadowOpacity:
-                      selected ? 0.08 : 0.03,
+                    width: isMobile
+                      ? "100%"
+                      : cardWidth,
                   },
+                  filter === card.key &&
+                    styles.statCardSelected,
                 ]}
               >
                 <View
-                  style={[
-                    styles.statIcon,
-                    {
-                      backgroundColor:
-                        card.iconBackground,
-                    },
-                  ]}
+                  style={
+                    styles.statIcon
+                  }
                 >
-                  <Icon
-                    size={21}
-                    color={card.iconColor}
+                  <Ionicons
+                    name={card.icon}
+                    size={22}
+                    color="#111111"
                   />
                 </View>
 
-                <View style={styles.statBody}>
-                  <Text style={styles.statTitle}>
-                    {card.title}
-                  </Text>
-
-                  <Text style={styles.statValue}>
+                <View
+                  style={
+                    styles.statData
+                  }
+                >
+                  <Text
+                    style={
+                      styles.statNumber
+                    }
+                  >
                     {card.value}
                   </Text>
+
+                  <Text
+                    style={
+                      styles.statTitle
+                    }
+                  >
+                    {card.title}
+                  </Text>
                 </View>
+
+                <Ionicons
+                  name="chevron-back"
+                  size={17}
+                  color="#AAAAAA"
+                />
               </Pressable>
-            );
-          })}
+            ),
+          )}
         </View>
 
-        <View style={styles.sectionHeader}>
-          <View>
-            <Text style={styles.sectionEyebrow}>
-              النتائج
-            </Text>
-
-            <Text style={styles.sectionTitle}>
-              {selectedCardTitle}
-            </Text>
-
-            {activeSearch ? (
-              <Text style={styles.sectionHint}>
-                نتائج البحث داخل نطاقك فقط
-              </Text>
-            ) : (
-              <Text style={styles.sectionHint}>
-                البيانات الظاهرة تخص نطاق القائد فقط
-              </Text>
-            )}
-          </View>
-
-          {filter !== "all" ? (
-            <Pressable
-              onPress={() => {
-                setFilter("all");
-                setSearch("");
-              }}
-              style={styles.clearFilter}
-            >
-              <Text style={styles.clearFilterText}>
-                مسح الفلتر
+        <View
+          style={styles.workspace}
+        >
+          <View
+            style={styles.workspaceTop}
+          >
+            <View>
+              <Text
+                style={
+                  styles.sectionTitle
+                }
+              >
+                المتابعة
               </Text>
 
-              <ChevronLeft
-                size={15}
-                color="#EA580C"
-              />
-            </Pressable>
-          ) : null}
-        </View>
-
-        {loading ? (
-          <View style={styles.stateCard}>
-            <ActivityIndicator
-              size="small"
-              color="#EA580C"
-            />
-
-            <Text style={styles.stateTitle}>
-              جاري تحميل لوحة القائد...
-            </Text>
-
-            <Text style={styles.stateText}>
-              يتم تحميل الطلبات والكباتن والمنشآت
-              الخاصة بنطاقك.
-            </Text>
-          </View>
-        ) : resultData.items.length === 0 ? (
-          <View style={styles.stateCard}>
-            <View style={styles.emptyIcon}>
-              <Search
-                size={24}
-                color="#9CA3AF"
-              />
+              <Text
+                style={
+                  styles.sectionMeta
+                }
+              >
+                الطلبات والموارد داخل نطاقك
+              </Text>
             </View>
 
-            <Text style={styles.stateTitle}>
-              لا توجد نتائج
-            </Text>
+            <View
+              style={styles.live}
+            >
+              <View
+                style={styles.liveDot}
+              />
 
-            <Text style={styles.stateText}>
-              جرّب كلمة بحث أخرى أو غيّر الفلتر
-              المحدد.
-            </Text>
+              <Text
+                style={styles.liveText}
+              >
+                مباشر
+              </Text>
+            </View>
           </View>
-        ) : (
-          <View style={styles.list}>
-            {resultData.items.map(
-              (item, index) => {
-                const id =
-                  getId(item) ||
-                  `${filter}-${index}`;
 
-                if (
-                  resultData.type ===
-                  "captains"
-                ) {
-                  const online =
-                    item?.isOnline === true;
+          <View
+            style={styles.searchBox}
+          >
+            <Ionicons
+              name="search-outline"
+              size={19}
+              color="#888888"
+            />
 
-                  return (
-                    <View
-                      key={id}
-                      style={styles.row}
-                    >
-                      <View
-                        style={[
-                          styles.avatar,
-                          {
-                            backgroundColor:
-                              online
-                                ? "#ECFDF3"
-                                : "#F3F4F6",
-                          },
-                        ]}
-                      >
-                        <UserRound
-                          size={20}
-                          color={
-                            online
-                              ? "#15803D"
-                              : "#6B7280"
-                          }
-                        />
-                      </View>
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="بحث في الطلبات والكباتن والمنشآت"
+              placeholderTextColor="#999999"
+              style={styles.searchInput}
+              textAlign="right"
+            />
 
-                      <View
-                        style={
-                          styles.rowMain
-                        }
-                      >
-                        <Text
-                          style={styles.rowTitle}
-                          numberOfLines={1}
-                        >
-                          {getCaptainName(
-                            item,
-                          ) ||
-                            "كابتن بدون اسم"}
-                        </Text>
-
-                        <Text
-                          style={styles.rowMeta}
-                          numberOfLines={2}
-                        >
-                          {textValue(
-                            item?.phone,
-                            item?.email,
-                            getAreaName(item),
-                            getGovernorateName(
-                              item,
-                            ),
-                            "بيانات الكابتن",
-                          )}
-                        </Text>
-                      </View>
-
-                      <View
-                        style={[
-                          styles.onlinePill,
-                          {
-                            backgroundColor:
-                              online
-                                ? "#ECFDF3"
-                                : "#F3F4F6",
-                          },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.dot,
-                            {
-                              backgroundColor:
-                                online
-                                  ? "#16A34A"
-                                  : "#9CA3AF",
-                            },
-                          ]}
-                        />
-
-                        <Text
-                          style={[
-                            styles.onlineText,
-                            {
-                              color:
-                                online
-                                  ? "#15803D"
-                                  : "#6B7280",
-                            },
-                          ]}
-                        >
-                          {online
-                            ? "متصل"
-                            : "غير متصل"}
-                        </Text>
-                      </View>
-                    </View>
-                  );
+            {search ? (
+              <Pressable
+                onPress={() =>
+                  setSearch("")
                 }
+              >
+                <Ionicons
+                  name="close-circle"
+                  size={19}
+                  color="#999999"
+                />
+              </Pressable>
+            ) : null}
+          </View>
 
-                if (
-                  resultData.type ===
-                  "establishments"
-                ) {
-                  return (
-                    <View
-                      key={id}
-                      style={styles.row}
-                    >
-                      <View
-                        style={[
-                          styles.avatar,
-                          {
-                            backgroundColor:
-                              "#F5F3FF",
-                          },
-                        ]}
-                      >
-                        <Store
-                          size={20}
-                          color="#7C3AED"
-                        />
-                      </View>
-
-                      <View
-                        style={
-                          styles.rowMain
-                        }
-                      >
-                        <Text
-                          style={styles.rowTitle}
-                          numberOfLines={1}
-                        >
-                          {getEstablishmentName(
-                            item,
-                          ) ||
-                            "منشأة بدون اسم"}
-                        </Text>
-
-                        <Text
-                          style={styles.rowMeta}
-                          numberOfLines={2}
-                        >
-                          {textValue(
-                            item?.type,
-                            getAreaName(item),
-                            getGovernorateName(
-                              item,
-                            ),
-                            item?.phone,
-                            item?.status,
-                            "المطاعم والمحلات",
-                          )}
-                        </Text>
-                      </View>
-
-                      <View
-                        style={[
-                          styles.statusPill,
-                          {
-                            backgroundColor:
-                              item?.status ===
-                              "active"
-                                ? "#ECFDF3"
-                                : "#F3F4F6",
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            {
-                              color:
-                                item?.status ===
-                                "active"
-                                  ? "#15803D"
-                                  : "#6B7280",
-                            },
-                          ]}
-                        >
-                          {item?.status ===
-                          "active"
-                            ? "نشط"
-                            : textValue(
-                                item?.status,
-                                "الحالة",
-                              )}
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                }
-
-                const status =
-                  textValue(
-                    item?.status,
-                    item?.stage,
-                    item?.state,
-                  );
-
-                const tone =
-                  statusTone(status);
-
-                return (
-                  <View
-                    key={id}
-                    style={styles.orderRow}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={
+              false
+            }
+            contentContainerStyle={
+              styles.filters
+            }
+          >
+            {filters.map(
+              (item) => (
+                <Pressable
+                  key={item.key}
+                  onPress={() =>
+                    setFilter(
+                      item.key,
+                    )
+                  }
+                  style={[
+                    styles.filter,
+                    filter ===
+                      item.key &&
+                      styles.filterActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.filterText,
+                      filter ===
+                        item.key &&
+                        styles.filterTextActive,
+                    ]}
                   >
-                    <View
-                      style={styles.orderTop}
-                    >
-                      <View>
-                        <Text
-                          style={styles.orderNumber}
-                        >
-                          طلب #
-                          {getOrderNumber(
-                            item,
-                          )}
-                        </Text>
-
-                        <Text
-                          style={styles.orderMeta}
-                          numberOfLines={2}
-                        >
-                          {textValue(
-                            getEstablishmentName(
-                              item,
-                            ),
-                            "مطعم / محل",
-                          )}
-                        </Text>
-                      </View>
-
-                      <View
-                        style={[
-                          styles.statusPill,
-                          {
-                            backgroundColor:
-                              tone.backgroundColor,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            {
-                              color:
-                                tone.color,
-                            },
-                          ]}
-                        >
-                          {statusLabel(
-                            status,
-                          )}
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View
-                      style={styles.orderDetails}
-                    >
-                      <View
-                        style={styles.detailBlock}
-                      >
-                        <Text
-                          style={
-                            styles.detailLabel
-                          }
-                        >
-                          الكابتن
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.detailValue
-                          }
-                          numberOfLines={1}
-                        >
-                          {getCaptainName(
-                            item,
-                          ) || "غير مُسند"}
-                        </Text>
-                      </View>
-
-                      <View
-                        style={styles.detailBlock}
-                      >
-                        <Text
-                          style={
-                            styles.detailLabel
-                          }
-                        >
-                          المنطقة
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.detailValue
-                          }
-                          numberOfLines={1}
-                        >
-                          {getAreaName(
-                            item,
-                          ) || "غير محددة"}
-                        </Text>
-                      </View>
-
-                      <View
-                        style={styles.detailBlock}
-                      >
-                        <Text
-                          style={
-                            styles.detailLabel
-                          }
-                        >
-                          العميل
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.detailValue
-                          }
-                          numberOfLines={1}
-                        >
-                          {textValue(
-                            item?.customerName,
-                            item?.customer?.name,
-                            "غير متوفر",
-                          )}
-                        </Text>
-                      </View>
-                    </View>
-                  </View>
-                );
-              },
+                    {item.label}
+                  </Text>
+                </Pressable>
+              ),
             )}
+          </ScrollView>
+        </View>
+
+        <View
+          style={styles.contentGrid}
+        >
+          <View
+            style={[
+              styles.panel,
+              {
+                width: "100%",
+              },
+            ]}
+          >
+            <View
+              style={
+                styles.panelHeader
+              }
+            >
+              <View>
+                <Text
+                  style={
+                    styles.panelTitle
+                  }
+                >
+                  {filter === "captains"
+                    ? "الكباتن"
+                    : filter ===
+                        "establishments"
+                      ? "المطاعم والمحلات"
+                      : "الطلبات"}
+                </Text>
+
+                <Text
+                  style={
+                    styles.panelMeta
+                  }
+                >
+                  آخر النتائج
+                </Text>
+              </View>
+
+              <Text
+                style={
+                  styles.panelCount
+                }
+              >
+                {resultData.items.length}
+              </Text>
+            </View>
+
+            <View
+              style={styles.list}
+            >
+              {renderResults()}
+            </View>
+
+            {resultData.type === "orders" &&
+            totalOrderPages > 1 ? (
+              <View style={styles.pagination}>
+                <Pressable
+                  onPress={() =>
+                    setOrdersPage(
+                      Math.max(
+                        1,
+                        safeOrdersPage - 1,
+                      ),
+                    )
+                  }
+                  disabled={safeOrdersPage === 1}
+                  style={styles.paginationButton}
+                >
+                  <Text
+                    style={
+                      styles.paginationArrowText
+                    }
+                  >
+                    ‹
+                  </Text>
+                </Pressable>
+
+                {Array.from(
+                  {
+                    length: totalOrderPages,
+                  },
+                  (_, index) => index + 1,
+                ).map((page) => (
+                  <Pressable
+                    key={page}
+                    onPress={() =>
+                      setOrdersPage(page)
+                    }
+                    style={[
+                      styles.paginationNumber,
+                      safeOrdersPage === page &&
+                        styles.paginationNumberActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.paginationNumberText,
+                        safeOrdersPage === page &&
+                          styles.paginationNumberTextActive,
+                      ]}
+                    >
+                      {page}
+                    </Text>
+                  </Pressable>
+                ))}
+
+                <Pressable
+                  onPress={() =>
+                    setOrdersPage(
+                      Math.min(
+                        totalOrderPages,
+                        safeOrdersPage + 1,
+                      ),
+                    )
+                  }
+                  disabled={
+                    safeOrdersPage ===
+                    totalOrderPages
+                  }
+                  style={styles.paginationButton}
+                >
+                  <Text
+                    style={
+                      styles.paginationArrowText
+                    }
+                  >
+                    ›
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
           </View>
-        )}
 
-        {resultData.items.length >= 80 ? (
-          <Text style={styles.limitNote}>
-            يتم عرض أول 80 نتيجة لتحافظ الصفحة
-            على سرعة الاستجابة.
-          </Text>
-        ) : null}
-      
-
-
-</ScrollView>
+          
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -1412,408 +1636,733 @@ export default function LeaderHomeScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: "#F7F8FA",
+    backgroundColor: "#FFFFFF",
   },
 
   scroll: {
     flex: 1,
+    backgroundColor: "#FFFFFF",
   },
 
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 32,
+    width: "100%",
+    maxWidth: 1320,
+    alignSelf: "center",
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 55,
   },
 
-  hero: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 18,
-    flexDirection: "row",
-    alignItems: "flex-start",
+  headerCenterMobile: {
+    alignItems: "flex-end",
+    marginHorizontal: 12,
+  },
+
+  summaryStatsMobile: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 14,
+  },
+
+  statsGridMobile: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
     justifyContent: "space-between",
-    marginBottom: 14,
+    width: "100%",
+    marginBottom: 24,
   },
 
-  heroText: {
+  summaryStatsSmallMobile: {
+    paddingHorizontal: 0,
+  },
+
+  loading: {
     flex: 1,
-    paddingRight: 12,
-  },
-
-  eyebrow: {
-    fontSize: 12,
-    fontWeight: "800",
-    color: "#EA580C",
-    marginBottom: 4,
-  },
-
-  title: {
-    fontSize: 26,
-    fontWeight: "900",
-    color: "#111827",
-  },
-
-  subtitle: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#374151",
-    marginTop: 4,
-  },
-
-  scopeRow: {
-    flexDirection: "row",
     alignItems: "center",
-    marginTop: 10,
-    gap: 7,
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
   },
 
-  scopeText: {
-    flex: 1,
-    color: "#6B7280",
+  loadingText: {
+    marginTop: 10,
     fontSize: 13,
+    color: "#666666",
     fontWeight: "700",
   },
 
-  refreshButton: {
+  header: {
+    minHeight: 88,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E8751A",
+    marginBottom: 30,
+  },
+
+  brandArea: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    width: 175,
+  },
+
+  brandMark: {
     width: 44,
     height: 44,
-    borderRadius: 14,
-    backgroundColor: "#FFF7ED",
+    borderRadius: 9,
+    backgroundColor: "#E8751A",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  errorCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#FECACA",
-    padding: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginBottom: 14,
+  brandText: {
+    marginRight: 9,
+    alignItems: "flex-end",
   },
 
-  errorIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: "#FEF2F2",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  errorTitle: {
-    color: "#991B1B",
-    fontSize: 14,
+  brandName: {
+    fontSize: 18,
+    color: "#E8751A",
     fontWeight: "900",
   },
 
-  errorText: {
-    color: "#7F1D1D",
-    fontSize: 12,
-    fontWeight: "600",
-    marginTop: 2,
+  brandCaption: {
+    marginTop: 1,
+    fontSize: 10,
+    color: "#888888",
+    fontWeight: "700",
   },
 
-  errorRetry: {
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+  },
+
+  headerTitle: {
+    fontSize: 18,
+    color: "#111111",
+    fontWeight: "900",
+  },
+
+  scopeLine: {
+    marginTop: 3,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    maxWidth: "95%",
+  },
+
+  scopeText: {
+    marginRight: 5,
+    fontSize: 11,
+    color: "#777777",
+    fontWeight: "700",
+    textAlign: "center",
+  },
+
+  refresh: {
+    width: 46,
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+
+  errorBar: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: "#D7D7D7",
+    backgroundColor: "#FAFAFA",
     paddingHorizontal: 12,
-    paddingVertical: 9,
-    borderRadius: 12,
-    backgroundColor: "#FEF2F2",
+    paddingVertical: 8,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    marginBottom: 12,
   },
 
-  errorRetryText: {
-    color: "#B91C1C",
+  errorText: {
+    flex: 1,
+    marginHorizontal: 10,
+    color: "#333333",
     fontSize: 12,
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  retry: {
+    minHeight: 32,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#E8751A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  retryText: {
+    fontSize: 11,
+    color: "#111111",
+    fontWeight: "900",
+  },
+
+  alertBar: {
+    minHeight: 62,
+    borderWidth: 1,
+    borderColor: "#CFCFCF",
+    backgroundColor: "#F8F8F8",
+    paddingHorizontal: 14,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    marginBottom: 14,
+  },
+
+  alertBody: {
+    flex: 1,
+    alignItems: "flex-end",
+    marginHorizontal: 10,
+  },
+
+  alertTitle: {
+    fontSize: 13,
+    color: "#111111",
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  alertSub: {
+    marginTop: 2,
+    fontSize: 11,
+    color: "#777777",
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  summary: {
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    backgroundColor: "#FFFFFF",
+    padding: 24,
+    marginBottom: 26,
+  },
+
+  summaryHeader: {
+    minHeight: 52,
+    paddingHorizontal: 4,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E8751A",
+    paddingBottom: 10,
+  },
+
+  sectionTitle: {
+    alignSelf: "flex-end",
+    fontSize: 14,
+    color: "#E8751A",
+    fontWeight: "900",
+    textAlign: "right",
+    borderWidth: 1,
+    borderColor: "#E8751A",
+    backgroundColor: "#FFF7F1",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+
+  sectionMeta: {
+    marginTop: 3,
+    fontSize: 11,
+    color: "#888888",
+    fontWeight: "600",
+    textAlign: "right",
+  },
+
+  percent: {
+    fontSize: 22,
+    color: "#111111",
+    fontWeight: "900",
+  },
+
+  progressTrack: {
+    height: 5,
+    backgroundColor: "#E8751A",
+    marginTop: 15,
+    overflow: "hidden",
+  },
+
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#111111",
+    alignSelf: "flex-end",
+  },
+
+  summaryStats: {
+    marginTop: 20,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-around",
+  },
+
+  miniStat: {
+    flex: 1,
+    alignItems: "center",
+  },
+
+  miniValue: {
+    fontSize: 20,
+    color: "#111111",
+    fontWeight: "900",
+  },
+
+  miniLabel: {
+    marginTop: 3,
+    fontSize: 10,
+    color: "#888888",
+    fontWeight: "700",
+  },
+
+  miniDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: "#E8751A",
+  },
+
+  statsGrid: {
+    flexDirection: "row-reverse",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    width: "100%",
+    marginBottom: 24,
+  },
+
+  statCard: {
+    minHeight: 110,
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    borderRadius: 15,
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 14,
+    flexShrink: 0,
+  },
+
+  statCardSelected: {
+    borderColor: "#E8751A",
+    backgroundColor: "#FFF7F1",
+    borderWidth: 2,
+  },
+
+
+  statIcon: {
+    width: 40,
+    height: 40,
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FAFAFA",
+  },
+
+  statData: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "flex-end",
+    marginHorizontal: 14,
+  },
+
+  statNumber: {
+    fontSize: 24,
+    color: "#111111",
+    fontWeight: "900",
+    lineHeight: 27,
+  },
+
+  statTitle: {
+    marginTop: 2,
+    fontSize: 11,
+    color: "#777777",
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  workspace: {
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    backgroundColor: "#FFFFFF",
+    padding: 15,
+    marginBottom: 22,
+  },
+
+  workspaceTop: {
+    minHeight: 58,
+    paddingHorizontal: 12,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E8751A",
+  },
+
+  live: {
+    flexDirection: "row-reverse",
+    alignItems: "center",
+  },
+
+  liveDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 7,
+    backgroundColor: "#E8751A",
+  },
+
+  liveText: {
+    marginRight: 5,
+    fontSize: 10,
+    color: "#444444",
     fontWeight: "900",
   },
 
   searchBox: {
-    minHeight: 54,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 18,
+    minHeight: 56,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
-    paddingHorizontal: 14,
-    flexDirection: "row",
+    borderColor: "#F2C6AA",
+    backgroundColor: "#FFFFFF",
+    flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 10,
-    marginBottom: 14,
+    paddingHorizontal: 11,
   },
 
   searchInput: {
     flex: 1,
-    minHeight: 52,
-    color: "#111827",
-    fontSize: 13,
+    minWidth: 0,
+    marginHorizontal: 8,
+    paddingVertical: 6,
+    color: "#111111",
+    fontSize: 12,
     fontWeight: "700",
   },
 
-  cardsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-    rowGap: 12,
-    marginBottom: 22,
-  },
-
-  statCard: {
-    minHeight: 108,
-    borderRadius: 20,
-    padding: 14,
-    flexDirection: "row",
+  filters: {
+    flexDirection: "row-reverse",
     alignItems: "center",
-    gap: 12,
-    shadowColor: "#111827",
-    shadowOffset: {
-      width: 0,
-      height: 5,
-    },
-    shadowRadius: 12,
-    elevation: 2,
+    paddingTop: 20,
   },
 
-  statIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
+  filter: {
+    minHeight: 32,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    backgroundColor: "#FFFFFF",
+    marginLeft: 7,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  statBody: {
-    flex: 1,
+  filterActive: {
+    backgroundColor: "#E8751A",
+    borderColor: "#E8751A",
   },
 
-  statTitle: {
-    color: "#6B7280",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  statValue: {
-    color: "#111827",
-    fontSize: 25,
+  filterText: {
+    fontSize: 10,
+    color: "#666666",
     fontWeight: "900",
-    marginTop: 2,
   },
 
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
+  filterTextActive: {
+    color: "#FFFFFF",
+  },
+
+  contentGrid: {
+    flexDirection: "column",
+    width: "100%",
     marginBottom: 10,
   },
 
-  sectionEyebrow: {
-    color: "#EA580C",
-    fontSize: 11,
-    fontWeight: "900",
-  },
-
-  sectionTitle: {
-    color: "#111827",
-    fontSize: 21,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-
-  sectionHint: {
-    color: "#9CA3AF",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 3,
-  },
-
-  clearFilter: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 12,
-    backgroundColor: "#FFF7ED",
-  },
-
-  clearFilterText: {
-    color: "#EA580C",
-    fontSize: 11,
-    fontWeight: "900",
-  },
-
-  list: {
-    gap: 10,
-  },
-
-  row: {
+  panel: {
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#F2C6AA",
     backgroundColor: "#FFFFFF",
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 13,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 11,
+    marginBottom: 26,
+    overflow: "hidden",
   },
 
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
+  sidePanel: {
+    alignSelf: "flex-start",
+  },
+
+  panelHeader: {
+    minHeight: 84,
+    paddingHorizontal: 20,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E8751A",
+  },
+
+  panelTitle: {
+    fontSize: 15,
+    color: "#111111",
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  panelMeta: {
+    marginTop: 2,
+    fontSize: 10,
+    color: "#999999",
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  panelCount: {
+    minWidth: 28,
+    height: 28,
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    textAlign: "center",
+    textAlignVertical: "center",
+    paddingTop: 5,
+    fontSize: 11,
+    color: "#111111",
+    fontWeight: "900",
+  },
+
+  listRow: {
+    minHeight: 86,
+    paddingHorizontal: 18,
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E8751A",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+  },
+
+  rowIcon: {
+    width: 38,
+    height: 38,
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    backgroundColor: "#FAFAFA",
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  rowMain: {
-    flex: 1,
-  },
-
-  rowTitle: {
-    color: "#111827",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-
-  rowMeta: {
-    color: "#6B7280",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 4,
-  },
-
-  onlinePill: {
-    borderRadius: 11,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 999,
-  },
-
-  onlineText: {
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  statusPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 10,
-  },
-
-  statusText: {
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  orderRow: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 14,
-  },
-
-  orderTop: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    gap: 10,
   },
 
   orderNumber: {
-    color: "#111827",
-    fontSize: 15,
+    minWidth: 55,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  orderNumberText: {
+    fontSize: 11,
+    color: "#111111",
     fontWeight: "900",
   },
 
-  orderMeta: {
-    color: "#6B7280",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 3,
-    maxWidth: 240,
-  },
-
-  orderDetails: {
-    marginTop: 13,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#F1F5F9",
-    flexDirection: "row",
-    gap: 12,
-  },
-
-  detailBlock: {
+  rowBody: {
     flex: 1,
+    minWidth: 0,
+    marginHorizontal: 10,
+    alignItems: "flex-end",
   },
 
-  detailLabel: {
-    color: "#9CA3AF",
-    fontSize: 9,
-    fontWeight: "800",
-  },
-
-  detailValue: {
-    color: "#374151",
-    fontSize: 11,
-    fontWeight: "800",
-    marginTop: 3,
-  },
-
-  stateCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 28,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 210,
-  },
-
-  emptyIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 17,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-
-  stateTitle: {
-    color: "#111827",
-    fontSize: 15,
-    fontWeight: "900",
-    marginTop: 10,
-    textAlign: "center",
-  },
-
-  stateText: {
-    color: "#9CA3AF",
+  rowTitle: {
+    width: "100%",
     fontSize: 12,
-    fontWeight: "600",
-    textAlign: "center",
-    marginTop: 5,
-    lineHeight: 19,
+    color: "#111111",
+    fontWeight: "900",
+    textAlign: "right",
   },
 
-  limitNote: {
-    color: "#9CA3AF",
-    textAlign: "center",
+  rowMeta: {
+    width: "100%",
+    marginTop: 4,
     fontSize: 10,
+    color: "#888888",
     fontWeight: "700",
-    marginTop: 12,
+    textAlign: "right",
+  },
+
+  orderTitleRow: {
+    width: "100%",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+  },
+
+  status: {
+    marginRight: 8,
+    paddingHorizontal: 8,
+    minHeight: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  statusText: {
+    fontSize: 9,
+    fontWeight: "900",
+  },
+
+  health: {
+    minHeight: 84,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E8751A",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+  },
+
+  healthIcon: {
+    width: 36,
+    height: 36,
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    backgroundColor: "#FAFAFA",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  healthBody: {
+    flex: 1,
+    marginHorizontal: 10,
+    flexDirection: "row-reverse",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  healthTitle: {
+    fontSize: 11,
+    color: "#444444",
+    fontWeight: "800",
+    textAlign: "right",
+  },
+
+  healthValue: {
+    fontSize: 17,
+    color: "#111111",
+    fontWeight: "900",
+  },
+
+  healthValueStrong: {
+    textDecorationLine: "underline",
+  },
+
+  scopeBox: {
+    margin: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#F2C6AA",
+    backgroundColor: "#FAFAFA",
+    flexDirection: "row-reverse",
+    alignItems: "center",
+  },
+
+  scopeBoxBody: {
+    flex: 1,
+    marginRight: 9,
+    alignItems: "flex-end",
+  },
+
+  scopeBoxTitle: {
+    fontSize: 10,
+    color: "#888888",
+    fontWeight: "700",
+    textAlign: "right",
+  },
+
+  scopeBoxText: {
+    marginTop: 3,
+    fontSize: 11,
+    color: "#111111",
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  list: {
+    minHeight: 100,
+  },
+
+  pagination: {
+    minHeight: 72,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#E8751A",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+
+  paginationButton: {
+    width: 36,
+    height: 36,
+    borderWidth: 1,
+    borderColor: "#E8751A",
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+
+  paginationArrowText: {
+    fontSize: 22,
+    lineHeight: 24,
+    color: "#111111",
+    fontWeight: "900",
+  },
+
+  paginationNumber: {
+    minWidth: 36,
+    height: 36,
+    paddingHorizontal: 9,
+    borderWidth: 1,
+    borderColor: "#E8751A",
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+  },
+
+  paginationNumberActive: {
+    backgroundColor: "#E8751A",
+  },
+
+  paginationNumberText: {
+    fontSize: 12,
+    color: "#111111",
+    fontWeight: "900",
+  },
+
+  paginationNumberTextActive: {
+    color: "#FFFFFF",
+  },
+
+  empty: {
+    minHeight: 210,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 20,
+  },
+
+  emptyTitle: {
+    marginTop: 9,
+    fontSize: 13,
+    color: "#444444",
+    fontWeight: "900",
+  },
+
+  emptyText: {
+    marginTop: 4,
+    fontSize: 11,
+    color: "#999999",
+    fontWeight: "700",
   },
 });

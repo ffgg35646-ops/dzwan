@@ -19,6 +19,8 @@ import { apiGet } from "../../api/request";
 import NotificationBell from "../../components/shared/NotificationBell";
 import SupportQuickAccess from "../../components/shared/SupportQuickAccess";
 
+const SHOP_PRIMARY = "#E8751A";
+
 export default function ShopHomeScreen() {
 
   const [supportNotificationCount, setSupportNotificationCount] =
@@ -82,6 +84,7 @@ export default function ShopHomeScreen() {
 
   const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recentPage, setRecentPage] = useState(1);
 
   const load = useCallback(async () => {
     try {
@@ -120,13 +123,45 @@ export default function ShopHomeScreen() {
 
   const active = orders.filter(
     (order) =>
-      order?.status &&
-      order.status !== "delivered" &&
-      order.status !== "cancelled" &&
-      order.status !== "rejected",
+      [
+        "pending",
+        "confirmed",
+        "preparing",
+        "ready_for_pickup",
+        "assigned",
+        "heading_to_shop",
+        "arrived_at_shop",
+        "picked_up",
+        "on_the_way",
+      ].includes(
+        String(order?.status || "").toLowerCase(),
+      ),
   ).length;
 
-  const recentOrders = orders.slice(0, 5);
+  const RECENT_PAGE_SIZE = 5;
+
+  const recentTotalPages = Math.max(
+    1,
+    Math.ceil(
+      orders.length / RECENT_PAGE_SIZE,
+    ),
+  );
+
+  const safeRecentPage = Math.min(
+    recentPage,
+    recentTotalPages,
+  );
+
+  const recentOrders = orders.slice(
+    (safeRecentPage - 1) * RECENT_PAGE_SIZE,
+    safeRecentPage * RECENT_PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    if (recentPage > recentTotalPages) {
+      setRecentPage(1);
+    }
+  }, [recentPage, recentTotalPages]);
 
   return (
     <Screen>
@@ -371,7 +406,57 @@ export default function ShopHomeScreen() {
                   />
                 ))
               )}
-            </View>
+            
+            {recentTotalPages > 1 && (
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  marginTop: 14,
+                  marginBottom: 4,
+                  gap: 6,
+                }}
+              >
+                {Array.from(
+                  { length: recentTotalPages },
+                  (_, index) => index + 1,
+                ).map((page) => (
+                  <TouchableOpacity
+                    key={`recent-page-${page}`}
+                    onPress={() =>
+                      setRecentPage(page)
+                    }
+                    style={{
+                      minWidth: 36,
+                      height: 36,
+                      paddingHorizontal: 8,
+                      borderRadius: 10,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor:
+                        page === safeRecentPage
+                          ? SHOP_PRIMARY
+                          : "#F3E9DF",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: 13,
+                        fontWeight: "900",
+                        color:
+                          page === safeRecentPage
+                            ? "#FFFFFF"
+                            : "#6B5545",
+                      }}
+                    >
+                      {page}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+</View>
           </>
         )}
       </ScrollView>

@@ -5,6 +5,7 @@ import {
 } from "../../api/captainOrderBoard";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   ActivityIndicator,
   Alert,
@@ -40,7 +41,9 @@ const HISTORY_STATUSES = [
   "rejected",
 ] as const;
 
-const HISTORY_PAGE_SIZE = 7;
+const HISTORY_PAGE_SIZE = 5;
+const ORDERS_CACHE_KEY = "@zajel/orders-cache-v1";
+const AVAILABLE_ORDERS_CACHE_KEY = "@zajel/available-orders-cache-v1";
 
 const EMERGENCY_REASONS: Array<{
   value: CaptainEmergencyType;
@@ -280,6 +283,12 @@ function getPageNumbers(
 }
 
 export default function CaptainOrdersScreen() {
+  const [orderFilter, setOrderFilter] =
+    useState<"all" | "active" | "completed" | "rejected">("all");
+
+  const [activePage, setActivePage] = useState(1);
+
+
   const appTheme = useAppTheme();
   const styles = createStyles(appTheme);
   const navigation = useNavigation<any>();
@@ -288,6 +297,9 @@ export default function CaptainOrdersScreen() {
 
   const [availableOrders, setAvailableOrders] =
     useState<any[]>([]);
+
+  const [maxActiveOrders, setMaxActiveOrders] =
+    useState<number | null>(null);
 
   const [claimMessages, setClaimMessages] =
     useState<Record<string, string>>({});
@@ -301,7 +313,7 @@ export default function CaptainOrdersScreen() {
   const [openedOrderSection, setOpenedOrderSection] =
     useState<"available" | "active" | null>(null);
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const [historyPage, setHistoryPage] =
@@ -340,11 +352,7 @@ export default function CaptainOrdersScreen() {
 
 
   const load = useCallback(
-    async (silent = false) => {
-      if (!silent) {
-        setLoading(true);
-      }
-
+    async (_silent = false) => {
       try {
         const response = await getOrders();
 
@@ -353,6 +361,12 @@ export default function CaptainOrdersScreen() {
         );
 
         setOrders(list);
+
+        // نحفظ آخر نسخة حتى تظهر الطلبات فورًا في الزيارة التالية.
+        void AsyncStorage.setItem(
+          ORDERS_CACHE_KEY,
+          JSON.stringify(list),
+        ).catch(() => {});
       } catch {
         // لا نكسر الشاشة عند فشل التحديث.
       } finally {
@@ -370,6 +384,18 @@ export default function CaptainOrdersScreen() {
 
         const response =
           await getCaptainOrderBoard();
+
+        const configuredMax = Number(
+          response?.maxActiveOrders ??
+            response?.data?.maxActiveOrders
+        );
+
+        if (
+          Number.isFinite(configuredMax) &&
+          configuredMax > 0
+        ) {
+          setMaxActiveOrders(configuredMax);
+        }
 
         const list =
           response?.availableOrders ||
@@ -391,10 +417,35 @@ export default function CaptainOrdersScreen() {
   );
 
   useEffect(() => {
-    load();
+    // نعرض آخر نسخة محفوظة فورًا، ثم نجلب البيانات الجديدة في الخلفية.
+    void (async () => {
+      try {
+        const cached = await AsyncStorage.getItem(ORDERS_CACHE_KEY);
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            setOrders(sortNewestFirst(parsed));
+          }
+        }
+
+        const cachedAvailable = await AsyncStorage.getItem(
+          AVAILABLE_ORDERS_CACHE_KEY,
+        );
+        if (cachedAvailable) {
+          const parsedAvailable = JSON.parse(cachedAvailable);
+          if (Array.isArray(parsedAvailable)) {
+            setAvailableOrders(sortNewestFirst(parsedAvailable));
+          }
+        }
+      } catch {
+        // الكاش اختياري؛ لا يمنع جلب البيانات من السيرفر.
+      }
+
+      void load(true);
+    })();
 
     const timer = setInterval(() => {
-      load(true);
+      void load(true);
     }, 15000);
 
     return () => clearInterval(timer);
@@ -437,7 +488,8 @@ export default function CaptainOrdersScreen() {
   }, [orders, availableOrders]);
 
   const activeOrdersLimitReached =
-    activeOrders.length >= 3;
+    maxActiveOrders !== null &&
+    activeOrders.length >= maxActiveOrders;
 
   useEffect(() => {
     if (
@@ -461,10 +513,57 @@ export default function CaptainOrdersScreen() {
     [orders],
   );
 
+
+  const filteredHistoryOrders = useMemo(() => {
+    if (orderFilter === "completed") {
+      return historyOrders.filter(
+        (order) =>
+          order?.status === "completed" ||
+          order?.status === "delivered",
+      );
+    }
+
+    if (orderFilter === "rejected") {
+      return historyOrders.filter(
+        (order) =>
+          order?.status === "rejected" ||
+          order?.status === "cancelled",
+      );
+    }
+
+    return historyOrders;
+  }, [
+    orderFilter,
+    historyOrders,
+  ]);
+
+  const activeTotalPages = Math.max(
+    1,
+    Math.ceil(activeOrders.length / 5),
+  );
+
+  const safeActivePage = Math.min(
+    activePage,
+    activeTotalPages,
+  );
+
+  const paginatedActiveOrders = useMemo(() => {
+    const start =
+      (safeActivePage - 1) * 5;
+
+    return activeOrders.slice(
+      start,
+      start + 5,
+    );
+  }, [
+    activeOrders,
+    safeActivePage,
+  ]);
+
   const historyTotalPages = Math.max(
     1,
     Math.ceil(
-      historyOrders.length /
+      filteredHistoryOrders.length /
         HISTORY_PAGE_SIZE,
     ),
   );
@@ -479,12 +578,12 @@ export default function CaptainOrdersScreen() {
       (safeHistoryPage - 1) *
       HISTORY_PAGE_SIZE;
 
-    return historyOrders.slice(
+    return filteredHistoryOrders.slice(
       start,
       start + HISTORY_PAGE_SIZE,
     );
   }, [
-    historyOrders,
+    filteredHistoryOrders,
     safeHistoryPage,
   ]);
 
@@ -518,7 +617,10 @@ export default function CaptainOrdersScreen() {
   };
 
   useEffect(() => {
-    if (activeOrders.length < 3) {
+    if (
+      maxActiveOrders === null ||
+      activeOrders.length < maxActiveOrders
+    ) {
       setClaimMessages({});
     }
   }, [activeOrders.length]);
@@ -529,15 +631,19 @@ export default function CaptainOrdersScreen() {
     if (!orderId) return;
 
     if (
-      activeOrders.length >= 3 ||
-      Object.keys(claimingOrderIds).length >= 3 ||
+      (maxActiveOrders !== null &&
+        activeOrders.length >= maxActiveOrders) ||
+      (maxActiveOrders !== null &&
+        Object.keys(claimingOrderIds).length >= maxActiveOrders) ||
       claimingOrderIds[orderId]
     ) {
       setClaimMessages((current) => ({
         ...current,
         [orderId]:
-          activeOrders.length >= 3 ||
-          Object.keys(claimingOrderIds).length >= 3
+          (maxActiveOrders !== null &&
+            activeOrders.length >= maxActiveOrders) ||
+          (maxActiveOrders !== null &&
+            Object.keys(claimingOrderIds).length >= maxActiveOrders)
             ? "لقد وصلت للحد الأقصى للطلبات النشطة."
             : "جارٍ استلام الطلب، انتظر لحظة.",
       }));
@@ -2331,33 +2437,77 @@ export default function CaptainOrdersScreen() {
         </View>
 
         <View style={styles.stats}>
-          <Stat
-            icon="layers-outline"
-            label="كل الطلبات"
-            value={stats.total}
-            appTheme={appTheme}
-          />
+                    <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+            onPress={() => {
+              setOrderFilter("all");
+              setActivePage(1);
+              setHistoryPage(1);
+              setOpenedOrderSection(null);
+            }}
+          >
+            <Stat
+                        icon="layers-outline"
+                        label="كل الطلبات"
+                        value={stats.total}
+                        appTheme={appTheme}
+                      />
+          </TouchableOpacity>
 
-          <Stat
-            icon="bicycle-outline"
-            label="النشطة"
-            value={stats.active}
-            appTheme={appTheme}
-          />
+                    <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+            onPress={() => {
+              setOrderFilter("active");
+              setActivePage(1);
+              setHistoryPage(1);
+              setOpenedOrderSection("active");
+            }}
+          >
+            <Stat
+                        icon="bicycle-outline"
+                        label="النشطة"
+                        value={stats.active}
+                        appTheme={appTheme}
+                      />
+          </TouchableOpacity>
 
-          <Stat
-            icon="checkmark-circle-outline"
-            label="المكتملة"
-            value={stats.completed}
-            appTheme={appTheme}
-          />
+                    <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+            onPress={() => {
+              setOrderFilter("completed");
+              setActivePage(1);
+              setHistoryPage(1);
+              setOpenedOrderSection(null);
+            }}
+          >
+            <Stat
+                        icon="checkmark-circle-outline"
+                        label="المكتملة"
+                        value={stats.completed}
+                        appTheme={appTheme}
+                      />
+          </TouchableOpacity>
 
-          <Stat
-            icon="close-circle-outline"
-            label="المرفوضة"
-            value={stats.rejected}
-            appTheme={appTheme}
-          />
+                    <TouchableOpacity
+            activeOpacity={0.85}
+            style={{ flex: 1 }}
+            onPress={() => {
+              setOrderFilter("rejected");
+              setActivePage(1);
+              setHistoryPage(1);
+              setOpenedOrderSection(null);
+            }}
+          >
+            <Stat
+                        icon="close-circle-outline"
+                        label="المرفوضة"
+                        value={stats.rejected}
+                        appTheme={appTheme}
+                      />
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -2447,7 +2597,8 @@ export default function CaptainOrdersScreen() {
           </View>
         ) : null}
 
-        {!activeOrdersLimitReached &&
+        {orderFilter === "all" &&
+          !activeOrdersLimitReached &&
           openedOrderSection === "available" &&
           availableOrders.length > 0 && (
             <View style={styles.sectionList}>
@@ -2466,7 +2617,7 @@ export default function CaptainOrdersScreen() {
                 : "active",
             )
           }
-          style={styles.sectionToggle}
+          style={[styles.sectionToggle, (orderFilter === "completed" || orderFilter === "rejected") && { display: "none" }]}
         >
           <View style={styles.sectionToggleText}>
             <Text style={styles.sectionToggleTitle}>
@@ -2491,11 +2642,105 @@ export default function CaptainOrdersScreen() {
           />
         </TouchableOpacity>
 
-        {openedOrderSection === "active" &&
-          activeOrders.length > 0 && (
+        {(orderFilter === "all" ||
+          orderFilter === "active") &&
+          openedOrderSection === "active" &&
+          paginatedActiveOrders.length > 0 && (
             <View style={styles.sectionList}>
-              {activeOrders.map(
+              {paginatedActiveOrders.map(
                 renderActiveOrder,
+              )}
+
+              {activeTotalPages > 1 && (
+                <View style={styles.paginationBox}>
+                  <TouchableOpacity
+                    disabled={safeActivePage === 1}
+                    onPress={() =>
+                      setActivePage((page) =>
+                        Math.max(1, page - 1),
+                      )
+                    }
+                    style={styles.pageArrow}
+                  >
+                    <Ionicons
+                      name="chevron-back"
+                      size={18}
+                      color={
+                        safeActivePage === 1
+                          ? "#B8B0A8"
+                          : appTheme.primaryColor
+                      }
+                    />
+                  </TouchableOpacity>
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.pagination}
+                  >
+                    {Array.from(
+                      { length: activeTotalPages },
+                      (_, index) => index + 1,
+                    ).map((page) => (
+                      <TouchableOpacity
+                        key={"active-page-" + page}
+                        onPress={() =>
+                          setActivePage(page)
+                        }
+                        style={{
+                          minWidth: 36,
+                          height: 36,
+                          borderRadius: 10,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginHorizontal: 3,
+                          backgroundColor:
+                            page === safeActivePage
+                              ? "#0F172A"
+                              : "#F1F5F9",
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 13,
+                            fontWeight: "900",
+                            color:
+                              page === safeActivePage
+                                ? "#FFFFFF"
+                                : "#475569",
+                          }}
+                        >
+                          {page}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  <TouchableOpacity
+                    disabled={
+                      safeActivePage === activeTotalPages
+                    }
+                    onPress={() =>
+                      setActivePage((page) =>
+                        Math.min(
+                          activeTotalPages,
+                          page + 1,
+                        ),
+                      )
+                    }
+                    style={styles.pageArrow}
+                  >
+                    <Ionicons
+                      name="chevron-forward"
+                      size={18}
+                      color={
+                        safeActivePage === activeTotalPages
+                          ? "#B8B0A8"
+                          : appTheme.primaryColor
+                      }
+                    />
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           )}
@@ -2503,6 +2748,7 @@ export default function CaptainOrdersScreen() {
         <View
           style={[
             styles.sectionHeader,
+            orderFilter === "active" && { display: "none" },
             {
               marginTop:
                 activeOrders.length >
@@ -2561,13 +2807,13 @@ export default function CaptainOrdersScreen() {
           </View>
         ) : (
           <>
-            <View style={styles.sectionList}>
+            <View style={[styles.sectionList, orderFilter === "active" && { display: "none" }]}>
               {paginatedHistory.map(
                 renderHistoryOrder,
               )}
             </View>
 
-            {historyTotalPages > 1 && (
+            {orderFilter !== "active" && historyTotalPages > 1 && (
               <View
                 style={styles.paginationBox}
               >
@@ -2825,21 +3071,96 @@ function Stat({
 }) {
   const styles = createStyles(appTheme);
 
+  const tone =
+    label === "كل الطلبات"
+      ? {
+          bg: "#F6EFE8",
+          border: "#D8B89A",
+          iconBg: "#E8D2BE",
+          color: "#7A4F2E",
+        }
+      : label === "النشطة"
+        ? {
+            bg: "#FFF8DB",
+            border: "#E6D27A",
+            iconBg: "#F3E7A8",
+            color: "#8A6800",
+          }
+        : label === "المكتملة"
+          ? {
+              bg: "#FFF0E0",
+              border: "#F0BD86",
+              iconBg: "#FFD8AE",
+              color: "#C45D00",
+            }
+          : {
+              bg: "#F9E8D8",
+              border: "#D9AD84",
+              iconBg: "#EFD0B1",
+              color: "#8B4F25",
+            };
+
   return (
-    <View style={styles.stat}>
-      <View style={styles.statIcon}>
+    <View
+      style={[
+        styles.stat,
+        {
+          minHeight: 92,
+          borderRadius: 16,
+          borderWidth: 1,
+          borderColor: tone.border,
+          backgroundColor: tone.bg,
+          paddingVertical: 10,
+          paddingHorizontal: 11,
+          justifyContent: "space-between",
+          shadowColor: tone.color,
+          shadowOffset: {
+            width: 0,
+            height: 2,
+          },
+          shadowOpacity: 0.08,
+          shadowRadius: 5,
+          elevation: 2,
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.statIcon,
+          {
+            backgroundColor: tone.iconBg,
+          },
+        ]}
+      >
         <Ionicons
           name={icon}
-          size={17}
-          color={appTheme.primaryColor}
+          size={18}
+          color={tone.color}
         />
       </View>
 
-      <Text style={styles.statValue}>
+      <Text
+        style={[
+          styles.statValue,
+          {
+            color: tone.color,
+            fontSize: 21,
+            fontWeight: "900",
+          },
+        ]}
+      >
         {value}
       </Text>
 
-      <Text style={styles.statLabel}>
+      <Text
+        style={[
+          styles.statLabel,
+          {
+            color: tone.color,
+            fontWeight: "800",
+          },
+        ]}
+      >
         {label}
       </Text>
     </View>

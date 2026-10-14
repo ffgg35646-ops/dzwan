@@ -389,14 +389,9 @@ export default function CreateOrderScreen() {
                   </Text>
                 </View>
 
-                <View style={styles.customerGpsCard}>
-                  <Text style={styles.customerGpsTitle}>
-                    موقع العميل
-                  </Text>
-
-                  <Text style={styles.customerGpsHint}>
-                    اختياري. يمكنك لصق رابط موقع Google Maps للعميل،
-                    وسيتم استخراج الإحداثيات تلقائيًا.
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>
+                    رابط موقع العميل
                   </Text>
 
                   <AppInput
@@ -421,44 +416,6 @@ export default function CreateOrderScreen() {
                     autoCapitalize="none"
                     keyboardType="url"
                   />
-
-                  <View style={styles.gpsRow}>
-                    <View style={styles.gpsHalf}>
-                      <Text style={styles.gpsLabel}>
-                        Latitude
-                      </Text>
-
-                      <AppInput
-                        placeholder="مثال: 30.5085"
-                        value={customerLatitude}
-                        onChangeText={setCustomerLatitude}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-
-                    <View style={styles.gpsHalf}>
-                      <Text style={styles.gpsLabel}>
-                        Longitude
-                      </Text>
-
-                      <AppInput
-                        placeholder="مثال: 47.7804"
-                        value={customerLongitude}
-                        onChangeText={setCustomerLongitude}
-                        keyboardType="decimal-pad"
-                      />
-                    </View>
-                  </View>
-
-                  {customerLatitude && customerLongitude ? (
-                    <Text style={styles.gpsSuccess}>
-                      ✓ تم تحديد موقع العميل وإرساله مع الطلب
-                    </Text>
-                  ) : (
-                    <Text style={styles.gpsOptional}>
-                      الموقع اختياري. إذا لم تحدده، سيُستخدم المحافظة والمنطقة.
-                    </Text>
-                  )}
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -630,12 +587,11 @@ const createStyles = (appTheme: ReturnType<typeof useAppTheme>) =>
     },
 
     locationCard: {
-      width: "100%",
-      padding: 12,
-      borderRadius: 18,
-      backgroundColor: "#FFF9F1",
       borderWidth: 1,
-      borderColor: "#F0D9BE",
+      borderColor: "#E7EAF0",
+      borderRadius: 16,
+      backgroundColor: "#FAFBFC",
+      padding: 12,
       marginBottom: 12,
     },
 

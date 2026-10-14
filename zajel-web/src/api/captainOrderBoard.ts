@@ -21,7 +21,7 @@ export async function rejectCaptainOrder(
   reason: string,
 ) {
   const response = await api.post(
-    `/orders/${orderId}/cancel`,
+    `/requirements-30-46/orders/${orderId}/cancel`,
     { reason },
   );
 

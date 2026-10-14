@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { useShiftSelectionStore } from "../../store/shiftSelectionStore";
 import {
   ActivityIndicator,
   Alert,
@@ -16,18 +17,7 @@ import {
   checkShift,
   getAvailableShifts,
   selectWeeklyShift,
-  changeWeeklyShift,
 } from "../../api/captain";
-
-function formatUnlockTime(value: any) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "";
-  return date.toLocaleString("ar-EG", {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "numeric", minute: "2-digit",
-  });
-}
 
 function formatShiftTime(value: any) {
   const raw = String(value ?? "").trim();
@@ -103,22 +93,41 @@ function getShifts(result: any) {
 }
 
 export default function ShiftScreen() {
+  const setSelectedShift =
+    useShiftSelectionStore(
+      (state) => state.setSelectedShift,
+    );
+
   const [shifts, setShifts] = useState<any[]>([]);
   const [assignment, setAssignment] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const savingRef = useRef(false);
 
-  const [actionMessage, setActionMessage] = useState("");
-  const [canChangeShift, setCanChangeShift] = useState(true);
-  const [nextChangeAt, setNextChangeAt] = useState<string | null>(null);
-  const [currentShift, setCurrentShift] = useState<any>(null);
+  const [actionMessage, setActionMessage] =
+    useState("");
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const selectedShiftId = String(
     assignment?.shiftId?._id ??
       assignment?.shiftId?.id ??
       assignment?.shiftId ??
       "",
   );
+  const selectedAt = (() => {
+    const explicit = new Date(assignment?.changedAt ?? NaN).getTime();
+    if (Number.isFinite(explicit)) return explicit;
+    const legacy = [
+      assignment?.weekStart,
+      assignment?.createdAt,
+      assignment?.updatedAt,
+    ].map((value) => new Date(value ?? NaN).getTime())
+      .filter((value) => Number.isFinite(value));
+    return legacy.length ? Math.max(...legacy) : NaN;
+  })();
+  const shiftChangeLocked =
+    Boolean(selectedShiftId) &&
+    Number.isFinite(selectedAt) &&
+    nowMs < selectedAt + 168 * 60 * 60 * 1000;
 
   async function load() {
     try {
@@ -165,13 +174,10 @@ export default function ShiftScreen() {
 
       setShifts(getShifts(shiftsResult));
 
-      const currentAssignment = currentResult?.assignment ?? null;
-      setAssignment(currentAssignment);
-      setCurrentShift(currentResult?.shift ?? null);
-      setCanChangeShift(
-        !currentAssignment || currentResult?.canSelectNewShift === true,
+      setAssignment(
+        currentResult?.assignment ??
+          null,
       );
-      setNextChangeAt(currentResult?.nextChangeAt ?? null);
     } catch (error: any) {
       Alert.alert(
         "تعذر تحميل الشفتات",
@@ -186,6 +192,8 @@ export default function ShiftScreen() {
 
   useEffect(() => {
     void load();
+    const interval = setInterval(() => setNowMs(Date.now()), 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   async function chooseShift(id: string) {
@@ -193,17 +201,9 @@ export default function ShiftScreen() {
       return;
     }
 
-    if (id === selectedShiftId) {
-      setActionMessage("ده الشفت الحالي بالفعل، وسيظل مستمرًا حتى لو انتهت مدة السبعة أيام.");
-      return;
-    }
-
-    if (selectedShiftId && !canChangeShift) {
-      const unlockLabel = formatUnlockTime(nextChangeAt);
+    if (shiftChangeLocked) {
       setActionMessage(
-        unlockLabel
-          ? `الشفت الحالي مستمر ولا ينتهي تلقائيًا. تقدر تغيّره اختياريًا بعد ${unlockLabel}.`
-          : "الشفت الحالي مستمر ولا ينتهي تلقائيًا. تقدر تغيّره اختياريًا بعد مرور 7 أيام من اختيارك.",
+        "تم تثبيت الشفت لمدة 7 أيام من وقت اختياره، ويمكن تغييره بعد اكتمال 168 ساعة.",
       );
       return;
     }
@@ -215,14 +215,21 @@ export default function ShiftScreen() {
     setSavingId(id);
 
     try {
-      if (selectedShiftId) {
-        await changeWeeklyShift(id);
-      } else {
-        await selectWeeklyShift(id);
-      }
+      await selectWeeklyShift(id);
+
+      const selectedShift =
+        shifts.find(
+          (item: any) =>
+            getShiftId(item) === id
+        ) || {
+          _id: id,
+        };
+
+      // اختيار الشفت يفتح كارت الصفحة الرئيسية فورًا.
+      setSelectedShift(selectedShift);
 
       setActionMessage(
-        "✅ تم حفظ اختيار الشفت. سيظل مستمرًا ولن ينتهي تلقائيًا؛ وبعد 7 أيام يمكنك تغييره اختياريًا.",
+        "✅ تم اختيار الشفت وتثبيته لمدة 7 أيام.",
       );
 
       await load();
@@ -307,7 +314,7 @@ export default function ShiftScreen() {
               جاري تحميل الشفتات...
             </Text>
           </View>
-        ) : shifts.length === 0 && !selectedShiftId ? (
+        ) : shifts.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons
               name="calendar-outline"
@@ -328,7 +335,7 @@ export default function ShiftScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.list}
           >
-            {selectedShiftId ? (
+            {shiftChangeLocked ? (
               <View
                 style={{
                   marginBottom: 12,
@@ -348,15 +355,11 @@ export default function ShiftScreen() {
                     textAlign: "center",
                   }}
                 >
-                  الشفت الحالي مستمر ولا ينتهي تلقائيًا.
+                  تم تثبيت الشفت الحالي.
                   {"\n"}
-                  {currentShift
-                    ? `الموعد: ${formatShiftTime(getShiftStart(currentShift))} – ${formatShiftTime(getShiftEnd(currentShift))}`
-                    : "اختيارك الحالي محفوظ."}
+                  لا يمكن تغييره خلال مدة الـ7 أيام الحالية.
                   {"\n"}
-                  {canChangeShift
-                    ? "يمكنك اختيار شفت آخر الآن إذا رغبت؛ التغيير اختياري."
-                    : `التغيير اختياري ومتاح بعد 7 أيام من الاختيار.${formatUnlockTime(nextChangeAt) ? ` الموعد: ${formatUnlockTime(nextChangeAt)}` : ""}`}
+                  سيظهر اختيار شفت جديد بعد انتهاء المدة.
                 </Text>
               </View>
             ) : null}
@@ -387,7 +390,7 @@ export default function ShiftScreen() {
                   key={id}
                   disabled={
                     Boolean(savingId) ||
-                    Boolean(selectedShiftId && !canChangeShift) ||
+                    shiftChangeLocked ||
                     selected
                   }
                   activeOpacity={0.82}
@@ -400,9 +403,9 @@ export default function ShiftScreen() {
                       styles.shiftCardSelected,
                     selected &&
                       styles.shiftCardSelectedLarge,
-                    selectedShiftId &&
+                    shiftChangeLocked &&
                       !selected &&
-                      !canChangeShift && {
+                      {
                         opacity: 0.45,
                       },
                   ]}

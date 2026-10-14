@@ -396,7 +396,8 @@ export default function NotificationBell() {
                 </View>
               ) : (
                 <ScrollView
-                  showsVerticalScrollIndicator={false}
+                  style={{ maxHeight: 520 }}
+                  showsVerticalScrollIndicator={true}
                   contentContainerStyle={{
                     gap: 10,
                     paddingBottom: 4,
@@ -555,6 +556,11 @@ const styles = StyleSheet.create({
 
   menu: {
     position: "absolute",
+    top: 58,
+    right: 10,
+    width: "92%",
+    maxWidth: 420,
+    maxHeight: "76%",
     padding: 10,
     borderRadius: 19,
     backgroundColor: "rgba(255,255,255,0.92)",
@@ -568,6 +574,7 @@ const styles = StyleSheet.create({
       height: 9,
     },
     elevation: 14,
+    overflow: "hidden",
   },
 
   menuHead: {

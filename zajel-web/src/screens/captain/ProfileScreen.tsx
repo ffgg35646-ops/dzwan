@@ -14,6 +14,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import Screen from "../../components/Screen";
+import WebVersionLink from "../../components/shared/WebVersionLink";
 import { useAuthStore } from "../../store/authStore";
 import { useAppTheme } from "../../theme/useAppTheme";
 import {
@@ -425,6 +426,8 @@ export default function CaptainProfileScreen() {
             </Text>
           </View>
         </View>
+
+        <WebVersionLink />
 
         <View style={styles.hero}>
           <View
