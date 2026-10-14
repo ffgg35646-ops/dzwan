@@ -32,6 +32,7 @@ import Svg, {
 import * as Location from "expo-location";
 
 import Screen from "../../components/Screen";
+import ZajelCourierIcon from "../../components/ZajelCourierIcon";
 import { useAuthStore } from "../../store/authStore";
 import {
   checkShift,
@@ -1599,11 +1600,7 @@ export default function CaptainHomeScreen() {
           {/* CENTER: logo + captain name */}
           <View style={styles.logoArea}>
             <View style={styles.logoIcon}>
-              <MaterialCommunityIcons
-                name="motorbike"
-                size={31}
-                color={ORANGE}
-              />
+              <ZajelCourierIcon size={36} color={ORANGE} />
             </View>
 
             <Text style={styles.logoText}>
