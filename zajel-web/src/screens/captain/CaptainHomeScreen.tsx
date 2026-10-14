@@ -2322,7 +2322,7 @@ export default function CaptainHomeScreen() {
                               ? "#FDBA74"
                               : "#E8DED7",
                         backgroundColor:
-                          selectedWeeklyShiftId
+                          shiftChangeLocked && !isSelected
                             ? "#F3F4F6"
                             : isSelected
                               ? "#FFF7ED"
@@ -2417,19 +2417,17 @@ export default function CaptainHomeScreen() {
                             alignItems: "center",
                             justifyContent: "center",
                             backgroundColor:
-                              selectedWeeklyShiftId
+                              shiftSaving || (shiftChangeLocked && !isSelected)
                                 ? "#D1D5DB"
                                 : isSelected
                                   ? "#F3E8DD"
-                                  : disabled
-                                    ? "#D1D5DB"
-                                    : ORANGE,
+                                  : ORANGE,
                           }}
                         >
                           <Text
                             style={{
                               color:
-                                selectedWeeklyShiftId
+                                shiftSaving || (shiftChangeLocked && !isSelected)
                                   ? "#6B7280"
                                   : isSelected
                                     ? "#8D8175"
