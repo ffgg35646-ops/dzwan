@@ -996,188 +996,135 @@ export default function CaptainHomeScreen() {
   }
 
   async function loadData() {
-    try {
-      // البيانات الأساسية فقط: لا نحجز ظهور الشاشة بسبب بيانات ثانوية.
-      const [
-        capacityResult,
-        shiftResult,
-        workAreasResult,
-      ] = await Promise.all([
-        user?.id
-          ? getCaptainCapacity(user.id)
-          : Promise.resolve(null),
+    // Never make the captain home screen wait for one slow API.
+    // Existing UI stays visible while each piece refreshes independently.
+    setLoading(false);
+    setRefreshing(false);
 
-        checkShift(),
+    const captainId = String(user?.id ?? "");
 
-        user?.id
-          ? getMyWorkAreas(user.id)
-          : Promise.resolve(null),
-      ]);
+    if (captainId) {
+      void getCaptainCapacity(captainId)
+        .then((capacityResult) => {
+          setCapacity(capacityResult);
 
-      console.log(
-        "🟠 CHECK SHIFT RESULT:",
-        JSON.stringify(shiftResult, null, 2),
-      );
+          const availableOrders = getOrders(capacityResult);
+          const firstOrder =
+            availableOrders.find((order) =>
+              [
+                "assigned",
+                "heading_to_shop",
+                "arrived_at_shop",
+                "picked_up",
+                "on_the_way",
+              ].includes(order?.status || ""),
+            ) || availableOrders[0];
 
-      setCapacity(capacityResult);
+          setCustomerLocation(getCustomerCoordinate(firstOrder));
 
-      setShift(
-        shiftResult || null,
-      );
-
-      setShiftCardOpen(
-        Boolean(
-          shiftResult?.assignment?.shiftId
-        )
-      );
-
-      const areas =
-        workAreasResult?.workAreas ||
-        workAreasResult?.areas ||
-        workAreasResult?.data ||
-        workAreasResult?.items ||
-        [];
-
-      const activeWorkAreas = Array.isArray(areas)
-        ? areas.filter(
-            (item: any) =>
-              item?.isActive !== false,
-          )
-        : [];
-
-      setWorkAreas(activeWorkAreas);
-
-      const selectedWorkArea =
-        activeWorkAreas[0] || null;
-
-      setWorkArea(selectedWorkArea);
-
-      // الشاشة الأساسية تظهر الآن ولا تنتظر:
-      // الحضور + تفاصيل الشفت الإضافية + عداد الطلبات + GPS + route.
-      setLoading(false);
-      setRefreshing(false);
-
-      // معلومات الشفت الإضافية في الخلفية.
-      void getShiftInfo()
-        .then((shiftInfoResult) => {
-          if (!shiftInfoResult) {
-            return;
-          }
-
-          setShift((previous: any) => ({
-            ...(previous || {}),
-            ...(shiftInfoResult || {}),
-            assignment:
-              previous?.assignment ??
-              shiftInfoResult?.assignment ??
-              null,
-            shift:
-              previous?.shift ??
-              shiftInfoResult?.shift ??
-              null,
-          }));
+          // GPS and route are optional enhancements, not prerequisites for orders.
+          void (async () => {
+            try {
+              const gps = await loadGps();
+              const target = getCustomerCoordinate(firstOrder);
+              if (gps && target) await buildRoute(gps, target);
+            } catch {
+              // The captain can still work without map/route data.
+            }
+          })();
         })
-        .catch(() => {});
+        .catch((error: any) => {
+          console.log(
+            "CAPTAIN HOME CAPACITY ERROR:",
+            error?.response?.data?.message || error?.message || error,
+          );
+        });
 
+      void getMyWorkAreas(captainId)
+        .then((workAreasResult) => {
+          const areas =
+            workAreasResult?.workAreas ||
+            workAreasResult?.areas ||
+            workAreasResult?.data ||
+            workAreasResult?.items ||
+            [];
+          const activeWorkAreas = Array.isArray(areas)
+            ? areas.filter((item: any) => item?.isActive !== false)
+            : [];
 
-      // عداد الطلبات المتاحة في الخلفية.
-      const selectedAreaId = String(
-        selectedWorkArea?._id ??
-          selectedWorkArea?.id ??
-          "",
-      );
-
-      if (selectedAreaId) {
-        void getCaptainOrderBoard(
-          selectedAreaId,
-        )
-          .then((board) => {
-            const activeCandidates = [
-              board?.activeOrders,
-              board?.data?.activeOrders,
-            ];
-
-            const activeList =
-              activeCandidates.find(
-                (value) => Array.isArray(value),
-              ) || [];
-
-            const availableCandidates = [
-              board?.availableOrders,
-              board?.data?.availableOrders,
-            ];
-
-            const availableList =
-              availableCandidates.find(
-                (value) => Array.isArray(value),
-              ) || [];
-
-            setActiveOrdersCount(
-              activeList.length,
-            );
-
-            setAvailableOrdersCount(
-              availableList.length,
-            );
-          })
-          .catch((boardError: any) => {
-            console.log(
-              "CAPTAIN HOME BOARD COUNT ERROR:",
-              boardError?.message ||
-                boardError,
-            );
-
-            setAvailableOrdersCount(0);
-          });
-      } else {
-        setAvailableOrdersCount(0);
-      }
-
-      // الموقع والخريطة في الخلفية.
-      const availableOrders =
-        getOrders(capacityResult);
-
-      const firstOrder =
-        availableOrders.find((order) =>
-          [
-            "assigned",
-            "heading_to_shop",
-            "arrived_at_shop",
-            "picked_up",
-            "on_the_way",
-          ].includes(
-            order?.status || "",
-          ),
-        ) || availableOrders[0];
-
-      setCustomerLocation(
-        getCustomerCoordinate(firstOrder),
-      );
-
-      void (async () => {
-        try {
-          const gps = await loadGps();
-
-          const target =
-            getCustomerCoordinate(firstOrder);
-
-          if (gps && target) {
-            await buildRoute(
-              gps,
-              target,
-            );
-          }
-        } catch {}
-      })();
-    } catch (error: any) {
-      console.log(
-        "CAPTAIN HOME LOAD ERROR:",
-        error?.message || error,
-      );
-
-      setLoading(false);
-      setRefreshing(false);
+          setWorkAreas(activeWorkAreas);
+          setWorkArea(activeWorkAreas[0] || null);
+        })
+        .catch((error: any) => {
+          console.log(
+            "CAPTAIN HOME WORK AREAS ERROR:",
+            error?.response?.data?.message || error?.message || error,
+          );
+        });
     }
+
+    // Shift status refreshes independently; an area/profile failure cannot cancel it.
+    void checkShift()
+      .then((shiftResult) => {
+        console.log(
+          "🟠 CHECK SHIFT RESULT:",
+          JSON.stringify(shiftResult, null, 2),
+        );
+        setShift(shiftResult || null);
+        setShiftCardOpen(Boolean(shiftResult?.assignment?.shiftId));
+      })
+      .catch((error: any) => {
+        console.log(
+          "CAPTAIN HOME SHIFT ERROR:",
+          error?.response?.data?.message || error?.message || error,
+        );
+      });
+
+    // Use the server's full work-area scope. Do not depend on a client-side
+    // work-area row ID (which is different from its embedded delivery area ID).
+    // Most importantly, loading work areas/capacity must not prevent order fetch.
+    void getCaptainOrderBoard()
+      .then((board) => {
+        const activeCandidates = [
+          board?.activeOrders,
+          board?.data?.activeOrders,
+        ];
+        const activeList =
+          activeCandidates.find((value) => Array.isArray(value)) || [];
+
+        const availableCandidates = [
+          board?.availableOrders,
+          board?.data?.availableOrders,
+        ];
+        const availableList =
+          availableCandidates.find((value) => Array.isArray(value)) || [];
+
+        setActiveOrdersCount(activeList.length);
+        setAvailableOrdersCount(availableList.length);
+      })
+      .catch((boardError: any) => {
+        // Keep the last known counts if a background refresh fails.
+        console.log(
+          "CAPTAIN HOME BOARD COUNT ERROR:",
+          boardError?.response?.data?.message ||
+            boardError?.message ||
+            boardError,
+        );
+      });
+
+    // Additional shift/attendance information must never gate the main screen.
+    void getShiftInfo()
+      .then((shiftInfoResult) => {
+        if (!shiftInfoResult) return;
+        setShift((previous: any) => ({
+          ...(previous || {}),
+          ...(shiftInfoResult || {}),
+          assignment:
+            previous?.assignment ?? shiftInfoResult?.assignment ?? null,
+          shift: previous?.shift ?? shiftInfoResult?.shift ?? null,
+        }));
+      })
+      .catch(() => {});
   }
 
   async function buildRoute(
