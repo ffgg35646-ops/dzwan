@@ -1,6 +1,7 @@
 import { useAppTheme } from "../../theme/useAppTheme";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -19,6 +20,7 @@ import { apiGet } from "../../api/request";
 import NotificationBell from "../../components/shared/NotificationBell";
 import SupportQuickAccess from "../../components/shared/SupportQuickAccess";
 
+const SHOP_ORDERS_CACHE_PREFIX = "@zajel/shop-home-orders-cache-v1";
 const SHOP_PRIMARY = "#E8751A";
 
 export default function ShopHomeScreen() {
@@ -83,13 +85,17 @@ export default function ShopHomeScreen() {
   const navigation = useNavigation<any>();
 
   const [orders, setOrders] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [ordersReady, setOrdersReady] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [recentPage, setRecentPage] = useState(1);
+  const ordersCacheKey =
+    `${SHOP_ORDERS_CACHE_PREFIX}:${String(user?.id ?? "anonymous")}`;
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (showRefreshIndicator = false) => {
+    if (showRefreshIndicator) setRefreshing(true);
+
     try {
       const result = await getOrders();
-
       const list = Array.isArray(result)
         ? result
         : result?.orders ||
@@ -97,17 +103,55 @@ export default function ShopHomeScreen() {
           result?.data ||
           [];
 
-      setOrders(Array.isArray(list) ? list : []);
+      if (Array.isArray(list)) {
+        setOrders(list);
+        setOrdersReady(true);
+        void AsyncStorage.setItem(
+          ordersCacheKey,
+          JSON.stringify(list),
+        ).catch(() => {});
+      }
     } catch {
-      setOrders([]);
+      // Keep the last visible/cache snapshot if the network is slow or unavailable.
     } finally {
-      setLoading(false);
+      if (showRefreshIndicator) setRefreshing(false);
     }
-  }, []);
+  }, [ordersCacheKey]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let mounted = true;
+
+    // Restore the account's last snapshot before refreshing from the API.
+    void (async () => {
+      try {
+        const cached = await AsyncStorage.getItem(ordersCacheKey);
+        if (mounted && cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            setOrders(parsed);
+            setOrdersReady(true);
+          }
+        }
+      } catch {
+        // Cache is optional.
+      }
+
+      if (mounted) void load();
+    })();
+
+    const refreshTimer = setInterval(() => {
+      void load();
+    }, 15000);
+    const unsubscribe = navigation.addListener("focus", () => {
+      void load();
+    });
+
+    return () => {
+      mounted = false;
+      clearInterval(refreshTimer);
+      unsubscribe();
+    };
+  }, [load, navigation, ordersCacheKey]);
 
   const completed = orders.filter(
     (order) =>
@@ -170,8 +214,8 @@ export default function ShopHomeScreen() {
         contentContainerStyle={styles.container}
         refreshControl={
           <RefreshControl
-            refreshing={loading}
-            onRefresh={load}
+            refreshing={refreshing}
+            onRefresh={() => void load(true)}
             tintColor={appTheme.primaryColor}
             colors={[appTheme.primaryColor]}
           />
@@ -301,19 +345,12 @@ export default function ShopHomeScreen() {
           </Text>
         </View>
 
-        {loading ? (
-          <View style={styles.loadingCard}>
-            <ActivityIndicator
-              size="large"
-              color={appTheme.primaryColor}
-            />
-
-            <Text style={styles.loadingText}>
-              جاري تحميل الطلبات...
-            </Text>
-          </View>
-        ) : (
-          <>
+        {!ordersReady ? (
+          <Text style={styles.loadingText}>
+            يتم تحديث ملخص الطلبات في الخلفية...
+          </Text>
+        ) : null}
+        <>
             {/* Stats */}
             <View style={styles.statsRow}>
               <StatCard
@@ -381,11 +418,13 @@ export default function ShopHomeScreen() {
                   </View>
 
                   <Text style={styles.emptyTitle}>
-                    لا توجد طلبات حتى الآن
+                    {ordersReady ? "لا توجد طلبات حتى الآن" : "يتم تحديث الطلبات في الخلفية"}
                   </Text>
 
                   <Text style={styles.emptyText}>
-                    عند إنشاء طلب جديد سيظهر هنا.
+                    {ordersReady
+                      ? "عند إنشاء طلب جديد سيظهر هنا."
+                      : "ستظهر الطلبات فور وصول البيانات دون انتظار اكتمال التحديث."}
                   </Text>
                 </View>
               ) : (
@@ -458,7 +497,6 @@ export default function ShopHomeScreen() {
             )}
 </View>
           </>
-        )}
       </ScrollView>
     </Screen>
   );
