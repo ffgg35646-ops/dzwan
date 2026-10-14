@@ -366,7 +366,7 @@ export async function assertCaptainInsideShift(
   const assignment = await CaptainShiftModel.findOne({
     captainId: captainObjectId,
     shiftId: { $exists: true, $ne: null },
-    isActive: true,
+    isActive: { $ne: false },
   }).sort({ changedAt: -1, updatedAt: -1, weekStart: -1 });
 
   if (!assignment) {
