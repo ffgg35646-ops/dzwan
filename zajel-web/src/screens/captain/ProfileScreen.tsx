@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import React, { useMemo, useState } from "react";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused, useNavigation } from "@react-navigation/native";
 import {
   Alert,
   Modal,
@@ -68,6 +68,8 @@ export default function CaptainProfileScreen() {
 
   const user = useAuthStore((s) => s.user);
   const setUser = useAuthStore((s) => s.setUser);
+  const logout = useAuthStore((s) => s.logout);
+  const navigation = useNavigation<any>();
 
   const [emailModalVisible, setEmailModalVisible] = useState(false);
   const [emailStep, setEmailStep] = useState<"email" | "otp">("email");
@@ -619,6 +621,24 @@ export default function CaptainProfileScreen() {
             الاسم والهاتف والمحافظة والمنطقة بيانات الحساب المسجلة، ويمكن تغيير البريد الإلكتروني أو كلمة المرور فقط.
           </Text>
         </View>
+        <Pressable
+          onPress={() => Alert.alert("تسجيل الخروج", "هل تريد تسجيل الخروج من حساب الكابتن؟", [
+            { text: "إلغاء", style: "cancel" },
+            { text: "تسجيل الخروج", style: "destructive", onPress: () => {
+              logout();
+              navigation.getParent()?.getParent()?.reset({ index: 0, routes: [{ name: "SelectRole" }] });
+            }},
+          ])}
+          style={({ pressed }) => ({
+            marginTop: 16, marginBottom: 10, minHeight: 52, borderRadius: 15,
+            borderWidth: 1, borderColor: "#FCA5A5",
+            backgroundColor: pressed ? "#FEE2E2" : "#FFF1F2",
+            flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 9,
+          })}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#B91C1C" />
+          <Text style={{ color: "#B91C1C", fontSize: 14, fontWeight: "900" }}>تسجيل الخروج</Text>
+        </Pressable>
       </ScrollView>
 
       <Modal

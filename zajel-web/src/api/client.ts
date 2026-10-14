@@ -11,34 +11,54 @@ export const api = axios.create({
   },
 });
 
+const ACCESS_TOKEN_KEY = "zajel_access_token";
+const LEGACY_TOKEN_KEY = "zajel_token";
+
 const isWeb =
   typeof window !== "undefined" &&
   typeof window.localStorage !== "undefined";
 
 async function readToken() {
   if (isWeb) {
-    return window.localStorage.getItem("zajel_access_token");
+    const current = window.localStorage.getItem(ACCESS_TOKEN_KEY);
+    if (current) return current;
+    const legacy = window.localStorage.getItem(LEGACY_TOKEN_KEY);
+    if (legacy) {
+      window.localStorage.setItem(ACCESS_TOKEN_KEY, legacy);
+      window.localStorage.removeItem(LEGACY_TOKEN_KEY);
+    }
+    return legacy;
   }
-
-  return SecureStore.getItemAsync("zajel_access_token");
+  const current = await SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
+  if (current) return current;
+  const legacy = await SecureStore.getItemAsync(LEGACY_TOKEN_KEY);
+  if (legacy) {
+    await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, legacy);
+    await SecureStore.deleteItemAsync(LEGACY_TOKEN_KEY).catch(() => undefined);
+  }
+  return legacy;
 }
 
 async function writeToken(token: string) {
   if (isWeb) {
-    window.localStorage.setItem("zajel_access_token", token);
+    window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
+    window.localStorage.removeItem(LEGACY_TOKEN_KEY);
     return;
   }
-
-  await SecureStore.setItemAsync("zajel_access_token", token);
+  await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, token);
+  await SecureStore.deleteItemAsync(LEGACY_TOKEN_KEY).catch(() => undefined);
 }
 
 async function removeToken() {
   if (isWeb) {
-    window.localStorage.removeItem("zajel_access_token");
+    window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+    window.localStorage.removeItem(LEGACY_TOKEN_KEY);
     return;
   }
-
-  await SecureStore.deleteItemAsync("zajel_access_token");
+  await Promise.all([
+    SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY).catch(() => undefined),
+    SecureStore.deleteItemAsync(LEGACY_TOKEN_KEY).catch(() => undefined),
+  ]);
 }
 
 api.interceptors.request.use(async (config) => {

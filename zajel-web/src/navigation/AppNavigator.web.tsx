@@ -1,9 +1,12 @@
 import RuntimeGate from "../components/RuntimeGate";
 import ThemeProvider from "../components/ThemeProvider";
-import React from "react";
+import React, { useEffect } from "react";
 import {
+  createNavigationContainerRef,
   NavigationContainer,
 } from "@react-navigation/native";
+import { api, clearToken, getToken } from "../api/client";
+import { useAuthStore } from "../store/authStore";
 import { createStackNavigator } from "@react-navigation/stack";
 
 import SelectRoleScreen from "../screens/auth/SelectRoleScreen";
@@ -23,15 +26,85 @@ import MaintenanceScreen from "../screens/shared/MaintenanceScreen";
 import OrderDetailsScreen from "../screens/captain/OrderDetailsScreen";
 
 const Stack = createStackNavigator();
+const navigationRef = createNavigationContainerRef<any>();
+
+function routeForRole(role: string | undefined) {
+  if (role === "captain") return "CaptainApp";
+  if (role === "shop") return "ShopApp";
+  if (role === "governorate_leader" || role === "area_leader") return "LeaderApp";
+  return "SelectRole";
+}
 
 export default function AppNavigator() {
+  const user = useAuthStore((state) => state.user);
+  const authenticated = useAuthStore((state) => state.authenticated);
+  const setUser = useAuthStore((state) => state.setUser);
+  const logout = useAuthStore((state) => state.logout);
+
+  useEffect(() => {
+    let active = true;
+    async function validateSession() {
+      try {
+        const token = await getToken();
+        if (!token) {
+          if (useAuthStore.getState().authenticated) {
+            logout();
+            if (navigationRef.isReady()) navigationRef.resetRoot({ index: 0, routes: [{ name: "SelectRole" }] });
+          }
+          return;
+        }
+        const response = await api.get("/auth/me");
+        const raw = response?.data?.user;
+        if (!active || !raw) return;
+        const nextUser = {
+          id: String(raw.id || raw._id),
+          role: raw.role,
+          name: raw.name || raw.fullName,
+          phone: raw.phone,
+          email: raw.email ?? null,
+          status: raw.status,
+          governorateId: raw.governorateId ?? null,
+          governorateName: raw.governorateName ?? null,
+          areaId: raw.areaId ?? null,
+          areaName: raw.areaName ?? null,
+          areaIds: Array.isArray(raw.areaIds) ? raw.areaIds.map(String) : [],
+          avatarUrl: raw.avatarUrl ?? null,
+        } as any;
+        setUser(nextUser);
+        const target = routeForRole(nextUser.role);
+        if (navigationRef.isReady() && navigationRef.getCurrentRoute()?.name === "SelectRole") {
+          navigationRef.resetRoot({ index: 0, routes: [{ name: target as never }] });
+        }
+      } catch (error: any) {
+        if (!active) return;
+        const status = error?.response?.status;
+        if (status === 401 || status === 403) {
+          await clearToken();
+          logout();
+          if (navigationRef.isReady()) navigationRef.resetRoot({ index: 0, routes: [{ name: "SelectRole" }] });
+        }
+      }
+    }
+    void validateSession();
+    return () => { active = false; };
+  }, []);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer
+      ref={navigationRef}
+      onReady={() => {
+        const state = useAuthStore.getState();
+        const target = routeForRole(state.user?.role);
+        if (state.authenticated && navigationRef.getCurrentRoute()?.name === "SelectRole" && target !== "SelectRole") {
+          navigationRef.resetRoot({ index: 0, routes: [{ name: target as never }] });
+        }
+      }}
+    >
 <ThemeProvider>
 <RuntimeGate>
 
       <Stack.Navigator
-        initialRouteName="SelectRole"
+        initialRouteName={authenticated ? routeForRole(user?.role) : "SelectRole"}
         screenOptions={{
           headerShown: false,
         }}

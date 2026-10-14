@@ -149,9 +149,11 @@ export default function LoginScreen() {
 
       const data = response.data;
 
-      if (data?.accessToken) {
-        await saveToken(String(data.accessToken));
+      const accessToken = data?.accessToken ?? data?.token ?? data?.data?.accessToken;
+      if (!accessToken) {
+        throw new Error("لم يصل رمز جلسة الدخول من الخادم. حاول تسجيل الدخول مرة أخرى.");
       }
+      await saveToken(String(accessToken));
 
       const raw = data?.user;
 
@@ -181,7 +183,7 @@ export default function LoginScreen() {
         user,
       );
 
-      setUser(user);
+      await setUser(user);
 
       if (user.status === "pending") {
         navigation.replace("WaitingApproval");

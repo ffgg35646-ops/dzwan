@@ -333,6 +333,8 @@ export default function CaptainOrdersScreen() {
 
   const [detailsLoadingId, setDetailsLoadingId] =
     useState<string | null>(null);
+  const [detailsErrorById, setDetailsErrorById] =
+    useState<Record<string, boolean>>({});
 
   const [rejectVisible, setRejectVisible] =
     useState(false);
@@ -1191,40 +1193,32 @@ export default function CaptainOrdersScreen() {
     return null;
   }
 
-  async function toggleHistoryDetails(
-    orderId: string,
-  ) {
+  async function loadHistoryDetails(orderId: string) {
     if (!orderId) return;
+    setDetailsErrorById((current) => ({ ...current, [orderId]: false }));
+    setDetailsLoadingId(orderId);
+    try {
+      const freshOrder = await getOrder(orderId);
+      const details = freshOrder?.order || freshOrder?.data || freshOrder;
+      if (!details || typeof details !== "object") throw new Error("Empty order details response");
+      setDetailsById((current) => ({ ...current, [orderId]: details }));
+    } catch (error) {
+      console.warn("CAPTAIN ORDER DETAILS LOAD FAILED:", error);
+      setDetailsErrorById((current) => ({ ...current, [orderId]: true }));
+    } finally {
+      setDetailsLoadingId((current) => current === orderId ? null : current);
+    }
+  }
 
+  function toggleHistoryDetails(orderId: string) {
+    if (!orderId) return;
     if (expandedOrderId === orderId) {
       setExpandedOrderId(null);
       return;
     }
-
     setExpandedOrderId(orderId);
-
-    if (detailsById[orderId]) {
-      return;
-    }
-
-    try {
-      setDetailsLoadingId(orderId);
-
-      const freshOrder =
-        await getOrder(orderId);
-
-      setDetailsById((current) => ({
-        ...current,
-        [orderId]:
-          freshOrder?.order ||
-          freshOrder?.data ||
-          freshOrder,
-      }));
-    } catch {
-      // نحتفظ ببيانات القائمة إذا تعذر تحميل التفاصيل.
-    } finally {
-      setDetailsLoadingId(null);
-    }
+    if (detailsById[orderId]) return;
+    void loadHistoryDetails(orderId);
   }
 
   function renderCompactOrderDetails(order: any) {
@@ -1261,6 +1255,17 @@ export default function CaptainOrdersScreen() {
           >
             جاري تحميل التفاصيل...
           </Text>
+        </View>
+      );
+    }
+
+    if (detailsErrorById[id] && !detailsById[id]) {
+      return (
+        <View style={{ marginTop: 10, padding: 16, borderRadius: 16, backgroundColor: "#FFF1F2", borderWidth: 1, borderColor: "#FECACA", alignItems: "center", gap: 9 }}>
+          <Text style={{ color: "#991B1B", fontSize: 12, fontWeight: "800" }}>تعذر تحميل تفاصيل الطلب.</Text>
+          <TouchableOpacity activeOpacity={0.8} onPress={() => void loadHistoryDetails(id)} style={{ paddingHorizontal: 15, paddingVertical: 9, borderRadius: 10, backgroundColor: "#B91C1C" }}>
+            <Text style={{ color: "#FFFFFF", fontSize: 12, fontWeight: "900" }}>إعادة المحاولة</Text>
+          </TouchableOpacity>
         </View>
       );
     }
