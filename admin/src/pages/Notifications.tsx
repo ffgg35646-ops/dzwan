@@ -7,9 +7,9 @@ import {
   Search,
   Send,
   Store,
-  Truck,
   Users,
 } from "lucide-react";
+import MotorbikeIcon from "../components/MotorbikeIcon";
 import { api } from "../lib/api";
 
 type Target =
@@ -401,7 +401,7 @@ export default function Notifications() {
     key: Target;
     title: string;
     description: string;
-    icon: typeof Store;
+    icon: React.ComponentType<{ size?: number }>;
   }> = [
     {
       key: "all-shops",
@@ -415,7 +415,7 @@ export default function Notifications() {
       title: "جميع الكباتن",
       description:
         "إرسال الإشعار إلى جميع الكباتن النشطين.",
-      icon: Truck,
+      icon: MotorbikeIcon,
     },
     {
       key: "selected-shops",
