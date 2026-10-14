@@ -287,9 +287,6 @@ export default function ShopOrdersScreen() {
 
   const [detailsById, setDetailsById] =
     useState<Record<string, any>>({});
-
-  const [detailsLoadingId, setDetailsLoadingId] =
-    useState<string | null>(null);
   const [detailsErrorById, setDetailsErrorById] =
     useState<Record<string, boolean>>({});
 
@@ -459,18 +456,27 @@ export default function ShopOrdersScreen() {
 
   async function loadHistoryDetails(orderId: string) {
     if (!orderId) return;
+
     setDetailsErrorById((current) => ({ ...current, [orderId]: false }));
-    setDetailsLoadingId(orderId);
+
     try {
       const freshOrder = await getOrder(orderId);
-      const details = freshOrder?.order || freshOrder?.data || freshOrder;
-      if (!details || typeof details !== "object") throw new Error("Empty order details response");
-      setDetailsById((current) => ({ ...current, [orderId]: details }));
+      const details =
+        freshOrder?.order ||
+        freshOrder?.data ||
+        freshOrder;
+
+      if (!details || typeof details !== "object") {
+        throw new Error("Empty order details response");
+      }
+
+      setDetailsById((current) => ({
+        ...current,
+        [orderId]: details,
+      }));
     } catch (error) {
-      console.warn("SHOP ORDER DETAILS LOAD FAILED:", error);
+      console.warn("ORDER DETAILS BACKGROUND REFRESH FAILED:", error);
       setDetailsErrorById((current) => ({ ...current, [orderId]: true }));
-    } finally {
-      setDetailsLoadingId((current) => current === orderId ? null : current);
     }
   }
 
@@ -489,22 +495,7 @@ export default function ShopOrdersScreen() {
     const id = getOrderId(order);
     const details = detailsById[id] || order;
 
-    if (detailsLoadingId === id) {
-      return (
-        <View style={styles.loadingDetails}>
-          <ActivityIndicator
-            size="small"
-            color={SHOP_PRIMARY}
-          />
-
-          <Text style={styles.loadingDetailsText}>
-            جاري تحميل التفاصيل...
-          </Text>
-        </View>
-      );
-    }
-
-    if (detailsErrorById[id] && !detailsById[id]) {
+    if (detailsErrorById[id] && !detailsById[id] && !order) {
       return (
         <View style={{ marginTop: 10, padding: 16, borderRadius: 16, backgroundColor: "#FFF1F2", borderWidth: 1, borderColor: "#FECACA", alignItems: "center", gap: 9 }}>
           <Text style={{ color: "#991B1B", fontSize: 12, fontWeight: "800" }}>تعذر تحميل تفاصيل الطلب.</Text>
