@@ -303,7 +303,7 @@ export default function LoginScreen() {
             <MaterialCommunityIcons
               name={
                 role === "captain"
-                  ? "truck-fast-outline"
+                  ? "motorbike"
                   : "storefront-outline"
               }
               size={30}
