@@ -487,6 +487,25 @@ export async function getCaptainOrderBoard(
           validObjectId(String(item?.governorateId || ""))
       );
 
+    // Legacy captains may have a region on the User record but no
+    // CaptainWorkArea row. Keep access scoped to that exact area/governorate.
+    const legacyAreaId = String(captain.areaId || "");
+    const legacyGovernorateId = String(captain.governorateId || "");
+    if (
+      validObjectId(legacyAreaId) &&
+      validObjectId(legacyGovernorateId) &&
+      !orderScopePairs.some(
+        (pair: any) =>
+          String(pair.areaId) === legacyAreaId &&
+          String(pair.governorateId) === legacyGovernorateId
+      )
+    ) {
+      orderScopePairs.push({
+        areaId: legacyAreaId,
+        governorateId: legacyGovernorateId,
+      });
+    }
+
     const scopedPairs = selectedAreaAllowed
       ? orderScopePairs.filter(
           (item: any) =>
@@ -720,6 +739,24 @@ export async function claimCaptainOrder(
           validObjectId(String(item?.areaId || "")) &&
           validObjectId(String(item?.governorateId || ""))
       );
+
+    // Match the board's legacy-region fallback so a visible order can also be claimed.
+    const legacyAreaId = String(captain.areaId || "");
+    const legacyGovernorateId = String(captain.governorateId || "");
+    if (
+      validObjectId(legacyAreaId) &&
+      validObjectId(legacyGovernorateId) &&
+      !orderScopePairs.some(
+        (pair: any) =>
+          String(pair.areaId) === legacyAreaId &&
+          String(pair.governorateId) === legacyGovernorateId
+      )
+    ) {
+      orderScopePairs.push({
+        areaId: legacyAreaId,
+        governorateId: legacyGovernorateId,
+      });
+    }
 
     if (orderScopePairs.length === 0) {
       res.status(403).json({
