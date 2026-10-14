@@ -413,7 +413,7 @@ export default function CaptainOrdersScreen() {
 
         setAvailableOrders(normalizedList);
         void AsyncStorage.setItem(
-          AVAILABLE_ordersCacheKey,
+          availableOrdersCacheKey,
           JSON.stringify(normalizedList),
         ).catch(() => {});
       } catch (error: any) {
@@ -462,7 +462,7 @@ export default function CaptainOrdersScreen() {
     void (async () => {
       try {
         const cachedAvailable = await AsyncStorage.getItem(
-          AVAILABLE_ordersCacheKey,
+          availableOrdersCacheKey,
         );
         if (mounted && cachedAvailable) {
           const parsedAvailable = JSON.parse(cachedAvailable);
