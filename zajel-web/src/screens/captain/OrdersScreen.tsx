@@ -401,14 +401,21 @@ export default function CaptainOrdersScreen() {
           response?.availableOrders ||
           response?.data?.availableOrders ||
           [];
+        const normalizedList = Array.isArray(list)
+          ? sortNewestFirst(list)
+          : [];
 
-        setAvailableOrders(
-          Array.isArray(list)
-            ? sortNewestFirst(list)
-            : [],
+        setAvailableOrders(normalizedList);
+        void AsyncStorage.setItem(
+          AVAILABLE_ORDERS_CACHE_KEY,
+          JSON.stringify(normalizedList),
+        ).catch(() => {});
+      } catch (error: any) {
+        // A temporary network/API failure must not erase visible orders.
+        console.log(
+          "CAPTAIN AVAILABLE ORDERS REFRESH ERROR:",
+          error?.response?.data?.message || error?.message || error,
         );
-      } catch {
-        setAvailableOrders([]);
       } finally {
         setAvailableLoading(false);
       }
@@ -428,15 +435,6 @@ export default function CaptainOrdersScreen() {
           }
         }
 
-        const cachedAvailable = await AsyncStorage.getItem(
-          AVAILABLE_ORDERS_CACHE_KEY,
-        );
-        if (cachedAvailable) {
-          const parsedAvailable = JSON.parse(cachedAvailable);
-          if (Array.isArray(parsedAvailable)) {
-            setAvailableOrders(sortNewestFirst(parsedAvailable));
-          }
-        }
       } catch {
         // الكاش اختياري؛ لا يمنع جلب البيانات من السيرفر.
       }
@@ -452,14 +450,35 @@ export default function CaptainOrdersScreen() {
   }, [load]);
 
   useEffect(() => {
-    loadAvailableOrders();
+    let mounted = true;
 
-    const timer = setInterval(
-      loadAvailableOrders,
-      10000,
-    );
+    // Restore cached orders first, then replace them with the live server result.
+    void (async () => {
+      try {
+        const cachedAvailable = await AsyncStorage.getItem(
+          AVAILABLE_ORDERS_CACHE_KEY,
+        );
+        if (mounted && cachedAvailable) {
+          const parsedAvailable = JSON.parse(cachedAvailable);
+          if (Array.isArray(parsedAvailable)) {
+            setAvailableOrders(sortNewestFirst(parsedAvailable));
+          }
+        }
+      } catch {
+        // Cache is optional and must never block live orders.
+      }
 
-    return () => clearInterval(timer);
+      if (mounted) void loadAvailableOrders();
+    })();
+
+    const timer = setInterval(() => {
+      void loadAvailableOrders();
+    }, 10000);
+
+    return () => {
+      mounted = false;
+      clearInterval(timer);
+    };
   }, [loadAvailableOrders]);
 
   const activeOrders = useMemo(() => {
