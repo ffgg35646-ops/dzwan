@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useShiftSelectionStore } from "../../store/shiftSelectionStore";
 import {
   ActivityIndicator,
@@ -13,12 +14,15 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 
 import Screen from "../../components/Screen";
+import { useAuthStore } from "../../store/authStore";
 import {
   checkShift,
   getAvailableShifts,
   selectWeeklyShift,
   changeWeeklyShift,
 } from "../../api/captain";
+
+const SHIFT_CACHE_PREFIX = "@zajel/captain-shifts-cache-v1";
 
 function formatShiftTime(value: any) {
   const raw = String(value ?? "").trim();
@@ -99,15 +103,30 @@ export default function ShiftScreen() {
       (state) => state.setSelectedShift,
     );
 
+  const user = useAuthStore((state) => state.user);
+  const cacheKey = `${SHIFT_CACHE_PREFIX}:${String(user?.id ?? "anonymous")}`;
   const [shifts, setShifts] = useState<any[]>([]);
   const [assignment, setAssignment] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [hasSnapshot, setHasSnapshot] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const savingRef = useRef(false);
+  const snapshotRef = useRef<{ shifts: any[]; assignment: any }>({
+    shifts: [],
+    assignment: null,
+  });
 
   const [actionMessage, setActionMessage] =
     useState("");
   const [nowMs, setNowMs] = useState(() => Date.now());
+
+  const persistSnapshot = useCallback(
+    (patch: Partial<{ shifts: any[]; assignment: any }>) => {
+      const next = { ...snapshotRef.current, ...patch };
+      snapshotRef.current = next;
+      void AsyncStorage.setItem(cacheKey, JSON.stringify(next)).catch(() => {});
+    },
+    [cacheKey],
+  );
   const selectedShiftId = String(
     assignment?.shiftId?._id ??
       assignment?.shiftId?.id ??
@@ -130,72 +149,79 @@ export default function ShiftScreen() {
     Number.isFinite(selectedAt) &&
     nowMs < selectedAt + 168 * 60 * 60 * 1000;
 
-  async function load() {
-    try {
-      setLoading(true);
-
-      let shiftsResult: any = null;
-      let currentResult: any = null;
-
-      try {
-        shiftsResult = await getAvailableShifts();
-
+  const load = useCallback(async () => {
+    // Fetch the timetable and the current assignment independently.
+    // The visible screen never waits for either request to finish.
+    const refreshShifts = getAvailableShifts()
+      .then((result) => {
+        const nextShifts = getShifts(result);
+        setShifts(nextShifts);
+        setHasSnapshot(true);
+        persistSnapshot({ shifts: nextShifts });
+      })
+      .catch((error: any) => {
         console.log(
-          "🟣 AVAILABLE SHIFTS RESULT:",
-          JSON.stringify(shiftsResult, null, 2),
+          "AVAILABLE SHIFTS BACKGROUND REFRESH ERROR:",
+          error?.response?.data?.message || error?.message || error,
         );
-      } catch (error: any) {
+      });
+
+    const refreshAssignment = checkShift()
+      .then((result) => {
+        const nextAssignment = result?.assignment ?? null;
+        setAssignment(nextAssignment);
+        persistSnapshot({ assignment: nextAssignment });
+      })
+      .catch((error: any) => {
         console.log(
-          "🔴 AVAILABLE SHIFTS ERROR:",
-          error?.response?.status,
-          error?.response?.data ||
-            error?.message ||
-            error,
+          "CURRENT SHIFT BACKGROUND REFRESH ERROR:",
+          error?.response?.data?.message || error?.message || error,
         );
+      });
 
-        throw error;
-      }
-
-      try {
-        currentResult = await checkShift();
-
-        console.log(
-          "🟣 CURRENT SHIFT RESULT:",
-          JSON.stringify(currentResult, null, 2),
-        );
-      } catch (error: any) {
-        console.log(
-          "🔴 CURRENT SHIFT ERROR:",
-          error?.response?.status,
-          error?.response?.data ||
-            error?.message ||
-            error,
-        );
-      }
-
-      setShifts(getShifts(shiftsResult));
-
-      setAssignment(
-        currentResult?.assignment ??
-          null,
-      );
-    } catch (error: any) {
-      Alert.alert(
-        "تعذر تحميل الشفتات",
-        error?.response?.data?.message ||
-          error?.response?.data?.error ||
-          "تعذر الاتصال بالخادم.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+    await Promise.all([refreshShifts, refreshAssignment]);
+  }, [persistSnapshot]);
 
   useEffect(() => {
-    void load();
-    const interval = setInterval(() => setNowMs(Date.now()), 30_000);
-    return () => clearInterval(interval);
-  }, []);
+    let mounted = true;
+
+    // Show the account's saved shift list immediately, then sync in background.
+    void (async () => {
+      try {
+        const cached = await AsyncStorage.getItem(cacheKey);
+        if (mounted && cached) {
+          const parsed = JSON.parse(cached);
+          if (parsed && typeof parsed === "object") {
+            snapshotRef.current = {
+              shifts: Array.isArray(parsed.shifts) ? parsed.shifts : [],
+              assignment: parsed.assignment ?? null,
+            };
+            if (Array.isArray(parsed.shifts)) {
+              setShifts(parsed.shifts);
+              setHasSnapshot(true);
+            }
+            if (Object.prototype.hasOwnProperty.call(parsed, "assignment")) {
+              setAssignment(parsed.assignment ?? null);
+            }
+          }
+        }
+      } catch {
+        // Cache is optional; the server remains the source of truth.
+      }
+
+      if (mounted) void load();
+    })();
+
+    const clockInterval = setInterval(() => setNowMs(Date.now()), 30_000);
+    const refreshInterval = setInterval(() => void load(), 30_000);
+
+    return () => {
+      mounted = false;
+      clearInterval(clockInterval);
+      clearInterval(refreshInterval);
+    };
+  }, [cacheKey, load]);
+
 
   async function chooseShift(id: string) {
     if (!id || savingRef.current || savingId) {
@@ -308,15 +334,20 @@ export default function ShiftScreen() {
         ) : null}
 
 
-        {loading ? (
-          <View style={styles.loading}>
-            <ActivityIndicator
-              size="small"
-              color="#F97316"
+        {!hasSnapshot && shifts.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons
+              name="cloud-download-outline"
+              size={38}
+              color="#B8AAA0"
             />
 
-            <Text style={styles.loadingText}>
-              جاري تحميل الشفتات...
+            <Text style={styles.emptyTitle}>
+              يتم تحديث الشفتات في الخلفية
+            </Text>
+
+            <Text style={styles.emptyText}>
+              ستظهر بيانات الشفتات هنا فور وصولها، ويمكنك استخدام الصفحة دون انتظار اكتمال التحميل.
             </Text>
           </View>
         ) : shifts.length === 0 ? (
