@@ -38,7 +38,7 @@ const AVATARS: Array<{
   { icon: "shield-checkmark", background: "#FCE7F3", foreground: "#BE185D" },
   { icon: "speedometer", background: "#F3E8FF", foreground: "#7E22CE" },
   { icon: "star", background: "#FFEDD5", foreground: "#C2410C" },
-  { icon: "car-sport", background: "#CCFBF1", foreground: "#0F766E" },
+  { icon: "motorbike", background: "#CCFBF1", foreground: "#0F766E" },
   { icon: "map", background: "#DBEAFE", foreground: "#1D4ED8" },
   { icon: "sparkles", background: "#F1F5F9", foreground: "#334155" },
 ];
