@@ -33,9 +33,16 @@ export function isWithinShift(
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
 
+  // Enforce the shift window using Baghdad time regardless of the server region.
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Baghdad",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
   const current =
-    now.getHours() * 60 +
-    now.getMinutes();
+    Number(parts.find((part) => part.type === "hour")?.value) * 60 +
+    Number(parts.find((part) => part.type === "minute")?.value);
 
   const s = sh * 60 + sm;
   const e = eh * 60 + em;
