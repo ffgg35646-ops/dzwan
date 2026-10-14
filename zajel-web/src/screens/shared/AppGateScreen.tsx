@@ -55,7 +55,6 @@ export function AppGateScreen({ children }: Props) {
         }
       } catch {
         // لا نمنع التطبيق بالكامل عند فشل فحص البوابة.
-      } finally {
       }
     }
 
