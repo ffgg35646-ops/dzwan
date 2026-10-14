@@ -16,6 +16,7 @@ export default function ShopProfileScreen() {
   const appTheme = useAppTheme();
   const styles = createStyles(appTheme);
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
 
   const name = user?.name || "حساب المتجر";
   const phone = user?.phone || "غير متوفر";
@@ -156,6 +157,31 @@ export default function ShopProfileScreen() {
             على المنصة.
           </Text>
         </View>
+
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={logout}
+          activeOpacity={0.75}
+          style={{
+            flexDirection: "row-reverse",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 9,
+            backgroundColor: "#FEF2F2",
+            borderColor: "#FECACA",
+            borderWidth: 1,
+            borderRadius: 16,
+            paddingVertical: 14,
+            paddingHorizontal: 18,
+            marginTop: 16,
+            marginBottom: 24,
+          }}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#B91C1C" />
+          <Text style={{ color: "#B91C1C", fontSize: 15, fontWeight: "900" }}>
+            تسجيل الخروج
+          </Text>
+        </TouchableOpacity>
       </View>
     </Screen>
   );

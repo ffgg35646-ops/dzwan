@@ -1,7 +1,6 @@
 
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Linking,
   StyleSheet,
   Text,
@@ -60,18 +59,7 @@ export default function RuntimeGate({
     };
   }, [auth?.authenticated, auth?.accountType]);
 
-  if (loading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-        <Text style={styles.text}>
-          جاري تجهيز التطبيق...
-        </Text>
-      </View>
-    );
-  }
-
-  if (maintenance) {
+  if (!loading && maintenance) {
     return (
       <View style={styles.center}>
         <Text style={styles.icon}>🛠️</Text>
@@ -85,7 +73,7 @@ export default function RuntimeGate({
     );
   }
 
-  if (forceUpdate) {
+  if (!loading && forceUpdate) {
     return (
       <View style={styles.center}>
         <Text style={styles.icon}>⬆️</Text>
