@@ -1,0 +1,58 @@
+{
+  "name": "zajel-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "index.ts",
+  "scripts": {
+    "start": "expo start",
+    "web": "expo start --web",
+    "build": "npx expo install --fix && npx expo export --platform web"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "*",
+    "@expo/vector-icons": "*",
+    "@react-native-async-storage/async-storage": "*",
+    "@react-navigation/bottom-tabs": "*",
+    "@react-navigation/elements": "*",
+    "@react-navigation/native": "*",
+    "@react-navigation/native-stack": "*",
+    "@react-navigation/stack": "*",
+    "axios": "*",
+    "expo": "~57.0.21",
+    "expo-asset": "*",
+    "expo-constants": "*",
+    "expo-device": "*",
+    "expo-font": "*",
+    "expo-haptics": "*",
+    "expo-image-picker": "*",
+    "expo-linear-gradient": "*",
+    "expo-linking": "*",
+    "expo-location": "*",
+    "expo-notifications": "*",
+    "expo-secure-store": "*",
+    "expo-status-bar": "*",
+    "expo-file-system": "*",
+    "expo-image-manipulator": "*",
+    "expo-sharing": "*",
+    "expo-web-browser": "*",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-native": "0.85.0",
+    "react-native-gesture-handler": "*",
+    "react-native-reanimated": "*",
+    "react-native-safe-area-context": "*",
+    "react-native-screens": "*",
+    "react-native-svg": "*",
+    "react-native-web": "~0.21.2",
+    "zustand": "*",
+    "babel-preset-expo": "*"
+  },
+  "devDependencies": {
+    "@types/react": "*",
+    "typescript": "*"
+  }
+}
