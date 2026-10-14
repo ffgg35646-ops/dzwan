@@ -59,14 +59,6 @@ function isInsideShift(
   );
 }
 
-function getCurrentDayIndex(date: Date): number {
-  const dayName = new Intl.DateTimeFormat("en-US", {
-    timeZone: "Asia/Baghdad",
-    weekday: "long",
-  }).format(date).toLowerCase();
-  return ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"].indexOf(dayName);
-}
-
 function getBaghdadMinutes(date: Date): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Baghdad",
@@ -83,8 +75,6 @@ export async function checkStrictShift(
   captainId: string,
   date = new Date(),
 ): Promise<StrictShiftResult> {
-  const dayIndex = getCurrentDayIndex(date);
-
   const shifts = await CaptainShiftModel.find({
     captainId,
     isActive: true,
@@ -123,46 +113,6 @@ export async function checkStrictShift(
         reason: "IN_SHIFT",
         shiftId: String(shift._id),
       };
-    }
-
-    // For a captain's selected assignment, the shift repeats daily.
-    // Keep weekday filtering only for legacy records that are shift definitions,
-    // not assignments pointing at a selected shift.
-    const rawShiftDay = (assignment as any).shiftId
-      ? null
-      : (shift as any).dayOfWeek ??
-        (shift as any).day ??
-        null;
-
-    if (
-      rawShiftDay !== null &&
-      rawShiftDay !== undefined &&
-      rawShiftDay !== ""
-    ) {
-      const numericShiftDay = Number(rawShiftDay);
-
-      if (Number.isInteger(numericShiftDay)) {
-        if (numericShiftDay !== dayIndex) {
-          continue;
-        }
-      } else {
-        const names = [
-          "sunday",
-          "monday",
-          "tuesday",
-          "wednesday",
-          "thursday",
-          "friday",
-          "saturday",
-        ];
-
-        if (
-          String(rawShiftDay).toLowerCase() !==
-          names[dayIndex]
-        ) {
-          continue;
-        }
-      }
     }
 
     const start =
