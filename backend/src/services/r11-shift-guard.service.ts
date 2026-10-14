@@ -15,7 +15,16 @@ export function isInsideShift(
 ) {
   const start = minutes(shift.startTime);
   const end = minutes(shift.endTime);
-  const current = now.getHours() * 60 + now.getMinutes();
+  // Use Baghdad time consistently; serverless regions may run in UTC.
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Baghdad",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  const current =
+    Number(parts.find((part) => part.type === "hour")?.value) * 60 +
+    Number(parts.find((part) => part.type === "minute")?.value);
 
   if (start === end) return true;
   if (start < end) return current >= start && current < end;
