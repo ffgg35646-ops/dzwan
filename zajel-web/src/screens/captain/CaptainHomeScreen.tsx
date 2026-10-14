@@ -34,7 +34,6 @@ import MapView, { Marker, Polyline } from "../../components/maps/MapView";
 import Screen from "../../components/Screen";
 import { useAuthStore } from "../../store/authStore";
 import {
-  attendanceIn,
   checkShift,
   getCaptainCapacity,
   getMyWorkAreas,
@@ -43,7 +42,6 @@ import {
   selectWeeklyShift,
 } from "../../api/captain";
 import {
-  getAttendanceHistory,
   getShiftInfo,
 } from "../../api/shiftAttendanceRuntime";
 import CaptainOrderBoard from "../../components/captain/CaptainOrderBoard";
@@ -741,7 +739,6 @@ export default function CaptainHomeScreen() {
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [attendanceLoading, setAttendanceLoading] = useState(false);
 
   const [capacity, setCapacity] = useState<any>(null);
   const [shift, setShift] = useState<any>(null);
@@ -760,7 +757,6 @@ export default function CaptainHomeScreen() {
 
   const [workArea, setWorkArea] = useState<any>(null);
   const [workAreas, setWorkAreas] = useState<any[]>([]);
-  const [attendance, setAttendance] = useState<any>(null);
 
   const [location, setLocation] = useState<Coordinate | null>(null);
   const [customerLocation, setCustomerLocation] =
@@ -979,7 +975,6 @@ export default function CaptainHomeScreen() {
         shiftResult,
         shiftInfoResult,
         workAreasResult,
-        attendanceResult,
       ] = await Promise.all([
         user?.id
           ? getCaptainCapacity(user.id)
@@ -992,8 +987,6 @@ export default function CaptainHomeScreen() {
         user?.id
           ? getMyWorkAreas(user.id)
           : Promise.resolve(null),
-
-        getAttendanceHistory().catch(() => null),
       ]);
 
       console.log("🟠 CHECK SHIFT RESULT:", JSON.stringify(shiftResult, null, 2));
@@ -1022,7 +1015,6 @@ export default function CaptainHomeScreen() {
 
       setCapacity(capacityResult);
       setShift(mergedShift);
-      setAttendance(attendanceResult);
 
       const areas =
         workAreasResult?.workAreas ||
@@ -1442,70 +1434,6 @@ export default function CaptainHomeScreen() {
     await loadData();
   }
 
-  const attendanceRows =
-    Array.isArray(attendance?.attendance)
-      ? attendance.attendance
-      : Array.isArray(attendance)
-        ? attendance
-        : [];
-
-  const todayAttendance =
-    attendanceRows.find((row: any) => {
-      const attendanceDate =
-        row?.clockInAt ||
-        row?.checkIn ||
-        row?.date;
-
-      if (!attendanceDate) return false;
-
-      const rowDate = new Date(attendanceDate);
-      const now = new Date();
-
-      return (
-        rowDate.getFullYear() === now.getFullYear() &&
-        rowDate.getMonth() === now.getMonth() &&
-        rowDate.getDate() === now.getDate()
-      );
-    }) || null;
-
-  const hasTodayAttendance =
-    Boolean(
-      todayAttendance?.clockInAt ||
-      todayAttendance?.checkIn
-    );
-
-  async function handleCheckIn() {
-    if (
-      !user?.id ||
-      hasTodayAttendance ||
-      attendanceLoading
-    ) {
-      return;
-    }
-
-    try {
-      setAttendanceLoading(true);
-
-      await attendanceIn(user.id);
-
-      Alert.alert(
-        "تم تسجيل الحضور",
-        "تم تسجيل حضورك للشفت بنجاح.",
-      );
-
-      await loadData();
-    } catch (error: any) {
-      Alert.alert(
-        "تعذر تسجيل الحضور",
-        error?.response?.data?.message ||
-          error?.message ||
-          "حدث خطأ أثناء تسجيل الحضور.",
-      );
-    } finally {
-      setAttendanceLoading(false);
-    }
-  }
-
   const mapCenter =
     customerLocation || location;
 
@@ -1797,58 +1725,6 @@ export default function CaptainHomeScreen() {
 
           </View>
         </LinearGradient>
-
-        {/* ATTENDANCE ACTIONS */}
-        <View style={styles.attendanceActions}>
-          <Pressable
-            onPress={handleCheckIn}
-            disabled={
-              !user?.id ||
-              hasTodayAttendance ||
-              attendanceLoading
-            }
-            style={({ pressed }) => [
-              styles.attendanceActionButton,
-              styles.attendanceCheckInButton,
-              (
-                !user?.id ||
-                hasTodayAttendance ||
-                attendanceLoading
-              ) && styles.attendanceDisabledButton,
-              pressed && {
-                opacity: 0.9,
-                transform: [{ scale: 0.98 }],
-              },
-            ]}
-          >
-            {attendanceLoading ? (
-              <ActivityIndicator
-                size="small"
-                color="#FFFFFF"
-              />
-            ) : (
-              <>
-                <View style={styles.attendanceActionIcon}>
-                  <Ionicons
-                    name={
-                      hasTodayAttendance
-                        ? "checkmark-circle-outline"
-                        : "log-in-outline"
-                    }
-                    size={20}
-                    color="#FFFFFF"
-                  />
-                </View>
-
-                <Text style={styles.attendanceActionTitle}>
-                  {hasTodayAttendance
-                    ? "تم تسجيل الحضور اليوم"
-                    : "تسجيل الحضور"}
-                </Text>
-              </>
-            )}
-          </Pressable>
-        </View>
 
         {/* ORDER SUMMARY */}
         <View
@@ -3290,60 +3166,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-
-  attendanceActions: {
-    flexDirection: "row",
-    gap: 10,
-    marginTop: 18,
-    marginBottom: 16,
-  },
-
-  attendanceActionButton: {
-    flex: 1,
-    minHeight: 48,
-    borderRadius: 15,
-    paddingHorizontal: 10,
-    flexDirection: "row-reverse",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 7,
-  },
-
-  attendanceCheckInButton: {
-    backgroundColor: GREEN,
-  },
-
-  attendanceCheckOutButton: {
-    backgroundColor: RED,
-  },
-
-  attendanceDisabledButton: {
-    opacity: 0.38,
-  },
-
-  attendanceActionIcon: {
-    width: 29,
-    height: 29,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  attendanceActionTitle: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-
-  attendanceHint: {
-    color: MUTED,
-    fontSize: 11,
-    fontWeight: "700",
-    textAlign: "center",
-    marginTop: -3,
-    marginBottom: 2,
-  },
-
 
   mapCard: {
     marginTop: 0,
