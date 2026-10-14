@@ -10,6 +10,45 @@ import { CaptainShiftModel } from "../models/CaptainShift.js";
 import { getBaghdadDayBounds } from "../services/captain-shift-management.service.js";
 import { Types } from "mongoose";
 
+// A daily attendance entry is inferred from authenticated work activity.
+// Failure to write an observational record must never block work or orders.
+async function recordAttendanceWithoutBlocking(captainId: string) {
+  try {
+    const now = new Date();
+    const day = getBaghdadDayBounds(now);
+    const captainObjectId = new Types.ObjectId(captainId);
+    const assignment = await CaptainShiftModel.findOne({
+      captainId: captainObjectId,
+      shiftId: { $exists: true, $ne: null },
+      isActive: { $ne: false },
+    })
+      .sort({ changedAt: -1, updatedAt: -1, weekStart: -1 })
+      .select("shiftId")
+      .lean();
+
+    await CaptainAttendanceModel.updateOne(
+      {
+        captainId: captainObjectId,
+        date: { $gte: day.start, $lt: day.end },
+      },
+      {
+        $setOnInsert: {
+          captainId: captainObjectId,
+          date: day.start,
+          shiftId: assignment?.shiftId || null,
+          clockInAt: now,
+          clockOutAt: null,
+          durationMinutes: 0,
+          status: "present",
+        },
+      },
+      { upsert: true },
+    );
+  } catch (error) {
+    console.error("Automatic attendance log failed:", error);
+  }
+}
+
 export async function setCaptainOnline(
   req: AuthenticatedRequest,
   res: Response,
@@ -60,45 +99,8 @@ export async function setCaptainOnline(
       });
     }
 
-    // Attendance is observational, not a prerequisite for being online.
-    // Record it once per Baghdad day after the work-state update succeeded.
-    // Duplicate online requests are safe, and a logging failure never
-    // prevents the captain from receiving orders.
-    if (online) {
-      try {
-        const now = new Date();
-        const day = getBaghdadDayBounds(now);
-        const captainObjectId = new Types.ObjectId(captainId);
-        const assignment = await CaptainShiftModel.findOne({
-          captainId: captainObjectId,
-          shiftId: { $exists: true, $ne: null },
-          isActive: { $ne: false },
-        })
-          .sort({ changedAt: -1, updatedAt: -1, weekStart: -1 })
-          .select("shiftId")
-          .lean();
-        await CaptainAttendanceModel.updateOne(
-          {
-            captainId: captainObjectId,
-            date: { $gte: day.start, $lt: day.end },
-          },
-          {
-            $setOnInsert: {
-              captainId: captainObjectId,
-              date: day.start,
-              shiftId: assignment?.shiftId || null,
-              clockInAt: now,
-              clockOutAt: null,
-              durationMinutes: 0,
-              status: "present",
-            },
-          },
-          { upsert: true },
-        );
-      } catch (attendanceError) {
-        console.error("Automatic attendance log failed:", attendanceError);
-      }
-    }
+    // Log automatically after work activation; attendance is never a gate.
+    if (online) await recordAttendanceWithoutBlocking(captainId);
 
     return res.json({
       success: true,
@@ -163,6 +165,18 @@ export async function getCaptainOnline(
         success: false,
         message: "الكابتن غير موجود.",
       });
+    }
+
+    // Returning already-online captains also log their first authenticated
+    // activity of the new day, but only while their shift is running.
+    const isOnline = Boolean((captain as any).online ?? (captain as any).isOnline ?? false);
+    if (isOnline) {
+      try {
+        await assertCaptainInsideShift(captainId);
+        await recordAttendanceWithoutBlocking(captainId);
+      } catch {
+        // Reading presence never changes online state or blocks the app.
+      }
     }
 
     return res.json({
