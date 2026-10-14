@@ -276,7 +276,7 @@ export async function checkCurrentShift(
     const assignment = await CaptainShiftModel.findOne({
       captainId,
       shiftId: { $exists: true, $ne: null },
-      isActive: true,
+      isActive: { $ne: false },
     }).sort({ changedAt: -1, updatedAt: -1, weekStart: -1 }).lean();
 
     if (!assignment?.shiftId) {
