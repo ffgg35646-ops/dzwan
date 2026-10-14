@@ -3,39 +3,26 @@ import { Types } from "mongoose";
 import { AuthenticatedRequest } from "../middleware/auth.middleware.js";
 import CaptainAttendanceModel from "../models/CaptainAttendance.js";
 import { CaptainShiftModel } from "../models/CaptainShift.js";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { getBaghdadDayBounds } from "../services/captain-shift-management.service.js";
 
 function startOfToday() {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return date;
+  return getBaghdadDayBounds().start;
 }
 
 function endOfToday() {
-  const date = startOfToday();
-  date.setDate(date.getDate() + 1);
-  return date;
+  return getBaghdadDayBounds().end;
 }
 
 async function getCurrentCaptainShift(captainId: string) {
-  const now = new Date();
-  const windowStart = new Date(now.getTime() - 7 * DAY_MS);
-
-  return CaptainShiftModel.findOne({
+  const assignment = await CaptainShiftModel.findOne({
     captainId: new Types.ObjectId(captainId),
-    shiftId: {
-      $exists: true,
-      $ne: null,
-    },
-    weekStart: {
-      $gt: windowStart,
-      $lte: now,
-    },
+    shiftId: { $exists: true, $ne: null },
     isActive: true,
   })
-    .sort({ weekStart: -1 })
+    .sort({ changedAt: -1, updatedAt: -1, weekStart: -1 })
     .lean();
+
+  return assignment;
 }
 
 function attendanceRow(item: any) {
@@ -147,28 +134,25 @@ export async function checkIn(
       });
 
     if (existing) {
-      return res.status(409).json({
+      // Idempotent success: repeated taps must never become a UI/API error.
+      return res.status(200).json({
+        success: true,
         message: "تم تسجيل الحضور اليوم بالفعل.",
         attendance: existing,
       });
     }
 
+    // A shift is optional for attendance logging. The button must not fail
+    // because there is no selected/active shift or because of the current time.
     const assignment =
-      await getCurrentCaptainShift(captainId);
-
-    if (!assignment?.shiftId) {
-      return res.status(400).json({
-        message:
-          "لا يوجد شفت محدد للكابتن خلال مدة الـ7 أيام الحالية.",
-      });
-    }
+      await getCurrentCaptainShift(captainId).catch(() => null);
 
     const now = new Date();
 
     const attendance =
       await CaptainAttendanceModel.create({
         captainId: new Types.ObjectId(captainId),
-        shiftId: assignment.shiftId,
+        shiftId: assignment?.shiftId || null,
         date: dayStart,
         clockInAt: now,
         clockOutAt: null,
@@ -176,7 +160,8 @@ export async function checkIn(
         status: "present",
       });
 
-    return res.status(201).json({
+    return res.status(200).json({
+      success: true,
       message: "تم تسجيل الحضور بنجاح.",
       attendance,
     });
