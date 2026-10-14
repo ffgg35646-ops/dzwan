@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 
@@ -37,7 +37,24 @@ if (!html.includes(marker)) {
 
 const swPath = path.join(pwa, "sw.js");
 const sourceSw = await readFile(swPath, "utf8");
-const buildId = createHash("sha256").update(html).digest("hex").slice(0, 16);
+const buildHash = createHash("sha256");
+async function hashBuildFiles(directory) {
+  const entries = (await readdir(directory, { withFileTypes: true }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+    const relativePath = path.relative(dist, fullPath).split(path.sep).join("/");
+    if (relativePath === "sw.js") continue;
+    if (entry.isDirectory()) {
+      await hashBuildFiles(fullPath);
+    } else {
+      buildHash.update(relativePath);
+      buildHash.update(await readFile(fullPath));
+    }
+  }
+}
+await hashBuildFiles(dist);
+const buildId = buildHash.digest("hex").slice(0, 16);
 const builtSw = sourceSw.replaceAll("__BUILD_VERSION__", buildId);
 await writeFile(path.join(dist, "sw.js"), builtSw, "utf8");
 
