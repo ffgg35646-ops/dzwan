@@ -60,7 +60,23 @@ function isInsideShift(
 }
 
 function getCurrentDayIndex(date: Date): number {
-  return date.getDay();
+  const dayName = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Baghdad",
+    weekday: "long",
+  }).format(date).toLowerCase();
+  return ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"].indexOf(dayName);
+}
+
+function getBaghdadMinutes(date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Baghdad",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value);
+  return hour * 60 + minute;
 }
 
 export async function checkStrictShift(
@@ -81,9 +97,8 @@ export async function checkStrictShift(
     };
   }
 
-  const nowMinutes =
-    date.getHours() * 60 +
-    date.getMinutes();
+  // Vercel may run in UTC; shift eligibility must use Baghdad local time.
+  const nowMinutes = getBaghdadMinutes(date);
 
   for (const assignment of shifts) {
     // CaptainShift يحتوي على نوعين من السجلات:
@@ -110,10 +125,14 @@ export async function checkStrictShift(
       };
     }
 
-    const rawShiftDay =
-      (shift as any).dayOfWeek ??
-      (shift as any).day ??
-      null;
+    // For a captain's selected assignment, the shift repeats daily.
+    // Keep weekday filtering only for legacy records that are shift definitions,
+    // not assignments pointing at a selected shift.
+    const rawShiftDay = (assignment as any).shiftId
+      ? null
+      : (shift as any).dayOfWeek ??
+        (shift as any).day ??
+        null;
 
     if (
       rawShiftDay !== null &&
