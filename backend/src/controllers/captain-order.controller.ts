@@ -59,64 +59,8 @@ function validObjectId(value: string): boolean {
 async function isCaptainInsideSelectedWeeklyShift(
   captainId: string,
 ) {
-  const now = new Date();
-
-  // نفس منطق تسجيل الحضور:
-  // تعيين الشفت قد يكون محفوظًا بتاريخ اختيار الكابتن،
-  // لذلك نبحث في آخر 7 أيام.
-  const assignmentWindowStart =
-    new Date(
-      now.getTime() -
-        7 * 24 * 60 * 60 * 1000,
-    );
-
-  // نجيب اختيار الكابتن لهذا الأسبوع
-  const assignment =
-    await CaptainShiftModel.findOne({
-      captainId:
-        new Types.ObjectId(captainId),
-      shiftId: {
-        $exists: true,
-        $ne: null,
-      },
-      weekStart: {
-        $gt: assignmentWindowStart,
-        $lte: now,
-      },
-    })
-      .sort({
-        updatedAt: -1,
-      })
-      .lean();
-
-  if (!assignment?.shiftId) {
-    return false;
-  }
-
-  // نجيب الشفت نفسه
-  const shift =
-    await CaptainShiftModel.findOne({
-      _id: assignment.shiftId,
-      isActive: true,
-    })
-      .select(
-        "startTime endTime isOpen",
-      )
-      .lean();
-
-  if (!shift) {
-    return false;
-  }
-
-  if (shift.isOpen === true) {
-    return true;
-  }
-
-  return isWithinShift(
-    String(shift.startTime),
-    String(shift.endTime),
-    now,
-  );
+  if (!validObjectId(captainId)) return false;
+  return captainCanWorkNow(new Types.ObjectId(captainId));
 }
 
 async function getCaptainScopeData(captainId: string) {
@@ -564,8 +508,7 @@ export async function getCaptainOrderBoard(
           }
         : null;
 
-    // لا نستقبل طلبات جديدة إلا بعد اختيار شفت هذا الأسبوع
-    // وداخل وقت الشفت المختار.
+    // استقبال الطلبات يعتمد على الشفت المختار وساعات بغداد فقط، وليس على أسبوع تقويمي أو الحضور.
     const insideSelectedShift =
       await isCaptainInsideSelectedWeeklyShift(
         captainId,
