@@ -34,30 +34,6 @@ if (!html.includes(marker)) {
   ].join("\n");
   html = html.replace(/<head([^>]*)>/i, "<head$1>\n" + tags);
 }
-
-const swPath = path.join(pwa, "sw.js");
-const sourceSw = await readFile(swPath, "utf8");
-const buildHash = createHash("sha256");
-async function hashBuildFiles(directory) {
-  const entries = (await readdir(directory, { withFileTypes: true }))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  for (const entry of entries) {
-    const fullPath = path.join(directory, entry.name);
-    const relativePath = path.relative(dist, fullPath).split(path.sep).join("/");
-    if (relativePath === "sw.js") continue;
-    if (entry.isDirectory()) {
-      await hashBuildFiles(fullPath);
-    } else {
-      buildHash.update(relativePath);
-      buildHash.update(await readFile(fullPath));
-    }
-  }
-}
-await hashBuildFiles(dist);
-const buildId = buildHash.digest("hex").slice(0, 16);
-const builtSw = sourceSw.replaceAll("__BUILD_VERSION__", buildId);
-await writeFile(path.join(dist, "sw.js"), builtSw, "utf8");
-
 const registrationId = 'id="zajel-pwa-register"';
 if (!html.includes(registrationId)) {
   const registerScript = `<script id="zajel-pwa-register">
@@ -92,6 +68,29 @@ if (!html.includes(registrationId)) {
 })();
 </script>`;
   html = html.replace(/<\/body>/i, registerScript + "\n</body>");
-  await writeFile(indexPath, html, "utf8");
 }
+await writeFile(indexPath, html, "utf8");
+
+const swPath = path.join(pwa, "sw.js");
+const sourceSw = await readFile(swPath, "utf8");
+const buildHash = createHash("sha256");
+async function hashBuildFiles(directory) {
+  const entries = (await readdir(directory, { withFileTypes: true }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name);
+    const relativePath = path.relative(dist, fullPath).split(path.sep).join("/");
+    if (relativePath === "sw.js") continue;
+    if (entry.isDirectory()) {
+      await hashBuildFiles(fullPath);
+    } else {
+      buildHash.update(relativePath);
+      buildHash.update(await readFile(fullPath));
+    }
+  }
+}
+await hashBuildFiles(dist);
+const buildId = buildHash.digest("hex").slice(0, 16);
+const builtSw = sourceSw.replaceAll("__BUILD_VERSION__", buildId);
+await writeFile(path.join(dist, "sw.js"), builtSw, "utf8");
 console.log("PWA build prepared; service worker revision: " + buildId);
