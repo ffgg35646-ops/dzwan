@@ -4,21 +4,10 @@ import { api } from "../lib/api";
 type Shift = {
   _id: string;
   name?: string;
-  dayOfWeek?: number;
   startTime: string;
   endTime: string;
   isActive: boolean;
 };
-
-const DAYS = [
-  "الأحد",
-  "الإثنين",
-  "الثلاثاء",
-  "الأربعاء",
-  "الخميس",
-  "الجمعة",
-  "السبت",
-];
 
 function formatTime(value: string) {
   const match = String(value || "").match(
@@ -85,7 +74,6 @@ export default function CaptainShifts() {
   } | null>(null);
 
   const [name, setName] = useState("");
-  const [dayOfWeek, setDayOfWeek] = useState(0);
   const [startTime, setStartTime] = useState("08:00");
   const [endTime, setEndTime] = useState("16:00");
 
@@ -166,7 +154,6 @@ export default function CaptainShifts() {
         "/captain-shifts",
         {
           name: name.trim(),
-          dayOfWeek,
           startTime,
           endTime,
           isActive: true,
@@ -236,8 +223,6 @@ export default function CaptainShifts() {
           name:
             shift.name ||
             "شفت الكابتن",
-          dayOfWeek:
-            shift.dayOfWeek ?? 0,
           startTime:
             shift.startTime,
           endTime:
@@ -348,24 +333,6 @@ export default function CaptainShifts() {
             style={inputStyle}
           />
 
-          <select
-            value={dayOfWeek}
-            onChange={(event) =>
-              setDayOfWeek(
-                Number(event.target.value),
-              )
-            }
-            style={inputStyle}
-          >
-            {DAYS.map((day, index) => (
-              <option
-                key={day}
-                value={index}
-              >
-                {day}
-              </option>
-            ))}
-          </select>
 
           <input
             type="time"
@@ -466,14 +433,6 @@ export default function CaptainShifts() {
                     fontWeight: 700,
                   }}
                 >
-                  {DAYS[
-                    Number(
-                      shift.dayOfWeek ?? 0,
-                    )
-                  ] || "غير محدد"}
-
-                  {" • "}
-
                   {formatTime(
                     shift.startTime,
                   )}
