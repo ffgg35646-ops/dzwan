@@ -294,11 +294,12 @@ export async function checkCurrentShift(
         message: "الشفت السابق غير فعال. يمكنك اختيار شفت آخر.",
       });
     }
+    // Keep the selected shift active every day during its time window.
+    // Seven days restrict changing the selected shift, not using it.
     const insideShift = isShiftRunning(
       String(shift.startTime),
       String(shift.endTime),
       now,
-      (shift as any).dayOfWeek,
     );
 
     return res.json({
